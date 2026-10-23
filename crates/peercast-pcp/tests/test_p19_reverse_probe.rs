@@ -209,6 +209,7 @@ async fn test_p19_probe_stalled_connection_timeout() {
         max_concurrent_global: 16,
         connect_timeout: Duration::from_millis(100),
         exchange_timeout: Duration::from_millis(150),
+        enable_ipv6: false,
     };
     let limiter = ProbeLimiter::new(limits);
 
@@ -294,6 +295,7 @@ async fn test_p19_concurrency_limiter_and_cancellation() {
         max_concurrent_global: 1, // Only 1 concurrent probe globally
         connect_timeout: Duration::from_secs(5),
         exchange_timeout: Duration::from_secs(10),
+        enable_ipv6: false,
     };
     let limiter = ProbeLimiter::new(limits);
 

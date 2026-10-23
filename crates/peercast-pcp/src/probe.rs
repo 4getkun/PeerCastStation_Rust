@@ -13,6 +13,16 @@ use peercast_core::channel_id::ChannelId;
 use peercast_core::errors::QuitReason;
 use peercast_core::id4::ID4;
 
+/// Peer compatibility profile for reverse reachability probes (REQ-034, REQ-036).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProbePeerProfile {
+    /// PeerCastStation compatibility: writes PCP version 1 even on IPv6 (Station `PingHostAsync` parity).
+    #[default]
+    PeerCastStation,
+    /// PeerCast-YT compatibility: writes PCP version 1 for IPv4 / IPv4-mapped, and 100 for native IPv6 (YT `servent.cpp:494-498` parity).
+    PeerCastYt,
+}
+
 /// Result of an executed reverse reachability probe (REQ-036).
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ProbeResult {
@@ -71,6 +81,8 @@ pub struct ProbeLimits {
     pub connect_timeout: Duration,
     /// Total deadline for probe handshake exchange (default: 10s).
     pub exchange_timeout: Duration,
+    /// Whether IPv6 reverse probes are enabled (default: false, preserves REQ-036 pending status until explicitly enabled).
+    pub enable_ipv6: bool,
 }
 
 impl Default for ProbeLimits {
@@ -79,6 +91,7 @@ impl Default for ProbeLimits {
             max_concurrent_global: 16,
             connect_timeout: Duration::from_secs(5),
             exchange_timeout: Duration::from_secs(10),
+            enable_ipv6: false,
         }
     }
 }
@@ -175,15 +188,26 @@ impl ProbeLimiter {
 pub struct ProbeCodec;
 
 impl ProbeCodec {
-    /// Formats the probe connection payload: `pcp\n` preamble Atom + `helo` Atom (REQ-035, REQ-036).
+    /// Formats the probe connection payload: `pcp\n` preamble Atom + `helo` Atom with version 1 (REQ-035, REQ-036).
     pub fn build_probe_init(
+        server_session_id: ChannelId,
+        server_agent: &str,
+    ) -> Result<Bytes, AtomError> {
+        Self::build_probe_init_with_version(1, server_session_id, server_agent)
+    }
+
+    /// Formats the probe connection payload with explicit protocol version (REQ-034, REQ-036).
+    ///
+    /// IPv4/Station uses version 1; native IPv6 on PeerCast-YT uses version 100.
+    pub fn build_probe_init_with_version(
+        version: u32,
         server_session_id: ChannelId,
         server_agent: &str,
     ) -> Result<Bytes, AtomError> {
         let mut out = Vec::new();
 
-        // 1. Raw pcp\n preamble Atom containing protocol version 1 (REQ-035, A09)
-        let pcp_atom = Atom::new_u32_le(ID4::PCP_CONNECT, 1);
+        // 1. Raw pcp\n preamble Atom containing protocol version
+        let pcp_atom = Atom::new_u32_le(ID4::PCP_CONNECT, version);
         pcp_atom.encode(&mut out)?;
 
         // 2. Helo Atom
@@ -200,6 +224,74 @@ impl ProbeCodec {
         );
         helo.encode(&mut out)?;
 
+        Ok(Bytes::from(out))
+    }
+
+    /// Parses inbound raw `pcp\n` connect preamble Atom, returning the protocol version (1 or 100).
+    pub fn parse_probe_preamble(
+        buf: &mut Bytes,
+        budget: &AtomBudget,
+    ) -> Result<Option<u32>, ProbeError> {
+        let atom = match Atom::decode(buf, budget)? {
+            Some(a) => a,
+            None => return Ok(None),
+        };
+        if atom.name() != ID4::PCP_CONNECT {
+            return Err(ProbeError::Protocol(format!(
+                "Expected pcp\\n preamble, got {:?}",
+                atom.name()
+            )));
+        }
+        let ver = atom.get_u32_le().map_err(|_| {
+            ProbeError::Protocol("pcp\\n atom missing u32 version payload".into())
+        })?;
+        Ok(Some(ver))
+    }
+
+    /// Validates inbound probe preamble version according to peer profile (REQ-034, REQ-036).
+    ///
+    /// - Station pong listener (`PCPPongOutputStreamFactory.cs:64`) strictly checks for version 1.
+    /// - YT pong listener (`PCPStream::readVersion`) accepts both version 1 and 100.
+    pub fn validate_pong_preamble(ver: u32, profile: ProbePeerProfile) -> Result<(), ProbeError> {
+        match profile {
+            ProbePeerProfile::PeerCastStation => {
+                if ver != 1 {
+                    return Err(ProbeError::Protocol(format!(
+                        "Station pong rejects non-1 PCP version: {}",
+                        ver
+                    )));
+                }
+                Ok(())
+            }
+            ProbePeerProfile::PeerCastYt => {
+                if ver != 1 && ver != 100 {
+                    return Err(ProbeError::Protocol(format!(
+                        "YT pong rejects unrecognized PCP version: {}",
+                        ver
+                    )));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Formats the pong response: `oleh` Atom containing server session ID.
+    pub fn build_pong_oleh(
+        server_session_id: ChannelId,
+        server_agent: &str,
+    ) -> Result<Bytes, AtomError> {
+        let mut out = Vec::new();
+        let oleh = Atom::new_parent(
+            ID4::PCP_OLEH,
+            vec![
+                Atom::new_string(ID4::HELO_AGENT, server_agent),
+                Atom::new_leaf(
+                    ID4::HELO_SESSIONID,
+                    Bytes::copy_from_slice(server_session_id.as_bytes()),
+                ),
+            ],
+        );
+        oleh.encode(&mut out)?;
         Ok(Bytes::from(out))
     }
 
@@ -247,11 +339,7 @@ impl ProbeCodec {
 
 /// Executes a reverse reachability probe against an announced peer port (REQ-036).
 ///
-/// Ensures:
-/// - Connects strictly to `SocketAddr::new(observed_peer_ip, announced_port)`.
-/// - Precedes oleh in server handler (REQ-032, A10).
-/// - Enforces connect and total deadlines (REQ-037).
-/// - Cleanly closes with quit(1000).
+/// Uses the default peer compatibility profile (`ProbePeerProfile::PeerCastStation`).
 pub async fn execute_reverse_probe(
     limiter: &ProbeLimiter,
     observed_peer_ip: IpAddr,
@@ -260,12 +348,43 @@ pub async fn execute_reverse_probe(
     server_session_id: ChannelId,
     server_agent: &str,
 ) -> Result<ProbeResult, ProbeError> {
+    execute_reverse_probe_with_profile(
+        limiter,
+        observed_peer_ip,
+        announced_port,
+        expected_session_id,
+        server_session_id,
+        server_agent,
+        ProbePeerProfile::default(),
+    )
+    .await
+}
+
+/// Executes a reverse reachability probe against an announced peer port with explicit peer profile (REQ-034, REQ-036).
+///
+/// Ensures:
+/// - Connects strictly to `SocketAddr::new(observed_peer_ip, announced_port)`.
+/// - Precedes oleh in server handler (REQ-032, A10).
+/// - Emits PCP version 1 for IPv4 / IPv4-mapped, or version according to peer profile for native IPv6.
+/// - Enforces connect and total deadlines (REQ-037).
+/// - Cleanly closes with quit(1000).
+pub async fn execute_reverse_probe_with_profile(
+    limiter: &ProbeLimiter,
+    observed_peer_ip: IpAddr,
+    announced_port: u16,
+    expected_session_id: ChannelId,
+    server_session_id: ChannelId,
+    server_agent: &str,
+    peer_profile: ProbePeerProfile,
+) -> Result<ProbeResult, ProbeError> {
     if announced_port == 0 {
         return Err(ProbeError::InvalidPort);
     }
 
-    // IPv6 probe interoperability is explicitly OPEN pending verified testbed (REQ-036)
-    if observed_peer_ip.is_ipv6() {
+    let limits = limiter.limits();
+
+    // Check if IPv6 probe is enabled on limiter (REQ-036)
+    if observed_peer_ip.is_ipv6() && !limits.enable_ipv6 {
         return Err(ProbeError::IPv6Pending);
     }
 
@@ -274,7 +393,22 @@ pub async fn execute_reverse_probe(
     // Acquire concurrency and security permit (guards against SSRF to arbitrary IPs)
     let _guard = limiter.acquire(observed_peer_ip, observed_peer_ip).await?;
 
-    let limits = limiter.limits();
+    let is_ipv4_or_mapped = match observed_peer_ip {
+        IpAddr::V4(_) => true,
+        IpAddr::V6(v6) => {
+            let octets = v6.octets();
+            octets[0..10] == [0; 10] && octets[10] == 0xff && octets[11] == 0xff
+        }
+    };
+
+    let pcp_version = if is_ipv4_or_mapped {
+        1
+    } else {
+        match peer_profile {
+            ProbePeerProfile::PeerCastStation => 1,
+            ProbePeerProfile::PeerCastYt => 100,
+        }
+    };
 
     // 1. Establish TCP connection with connect deadline
     let connect_fut = TcpStream::connect(target_addr);
@@ -296,8 +430,12 @@ pub async fn execute_reverse_probe(
 
     // 2. Perform probe exchange within total exchange deadline
     let exchange_fut = async {
-        // Send pcp\n + helo
-        let init_bytes = ProbeCodec::build_probe_init(server_session_id, server_agent)?;
+        // Send pcp\n with selected version + helo
+        let init_bytes = ProbeCodec::build_probe_init_with_version(
+            pcp_version,
+            server_session_id,
+            server_agent,
+        )?;
         stream
             .write_all(&init_bytes)
             .await

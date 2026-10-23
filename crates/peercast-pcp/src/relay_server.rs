@@ -56,6 +56,16 @@ pub enum RelayServerError {
     #[error("Missing client session ID in helo")]
     MissingSessionId,
 
+    #[error("Missing x-peercast-pcp header in relay request (REQ-034)")]
+    MissingPcpHeader,
+
+    #[error("Network family mismatch: server is {server_profile:?}, remote IP is {remote_ip:?}, header version is {pcp_version:?}")]
+    NetworkFamilyMismatch {
+        server_profile: RelayNetworkProfile,
+        remote_ip: Option<IpAddr>,
+        pcp_version: Option<u32>,
+    },
+
     #[error("Client servant version {0} is too old (minimum required is {MIN_HELO_VERSION})")]
     BadAgentVersion(u32),
 
@@ -157,6 +167,92 @@ impl RelayServerStateMachine {
 
     pub fn client_version(&self) -> Option<u32> {
         self.client_version
+    }
+
+    /// Validates request header version against channel network profile and remote IP (REQ-034, Station parity `PCPOutputStream.cs:938-942`).
+    ///
+    /// - If `x-peercast-pcp` header is missing, returns `MissingPcpHeader` (maps to HTTP 400 Bad Request).
+    /// - For `RelayNetworkProfile::IPv4`: requires `pcp_version == 1` and IPv4 address family.
+    ///   IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) are unmapped to IPv4 and accepted.
+    /// - For `RelayNetworkProfile::IPv6`: requires `pcp_version == 100` and native IPv6 address family.
+    ///   IPv4-mapped IPv6 addresses are rejected as non-native IPv6.
+    /// - If family or version mismatch occurs, returns `NetworkFamilyMismatch` (maps to HTTP 404 Not Found).
+    pub fn validate_request_family(&self) -> Result<(), RelayServerError> {
+        let req = match &self.request {
+            Some(r) => r,
+            None => return Err(RelayServerError::InvalidPhase(self.phase)),
+        };
+
+        let pcp_version = req.pcp_version.ok_or(RelayServerError::MissingPcpHeader)?;
+
+        let unmapped_ip = self.remote_ip.map(|ip| match ip {
+            IpAddr::V4(v4) => IpAddr::V4(v4),
+            IpAddr::V6(v6) => {
+                let octets = v6.octets();
+                if octets[0..10] == [0; 10] && octets[10] == 0xff && octets[11] == 0xff {
+                    IpAddr::V4(std::net::Ipv4Addr::new(octets[12], octets[13], octets[14], octets[15]))
+                } else {
+                    IpAddr::V6(v6)
+                }
+            }
+        });
+
+        match self.network_profile {
+            RelayNetworkProfile::IPv4 => {
+                if pcp_version != 1 {
+                    return Err(RelayServerError::NetworkFamilyMismatch {
+                        server_profile: self.network_profile,
+                        remote_ip: self.remote_ip,
+                        pcp_version: Some(pcp_version),
+                    });
+                }
+                if let Some(ip) = unmapped_ip {
+                    if !ip.is_ipv4() {
+                        return Err(RelayServerError::NetworkFamilyMismatch {
+                            server_profile: self.network_profile,
+                            remote_ip: self.remote_ip,
+                            pcp_version: Some(pcp_version),
+                        });
+                    }
+                }
+            }
+            RelayNetworkProfile::IPv6 => {
+                if pcp_version != 100 {
+                    return Err(RelayServerError::NetworkFamilyMismatch {
+                        server_profile: self.network_profile,
+                        remote_ip: self.remote_ip,
+                        pcp_version: Some(pcp_version),
+                    });
+                }
+                if let Some(ip) = unmapped_ip {
+                    if !ip.is_ipv6() {
+                        return Err(RelayServerError::NetworkFamilyMismatch {
+                            server_profile: self.network_profile,
+                            remote_ip: self.remote_ip,
+                            pcp_version: Some(pcp_version),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Rejects the relay request as 400 Bad Request and terminates (REQ-034).
+    pub fn reject_bad_request(&mut self, message: &str) -> Vec<u8> {
+        self.phase = RelayServerPhase::Terminal(QuitReason::BAD_RESPONSE);
+        format!(
+            "HTTP/1.0 400 Bad Request\r\n\
+             Server: {}\r\n\
+             Content-Length: {}\r\n\
+             \r\n\
+             {}",
+            self.server_agent,
+            message.len(),
+            message
+        )
+        .into_bytes()
     }
 
     /// Accepts the relay request and transitions to `WaitingHelo200`.

@@ -19,8 +19,8 @@ pub use relay_server::{
     RelayServerEvent, RelayServerError, RelayServerPhase, RelayServerStateMachine,
 };
 pub use probe::{
-    execute_reverse_probe, ProbeCodec, ProbeError, ProbeGuard, ProbeLimiter, ProbeLimits,
-    ProbeResult,
+    execute_reverse_probe, execute_reverse_probe_with_profile, ProbeCodec, ProbeError, ProbeGuard,
+    ProbeLimiter, ProbeLimits, ProbePeerProfile, ProbeResult,
 };
 pub use packet::{
     unwrap_wire_pos, ChannelPacket, ChannelPacketAdapter, PacketError, PacketIngestResult,

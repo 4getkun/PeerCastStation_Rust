@@ -775,8 +775,45 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 8 comprehensive tests passing in `test_p35_directory_parser.rs` covering standard 19-column parsing, HTML entity decoding, partial/legacy column handling, uptime parsing (`HH:MM`, `HH:MM:SS`, total minutes), UTF-8 Japanese characters, field length rejection, total response size rejection, and line count bounding.
 
+### [2026-10-24] Task P36 Implementation: Dual-Stack IPv4/IPv6 Interop and Peer Probe Resolution
+- **Requirements Covered**: REQ-024, REQ-034, REQ-036, REQ-071
+- **Files Added / Changed**:
+  - `crates/peercast-pcp/src/relay_server.rs`
+  - `crates/peercast-pcp/src/probe.rs`
+  - `crates/peercast-pcp/src/lib.rs`
+  - `crates/peercast-pcp/tests/test_p19_reverse_probe.rs`
+  - `crates/peercast-pcp/tests/test_p36_dual_stack_interop.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Unsupported configurations reported explicitly rather than silently falling back to IPv4 (REQ-034, REQ-071).
+  - Header 1 / 100 Consistency Matrix (Station Parity `PCPOutputStream.cs:938-942`):
+    - Station evaluates channel network, request header `x-peercast-pcp`, and remote endpoint address family as a combined unit.
+    - Missing `x-peercast-pcp` header: returns `RelayServerError::MissingPcpHeader` (HTTP 400 Bad Request).
+    - `RelayNetworkProfile::IPv4`: requires `pcp_version == 1` and IPv4 address family.
+    - `RelayNetworkProfile::IPv6`: requires `pcp_version == 100` and native IPv6 address family.
+    - Any mismatch (IPv4 channel with header 100, IPv4 socket with IPv6 channel, etc.) immediately returns `RelayServerError::NetworkFamilyMismatch` (HTTP 404 Not Found).
+  - IPv4-Mapped Address Handling:
+    - Dual-stack socket addresses formatted as `::ffff:a.b.c.d` are explicitly identified and unmapped to IPv4 `a.b.c.d`.
+    - Unmapped addresses on IPv4 channels with header 1 are valid.
+    - Unmapped addresses on IPv6 channels are rejected with 404 because the logical underlying socket is IPv4, not native IPv6.
+  - Probe Behavior Differences Resolved (REQ-036):
+    - Audited upstream implementations:
+      - Station `PCPOutputStream.cs:341` always writes `Atom(Atom.PCP_CONNECT, 1)` even on IPv6, and Station pong factory (`PCPPongOutputStreamFactory.cs:64`) strictly checks for `version == 1` in byte 8 (rejecting any other version).
+      - PeerCast-YT `servent.cpp:494-498` writes `version 1` for IPv4 / mapped, and `version 100` for native IPv6. YT pong listener accepts both 1 and 100.
+      - Interoperability discovery: YT pinging Station over IPv6 sends version 100, which Station rejects!
+    - Implemented `ProbePeerProfile` (`PeerCastStation` vs `PeerCastYt`):
+      - Station profile emits version 1 on IPv6.
+      - YT profile emits version 100 on native IPv6.
+      - Pong responder (`validate_pong_preamble`) accepts both version 1 and 100, maximizing compatibility.
+    - Retained safety guard: `ProbeLimits::default()` has `enable_ipv6: false`, preserving `ProbeError::IPv6Pending` until explicitly enabled.
+  - Dual-Stack Relay Loopback Handshake & 503 Candidate Distribution:
+    - Loopback 200 OK relay streaming verified over IPv6 `[::1]` with `x-peercast-pcp: 100`.
+    - 503 candidate host distribution verified over IPv6 with 16-byte reversed addresses (REQ-024).
+    - Position cursor reconnection verified over IPv6 (`x-peercast-pos` + `x-peercast-pcp: 100`).
+  - Test Matrix Verified:
+    - 7 comprehensive tests passing in `test_p36_dual_stack_interop.rs` covering consistency matrix, IPv4-mapped address handling, IPv6 loopback relay 200 handshake, dual-stack 503 candidate host distribution, Station vs YT probe differences, default IPv6 pending guard, and IPv6 cursor reconnection.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P36 — Complete dual-stack IPv4/IPv6 interop** (Prerequisites: P21, P34; Requirements: REQ-026, REQ-027, REQ-071).
 - **P37 — Freeze full RPC/UI contract** (Prerequisites: P25, P26; Requirements: REQ-064).
+- **P37A — Map UI layer boundaries** (Prerequisites: P37; Requirements: REQ-080, REQ-085).
