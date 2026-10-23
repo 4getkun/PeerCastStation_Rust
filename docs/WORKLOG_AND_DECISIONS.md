@@ -837,8 +837,26 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 8 comprehensive tests passing in `test_p37_rpc_contract.rs` covering core queries, settings read and mutation, access control enforcement, deferred method capability reporting, unknown method errors, batch processing, notification execution, and size limits / malformed JSON.
 
+### [2026-10-24] Task P37A Implementation: Map UI Layer Boundaries
+- **Requirements Covered**: REQ-080, REQ-085
+- **Files Added / Changed**:
+  - `docs/UI_LAYER_BOUNDARIES.md`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: A wholesale framework rewrite is rejected; existing Knockout.js 3.5.1 + Bootstrap 5.3.3 stack is preserved without regression (REQ-085).
+  - Inward-Pointing Dependency Contract (REQ-080):
+    - Established strict boundary rules: Screens -> Components -> Tokens; Screens -> Controllers -> API Adapter -> Backend.
+    - Views and presentational components are strictly forbidden from performing direct `fetch`/`$.ajax` calls or knowing backend RPC method strings.
+    - Controllers own reactive view states (`idle`, `loading`, `error`, `empty`, `pendingMutation`) and are testable without browser DOM or a running daemon.
+    - Backend crates have zero knowledge of CSS classes, DOM structure, or component styling tokens.
+  - Complete 45-Method Mapping:
+    - Every audited JSON-RPC method is explicitly assigned an owning controller (`IndexController`, `ChannelsController`, `RelaysController`, `SettingsController`, `LogsController`, `UpdateController`, `UIViewModel`) and typed adapter method.
+  - Incremental Screen Migration Road-map:
+    - Phase 1: `index.html` (Index Screen: `getVersionInfo`, `getStatus`, `getPlugins`).
+    - Phase 2: `channels.html` and `play.html`.
+    - Phase 3: `settings.html` and `relays.html`.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37A — Map UI layer boundaries** (Prerequisites: P37; Requirements: REQ-080, REQ-085).
 - **P37B — Implement typed API adapter and view contracts** (Prerequisites: P37A; Requirements: REQ-081, REQ-084).
+- **P37C — Extract presentation controllers** (Prerequisites: P37B; Requirements: REQ-081, REQ-084).
