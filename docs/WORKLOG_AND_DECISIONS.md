@@ -435,7 +435,8 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
 | `test_p25_http_playback.rs` | `crates/peercast-http` | 6 | 0 | PASSED |
 | `test_p26_http_ingest.rs` | `crates/peercast-http` | 5 | 0 | PASSED |
 | `test_p27_ts_parser.rs` | `crates/peercast-format` | 5 | 0 | PASSED |
-| **Total** | | **114** | **0** | **ALL PASSED** |
+| `test_p28_ts_safestart.rs` | `crates/peercast-format` | 5 | 0 | PASSED |
+| **Total** | | **119** | **0** | **ALL PASSED** |
 
 ---
 
@@ -543,9 +544,22 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Verified epoch invalidation and snapshot regeneration upon PMT PID and stream configuration changes (REQ-051, REQ-053).
   - Detected random access points via Random Access Indicator (RAI) in adaptation field on video PIDs.
 
+### [2026-10-24] Task P28 Implementation: Safe-Start Selection for MPEG-2 TS
+- **Requirements Covered**: REQ-050, REQ-055
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/safestart.rs`
+  - `crates/peercast-format/src/lib.rs`
+  - `crates/peercast-format/tests/test_p28_ts_safestart.rs`
+- **Decisions & Parity Observations**:
+  - Parity and security stop/block guard strictly satisfied: PAT/PMT packets alone are NEVER treated as proof of immediate artifact-free video playback (REQ-053).
+  - Video stream safe start requires Random Access Indicator (RAI) in adaptation field on video PID before admitting media packets. Interframes arriving after PAT/PMT are skipped until a true keyframe arrives.
+  - Invariant enforced: media streaming to clients ALWAYS has a valid PAT/PMT `HeaderSnapshot` preceding the chosen media packet.
+  - Bounded timeout fallback: if encoder does not emit RAI flags, timeout fallback admits unfragmented packets after 3s to prevent indefinite playback stall (REQ-055).
+  - Audio-only TS streams admit the first unfragmented packet immediately without waiting for RAI or video keyframes.
+  - PID and PMT changes trigger epoch increments, resetting the safe-start state machine and requiring fresh PAT/PMT emission.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P28 — Implement safe-start for TS** (Prerequisites: P27, P24; Requirements: REQ-050, REQ-055).
 - **P29 — Establish internal channel ownership model** (Prerequisites: P20, P25; Requirements: REQ-020, REQ-021).
 - **P30 — Port tracker collection/filtering core** (Prerequisites: P29; Requirements: REQ-040, REQ-041).
