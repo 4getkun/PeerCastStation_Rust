@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use peercast_app::{
-    wait_for_os_shutdown_signal, AppCliArgs, AppLifecycleManager, AppMetrics, BoundedLogBuffer,
-    ConfigManager, LogLevel, ShutdownReason,
+    wait_for_os_shutdown_signal, AppCliArgs, AppConfig, AppLifecycleManager, AppMetrics,
+    BoundedLogBuffer, ConfigManager, LogLevel, ShutdownReason,
 };
 
 #[tokio::main]
@@ -35,16 +35,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| PathBuf::from("peercast.json"));
 
     let config_mgr = ConfigManager::new(&config_path);
-    let mut config = match config_mgr.load_or_create_default() {
-        Ok(c) => c,
+    let config = match config_mgr.load() {
+        Ok(mut c) => {
+            cli.apply_to_config(&mut c);
+            c
+        }
+        Err(peercast_app::ConfigPersistenceError::NotFound(_)) => {
+            let mut c = AppConfig::default();
+            cli.apply_to_config(&mut c);
+            if let Err(e) = c.validate() {
+                eprintln!("Configuration validation error: {}", e);
+                std::process::exit(1);
+            }
+            if let Err(e) = config_mgr.save(&c) {
+                eprintln!("Failed to save initial configuration to {}: {}", config_path.display(), e);
+                std::process::exit(1);
+            }
+            c
+        }
         Err(e) => {
             eprintln!("Failed to load configuration from {}: {}", config_path.display(), e);
             std::process::exit(1);
         }
     };
 
-    // Apply CLI overrides (CLI flags take precedence over config file)
-    cli.apply_to_config(&mut config);
     if let Err(e) = config.validate() {
         eprintln!("Configuration validation error: {}", e);
         std::process::exit(1);

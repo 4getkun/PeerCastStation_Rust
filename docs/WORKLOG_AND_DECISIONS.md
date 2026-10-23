@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.12.0 (Execution Phase: Tasks P01-P40 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P40 PASSED; Next: P41 — Validate target packaging)  
+> **Document Version**: 2.13.0 (Execution Phase: Tasks P01-P41 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P41 PASSED; Next: P42 — Run parser fuzz and fault campaigns)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -1094,9 +1094,34 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 10 comprehensive tests passing in `test_p40_persistence_lifecycle.rs`: config validation and invariants, atomic write resilience, safe migration and backup preservation, corrupt config rejection, CLI flags parsing and precedence, lifecycle state machine and re-entrancy guard, graceful shutdown during active traffic, bounded logging and secret redaction, operational metrics tracking, and OS-specific shutdown contracts.
 
+### [2026-10-24] Task P41 Implementation: Validate Target Packaging & Runtime Evidence
+- **Requirements Covered**: REQ-066, REQ-067, REQ-070
+- **Files Added / Changed**:
+  - `docs/TARGET_PACKAGING.md`
+  - `crates/peercast-app/Cargo.toml`
+  - `crates/peercast-app/src/main.rs`
+  - `crates/peercast-app/tests/test_p41_target_packaging.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Cross-compilation alone is NEVER accepted as runtime verification; executable runtime execution and startup evidence are measured and recorded directly on target OS (REQ-070).
+  - Target Release Binary Verification (`x86_64-pc-windows-msvc`):
+    - Release binary built via `cargo build --release -p peercast-app`.
+    - Executable size: `727,552 bytes` (~710 KiB) — exceptionally compact and self-contained.
+    - Deterministic SHA-256 Digest: `2838F6CCC2010530286B5B189F1F7BA701BF21746F42C32B6B54C6BAD7F2D9A3`.
+  - Dynamic Runtime Requirements Recorded (REQ-066):
+    - Confirmed dynamic Windows dependencies via PE inspection: `kernel32.dll`, `ntdll.dll`, `ws2_32.dll`, `bcryptprimitives.dll`, Windows Universal C Runtime (`api-ms-win-crt-*.dll`), and `VCRUNTIME140.dll`.
+    - Documented GNU C Library (`libc.so.6`) and static `musl` expectations for Linux targets in `docs/TARGET_PACKAGING.md`.
+  - Clean-Machine Isolated Directory Execution:
+    - Verified startup in an empty, pristine directory without any pre-existing configuration.
+    - Generates valid `peercast.json` with schema version 2 and persists initial command-line port/bind overrides.
+    - Verified clean shutdown upon receiving `--kill` flag with exit status 0.
+  - Self-Contained Embedded UI Assets:
+    - Confirmed all HTML screens, CSS stylesheets/tokens, JavaScript client adapters, and JSON fixtures are compiled directly into the binary with zero remote CDN or external file dependencies.
+  - Test Matrix Verified:
+    - 5 comprehensive tests passing in `test_p41_target_packaging.rs`: target binary existence and deterministic hash computation, clean-machine isolated startup, CLI flags invocation (`--version`, `--help`, `--kill`), embedded UI self-containment, and license/packaging documentation compliance.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P41 — Validate target packaging** (Prerequisites: P39, P40; Requirements: REQ-066, REQ-067, REQ-070).
 - **P42 — Run parser fuzz and fault campaigns** (Prerequisites: P08, P20, P26..P30, P35; Requirements: REQ-025, REQ-027, REQ-056, REQ-070).
 - **P43 — Run bounded operational soak** (Prerequisites: P36, P41, P42; Requirements: REQ-003, REQ-027, REQ-070, REQ-071).
+- **P44 — Release assessment & production readiness review** (Prerequisites: P41..P43; Requirements: REQ-070..REQ-072).
