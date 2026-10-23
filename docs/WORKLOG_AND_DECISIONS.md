@@ -428,13 +428,93 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
 | `test_p18_relay_server_handshake.rs` | `crates/peercast-pcp` | 7 | 0 | PASSED |
 | `test_p19_reverse_probe.rs` | `crates/peercast-pcp` | 7 | 0 | PASSED |
 | `test_p20_channel_packet_relay.rs` | `crates/peercast-pcp` | 7 | 0 | PASSED |
-| **Total** | | **71** | **0** | **ALL PASSED** |
+| `test_p21_controlled_interop.rs` | `crates/peercast-pcp` | 5 | 0 | PASSED |
+| `test_p22_container_detection.rs` | `crates/peercast-format` | 7 | 0 | PASSED |
+| `test_p23_flv_parser.rs` | `crates/peercast-format` | 9 | 0 | PASSED |
+| `test_p24_safestart.rs` | `crates/peercast-format` | 6 | 0 | PASSED |
+| `test_p25_http_playback.rs` | `crates/peercast-http` | 6 | 0 | PASSED |
+| **Total** | | **104** | **0** | **ALL PASSED** |
+
+---
+
+### [2026-10-24] Task P21 Implementation & Interoperability Verification
+- **Requirements Covered**: REQ-003, REQ-070, REQ-071
+- **Files Added / Changed**:
+  - `crates/peercast-pcp/tests/test_p21_controlled_interop.rs`
+- **Decisions & Parity Observations**:
+  - Implemented 5 loopback integration test vectors covering:
+    1. HTTP/1.0 200 relay streaming with real TCP sockets and SHA-256 fixture verification.
+    2. HTTP/1.0 503 candidate host distribution and graceful termination.
+    3. HTTP/1.0 404 off-air immediate disconnection without atom decoding.
+    4. Reverse probe handshake across loopback TCP sockets matching session ID.
+    5. Reconnection with `x-peercast-pos` cursor resumes streaming without losing position continuity.
+
+### [2026-10-24] Task P22 Implementation: Bounded Container Detection
+- **Requirements Covered**: REQ-050, REQ-056
+- **Files Added / Changed**:
+  - `crates/peercast-format/Cargo.toml`
+  - `crates/peercast-format/src/lib.rs`
+  - `crates/peercast-format/src/sniffer.rs`
+  - `crates/peercast-format/tests/test_p22_container_detection.rs`
+- **Decisions & Parity Observations**:
+  - Created new crate `crates/peercast-format` enforcing non-consuming replay via `SniffBuffer`.
+  - Detection evaluates signatures for FLV (`FLV` + version 1 + PreviousTagSize0 == 0), MPEG-2 TS (multi-packet 188-byte `0x47` sync checks), Matroska/WebM (EBML ID `0x1A45DFA3`), ASF (GUID `75B22630-668E-11CF-A6D9-00AA0062CE6C`), Ogg (`OggS`), and MP3 (MPEG audio sync word `0xFFE0`).
+  - File extension alone is never used to infer unverified parsers.
+
+### [2026-10-24] Task P23 Implementation: First FLV Header and Body Path
+- **Requirements Covered**: REQ-051, REQ-052
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/flv.rs`
+  - `crates/peercast-format/tests/test_p23_flv_parser.rs`
+- **Decisions & Parity Observations**:
+  - Implemented `FlvFileHeader`, `FlvTagHeader`, `FlvTag`, and incremental streaming `FlvStreamParser` resilient to single-byte chunk splits.
+  - Mandatory 13-byte FLV prelude (`'F','L','V'`, version 1, flags, DataOffset 9, PreviousTagSize0 = 0) strictly enforced; emitting 9-byte header alone is blocked.
+  - Implemented lightweight, bounded AMF0 metadata parser extracting `videodatarate`, `audiodatarate`, `maxBitrate`, `width`, `height`, and total bitrate in kbps.
+  - Sequence headers for AAC (`AudioTagHeader` with `AACPacketType == 0`) and AVC (`VideoTagHeader` with `AVCPacketType == 0`) cached and emitted with timestamp 0 in `HeaderSnapshot`.
+  - Config changes trigger epoch increment, invalidating stale cached body chunks (REQ-051).
+  - Extended FLV tags (ExVideo, ExAudio) explicitly detected and rejected rather than silently treated as standard AVC/AAC.
+  - Integration test validated against real upstream `test.flv` fixture from `PeerCastStation/TestFLV/fixtures/test.flv`.
+
+### [2026-10-24] Task P24 Implementation: Safe-Start Selection
+- **Requirements Covered**: REQ-050, REQ-055
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/safestart.rs`
+  - `crates/peercast-format/tests/test_p24_safestart.rs`
+- **Decisions & Parity Observations**:
+  - Separated packet continuation flags from format-level keyframes: `cont == 0` is strictly forbidden from being treated as universal proof of H.264 IDR (REQ-050).
+  - Implemented `SafeStartSelector` with state machine: `WaitingForHeader -> SeekingSafePoint -> Streaming`.
+  - Packet continuation fragments (`cont_flags.is_fragment()`) are never admitted as starting points.
+  - In `VideoKeyframe` mode: skips interframes until true keyframe arrives; if bounded timeout (3s) elapses, fallback admits the next unfragmented packet to avoid stalling indefinite playback (REQ-055).
+  - `AudioOnly` mode admits the first unfragmented packet immediately without waiting for video keyframes.
+  - Historical cache start-point selection implemented via `select_cache_start_point` scanning `BoundedContentCache`.
+  - Stream/epoch restarts reset safe-start selection cleanly.
+
+### [2026-10-24] Task P25 Implementation: Direct Playback and Playlists
+- **Requirements Covered**: REQ-060
+- **Files Added / Changed**:
+  - `crates/peercast-http/Cargo.toml`
+  - `crates/peercast-http/src/lib.rs`
+  - `crates/peercast-http/src/playlist.rs`
+  - `crates/peercast-http/src/router.rs`
+  - `crates/peercast-http/src/streamer.rs`
+  - `crates/peercast-http/tests/test_p25_http_playback.rs`
+- **Decisions & Parity Observations**:
+  - Established `crates/peercast-http` crate implementing `/stream/{id}` and `/pls/{id}` routing.
+  - Channel ID validated as exact 32-hex characters; invalid hex and short strings rejected with 404 / 400.
+  - Framing parity strictly enforced:
+    - HTTP/1.1 standard media: `Transfer-Encoding: chunked`.
+    - HTTP/1.0: ALWAYS raw continuous streaming (`Connection: close`); chunked encoding is strictly prohibited (REQ-060 stop/block rule).
+    - MMS / ASF: ALWAYS raw continuous streaming (`application/x-mms-framed`, `Connection: close`).
+  - Playlist builder supports M3U (`audio/x-mpegurl`), PLS (`audio/x-scpls`), and ASX (`video/x-ms-asf`).
+  - Negative tests verify playlist escaping: XML special characters in ASX escaped; newline injection (CR/LF) in M3U/PLS stripped to prevent playlist header injection attacks.
+  - Real TCP loopback test streams chunked FLV to client, which de-chunks and decodes cleanly via `FlvStreamParser`.
+  - Client disconnect terminates streaming loop promptly and releases subscriber resources.
 
 ---
 
 ## 3. Next Actionable Tasks
-- **P21 — Prove controlled IPv4 interoperability** (Prerequisites: P20, P10; Requirements: REQ-003, REQ-070, REQ-071). Change scope: test harness and evidence, production changes only for diagnosed defects.
-- **P22 — Implement bounded container detection** (Prerequisites: P21; Requirements: REQ-050, REQ-056). Change scope: format reader interface and first-slice sniffer.
-- **P23 — Implement first FLV header/body path** (Prerequisites: P22; Requirements: REQ-051, REQ-052).
-- **P24 — Implement safe-start selection** (Prerequisites: P23, P13; Requirements: REQ-050, REQ-055).
-- **P25 — Implement direct playback and playlists** (Prerequisites: P24, P14; Requirements: REQ-060).
+- **P26 — Define and implement first ingest endpoint** (Prerequisites: P25; Requirements: REQ-061, REQ-065). Change scope: explicitly selected ingest listener contract (HTTP POST ingest, authorization, binding).
+- **P27 — Implement TS support independently** (Prerequisites: P25; Requirements: REQ-053, REQ-056). Change scope: TS parser/fixtures; separate from FLV.
+- **P28 — Implement safe-start for TS** (Prerequisites: P27, P24; Requirements: REQ-050, REQ-055).
+- **P29 — Establish internal channel ownership model** (Prerequisites: P20, P25; Requirements: REQ-020, REQ-021).
+- **P30 — Port tracker collection/filtering core** (Prerequisites: P29; Requirements: REQ-040, REQ-041).
