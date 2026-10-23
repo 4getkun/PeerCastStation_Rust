@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.6.0 (Execution Phase: Tasks P01-P32 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P32 PASSED; Next: P33 — Implement bounded gossip forwarding)  
+> **Document Version**: 2.7.0 (Execution Phase: Tasks P01-P33 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P33 PASSED; Next: P34 — Implement controlled YP announcements)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -682,8 +682,31 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Deterministic Testing:
     - Built-in zero-dependency deterministic PRNG ([`DeterministicRng`]) and fixed sequences ([`FixedSequenceRng`]) ensure 100% reproducible test fixtures (7 tests passing in `test_p32_parent_selection.rs`).
 
+### [2026-10-24] Task P33 Implementation: Bounded Gossip Forwarding and Storm Suppression
+- **Requirements Covered**: REQ-044
+- **Files Added / Changed**:
+  - `crates/peercast-core/src/gossip.rs`
+  - `crates/peercast-core/src/lib.rs`
+  - `crates/peercast-core/tests/test_p33_gossip_forwarding.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: TTL and hop semantics are NEVER reversed. TTL is decremented by 1 (`saturating_sub(1)`), while Hops are INCREMENTED by 1 (`saturating_add(1)`) with `u8` overflow protection saturating at 255. Decrementing hops is strictly prohibited (REQ-044).
+  - Forwarding Eligibility & Destination Routing:
+    - Station path parity enforced: forwarding requires incoming `ttl > 1` (default `min_forwarding_ttl = 2`). Incoming packets with TTL 0 or 1 are dropped from forwarding (`ExpiredTtl`).
+    - Local destination check: if `dest == self_session_id`, packet is processed locally and strictly NOT forwarded (`forward_packet = None`).
+    - Origin reflection check: if `from == self_session_id`, loopback reflection of our own packet is dropped.
+    - Group validation: group byte must be a valid combination of `BroadcastGroup` flags (`Root = 1`, `Trackers = 2`, `Relays = 4`); unknown or zero groups are dropped (`UnknownGroup`).
+  - Source Exclusion in Broadcast Routing:
+    - `select_forwarding_recipients` strictly excludes the incoming source peer by session ID and socket address, preventing ping-pong reflection loops back to sender.
+  - Bounded Storm Suppression Deduplication (REQ-044, Global Rule 3):
+    - `GossipDedupCache` maintains a strictly bounded capacity (`max_entries`, default 1024) keyed by `(origin_session_id, channel_id, payload_md5_hash)`.
+    - Duplicates received within the suppression window (default 60s) are dropped (`DuplicateStormSuppressed`).
+    - Insertion at capacity first prunes expired entries; if still full, evicts the oldest entry (FIFO/LRU).
+    - Physical cleanup (`prune_expired()`) physically removes expired entries from internal HashMaps, guaranteeing zero unbounded heap growth.
+  - Test Matrix Verified:
+    - 8 comprehensive tests passing in `test_p33_gossip_forwarding.rs` covering TTL 0/1/2, hop overflow at 255, local destinations, reflection loops, unknown groups, duplicate storm suppression, bounded cache capacity, and source exclusion.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P33 — Implement bounded gossip forwarding** (Prerequisites: P32; Requirements: REQ-044).
 - **P34 — Implement controlled YP announcements** (Prerequisites: P33; Requirements: REQ-035, REQ-062, REQ-063).
+- **P35 — Implement bounded directory parsing** (Prerequisites: P34; Requirements: REQ-063).

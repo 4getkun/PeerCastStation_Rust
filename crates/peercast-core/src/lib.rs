@@ -15,6 +15,7 @@ pub mod cache;
 pub mod subscriber;
 pub mod host_registry;
 pub mod parent_selection;
+pub mod gossip;
 
 pub use id4::{ID4, Id4Error};
 pub use scalar::{Scalar, ScalarError};
@@ -45,4 +46,9 @@ pub use parent_selection::{
     DeterministicRng, FixedSequenceRng, LocalityDetector, ParentSelectionPolicy, ParentSelector,
     PeerCastYtGreedyHopPolicy, ReconnectBudget, RetryDecision, RngSource, StationWeightedRandomPolicy,
     SystemRng,
+};
+pub use gossip::{
+    select_forwarding_recipients, BroadcastGroup, GossipDedupCache, GossipDropReason,
+    GossipForwardDecision, GossipForwarder, PeerBroadcastTarget, DEFAULT_MAX_DEDUP_ENTRIES,
+    DEFAULT_MIN_FORWARDING_TTL, DEFAULT_STORM_SUPPRESSION_WINDOW,
 };
