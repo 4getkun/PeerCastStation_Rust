@@ -1,0 +1,69 @@
+/**
+ * Channel Table Component Structural Styles (REQ-082)
+ */
+
+.peca-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--peca-border-subtle);
+  border-radius: var(--peca-radius-md);
+  background-color: var(--peca-surface-card);
+}
+
+.peca-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--peca-font-size-sm);
+}
+
+.peca-table th {
+  background-color: var(--peca-surface-subtle);
+  color: var(--peca-text-secondary);
+  font-weight: 600;
+  padding: var(--peca-space-sm) var(--peca-space-md);
+  border-bottom: 2px solid var(--peca-border-subtle);
+  user-select: none;
+}
+
+.peca-table th:focus-visible,
+.peca-table td:focus-visible,
+.peca-btn:focus-visible {
+  outline: var(--peca-focus-outline-width) solid var(--peca-focus-ring);
+  outline-offset: var(--peca-focus-outline-offset);
+}
+
+.peca-table td {
+  padding: var(--peca-space-sm) var(--peca-space-md);
+  border-bottom: 1px solid var(--peca-border-subtle);
+  color: var(--peca-text-primary);
+}
+
+.peca-table tr:hover {
+  background-color: var(--peca-surface-subtle);
+}
+
+.peca-table tr:last-child td {
+  border-bottom: none;
+}
+
+.peca-channel-name {
+  font-weight: 600;
+  color: var(--peca-color-primary);
+}
+
+.peca-channel-id {
+  font-family: var(--peca-font-family-mono);
+  font-size: var(--peca-font-size-xs);
+  color: var(--peca-text-muted);
+}
+
+.peca-empty-state {
+  text-align: center;
+  padding: var(--peca-space-2xl) var(--peca-space-lg);
+  color: var(--peca-text-muted);
+}
+
+.peca-empty-icon {
+  font-size: var(--peca-font-size-2xl);
+  margin-bottom: var(--peca-space-sm);
+}

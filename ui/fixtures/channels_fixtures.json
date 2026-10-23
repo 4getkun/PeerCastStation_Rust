@@ -1,0 +1,35 @@
+{
+  "normal": [
+    {
+      "channelId": "0123456789ABCDEF0123456789ABCDEF",
+      "name": "Live PeerCast Broadcast",
+      "status": "Receiving",
+      "displayBitrate": "1500 kbps",
+      "rawBitrate": 1500,
+      "mimeType": "video/x-flv",
+      "totalRelays": 12,
+      "totalDirects": 4
+    },
+    {
+      "channelId": "FEDCBA9876543210FEDCBA9876543210",
+      "name": "Radio Stream 24/7",
+      "status": "Relaying",
+      "displayBitrate": "128 kbps",
+      "rawBitrate": 128,
+      "mimeType": "audio/mpeg",
+      "totalRelays": 50,
+      "totalDirects": 8
+    }
+  ],
+  "empty": [],
+  "stale": {
+    "warning": "Stale sequence detected",
+    "message": "A newer refresh sequence (seq=4) arrived while seq=2 was in flight. Stale data was safely dropped.",
+    "expectedSeq": 4,
+    "receivedSeq": 2
+  },
+  "failedMutation": {
+    "error": "UncertainMutationRetryForbidden",
+    "message": "Network transport dropped during setSettings execution. Blind automatic replay is strictly prohibited (REQ-084)."
+  }
+}

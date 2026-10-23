@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="default">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PeerCastStation UI Component & Screen Fixture Gallery (REQ-082, REQ-083)</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/components/status_card.css">
+  <link rel="stylesheet" href="../css/components/channel_table.css">
+  <link rel="stylesheet" href="../css/components/alert_banner.css">
+  <style>
+    body {
+      font-family: var(--peca-font-family);
+      background-color: var(--peca-surface-bg);
+      color: var(--peca-text-primary);
+      margin: 0;
+      padding: var(--peca-space-lg);
+      line-height: var(--peca-line-height-base);
+    }
+    .gallery-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--peca-space-xl);
+      border-bottom: 2px solid var(--peca-border-subtle);
+      padding-bottom: var(--peca-space-md);
+      gap: var(--peca-space-md);
+    }
+    .gallery-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--peca-space-sm);
+      align-items: center;
+    }
+    .gallery-section {
+      margin-bottom: var(--peca-space-2xl);
+    }
+    .gallery-section-title {
+      font-size: var(--peca-font-size-xl);
+      font-weight: 700;
+      margin-bottom: var(--peca-space-md);
+      color: var(--peca-text-primary);
+    }
+    .state-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--peca-space-xs);
+      margin-bottom: var(--peca-space-lg);
+    }
+    .state-btn {
+      padding: var(--peca-space-2xs) var(--peca-space-sm);
+      font-size: var(--peca-font-size-xs);
+      border-radius: var(--peca-radius-pill);
+      border: 1px solid var(--peca-border-strong);
+      background: var(--peca-surface-card);
+      color: var(--peca-text-secondary);
+      cursor: pointer;
+    }
+    .state-btn:hover {
+      background: var(--peca-surface-subtle);
+    }
+    .state-btn.active {
+      background: var(--peca-color-primary);
+      color: var(--peca-text-inverse);
+      border-color: var(--peca-color-primary);
+    }
+    .event-log {
+      background: var(--peca-surface-card);
+      border: 1px solid var(--peca-border-subtle);
+      border-radius: var(--peca-radius-md);
+      padding: var(--peca-space-md);
+      font-family: var(--peca-font-family-mono);
+      font-size: var(--peca-font-size-xs);
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid var(--peca-border-subtle);
+      border-top-color: var(--peca-color-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="gallery-header" role="banner">
+    <div>
+      <h1 style="margin: 0; font-size: var(--peca-font-size-2xl);">PeerCastStation Pure Presentation Gallery</h1>
+      <p style="margin: var(--peca-space-2xs) 0 0 0; color: var(--peca-text-muted); font-size: var(--peca-font-size-sm);">
+        Verified 100% offline fixture rendering without a daemon or network (REQ-082, REQ-083)
+      </p>
+    </div>
+    <div class="gallery-controls" role="region" aria-label="テーマおよびアクセシビリティ設定">
+      <label for="theme-select" style="font-size: var(--peca-font-size-sm); font-weight: 600;">Theme:</label>
+      <select id="theme-select" class="peca-btn peca-btn-outline" onchange="setTheme(this.value)">
+        <option value="default">Default Light</option>
+        <option value="dark">Dark</option>
+        <option value="high-contrast">High Contrast (WCAG AAA)</option>
+      </select>
+      <button class="peca-btn peca-btn-outline" onclick="toggleMotion()" id="motion-btn">Motion: Auto</button>
+    </div>
+  </header>
+
+  <main role="main">
+    <!-- State Navigation -->
+    <nav class="state-selector" aria-label="表示状態の切り替え">
+      <button class="state-btn active" onclick="showState('normal')">1. Normal / Loaded</button>
+      <button class="state-btn" onclick="showState('empty')">2. Empty State</button>
+      <button class="state-btn" onclick="showState('loading')">3. Loading State</button>
+      <button class="state-btn" onclick="showState('partial')">4. Partial Data</button>
+      <button class="state-btn" onclick="showState('forbidden')">5. Forbidden (403)</button>
+      <button class="state-btn" onclick="showState('disconnected')">6. Disconnected</button>
+      <button class="state-btn" onclick="showState('stale')">7. Stale Response Ignored</button>
+      <button class="state-btn" onclick="showState('failed')">8. Failed Mutation Guard</button>
+    </nav>
+
+    <!-- 1. Normal State -->
+    <div id="state-normal" class="state-view">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Status Overview (Index Screen)</h2>
+        <div class="peca-card">
+          <div class="peca-card-header">
+            <h3 class="peca-card-title">Node Status</h3>
+            <span class="peca-badge peca-badge-success">正常稼働中</span>
+          </div>
+          <div class="peca-grid">
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Uptime</span>
+              <span class="peca-metric-value">24:00:00</span>
+            </div>
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Port Status</span>
+              <span class="peca-badge peca-badge-success" style="width: fit-content;">ポート開放中 (Open)</span>
+            </div>
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Local Endpoint</span>
+              <span class="peca-metric-value" style="font-size: var(--peca-font-size-base);">127.0.0.1:7144</span>
+            </div>
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Global Endpoint</span>
+              <span class="peca-metric-value" style="font-size: var(--peca-font-size-base);">203.0.113.42:7144</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Active Relay Channels</h2>
+        <div class="peca-table-container">
+          <table class="peca-table">
+            <thead>
+              <tr>
+                <th scope="col" tabindex="0">チャンネル名</th>
+                <th scope="col" tabindex="0">ステータス</th>
+                <th scope="col" tabindex="0">ビットレート</th>
+                <th scope="col" tabindex="0">リレー / 直接</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="peca-channel-name">Live PeerCast Broadcast</div>
+                  <div class="peca-channel-id">0123456789ABCDEF0123456789ABCDEF</div>
+                </td>
+                <td><span class="peca-badge peca-badge-info">Receiving</span></td>
+                <td>1500 kbps</td>
+                <td>12 / 4</td>
+                <td><button class="peca-btn peca-btn-outline" onclick="logEvent('Play Channel: 0123456789ABCDEF')">再生</button></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="peca-channel-name">Radio Stream 24/7</div>
+                  <div class="peca-channel-id">FEDCBA9876543210FEDCBA9876543210</div>
+                </td>
+                <td><span class="peca-badge peca-badge-success">Relaying</span></td>
+                <td>128 kbps</td>
+                <td>50 / 8</td>
+                <td><button class="peca-btn peca-btn-outline" onclick="logEvent('Play Channel: FEDCBA9876543210')">再生</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- 2. Empty State -->
+    <div id="state-empty" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Channels List (Empty State)</h2>
+        <div class="peca-table-container">
+          <div class="peca-empty-state">
+            <div class="peca-empty-icon">&#128250;</div>
+            <p style="font-weight: 600; margin: 0 0 var(--peca-space-xs) 0;">現在アクティブなチャンネルはありません</p>
+            <p style="margin: 0; font-size: var(--peca-font-size-sm);">YP一覧からチャンネルを検索するか、新しいブロードキャストを開始してください。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 3. Loading State -->
+    <div id="state-loading" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Loading Screen (Sequence in flight)</h2>
+        <div class="peca-alert peca-alert-info" role="status" aria-live="polite">
+          <div class="peca-alert-icon"><span class="spinner"></span></div>
+          <div class="peca-alert-content">
+            データを取得しています (seq=5)...
+          </div>
+        </div>
+        <div class="peca-card" style="opacity: 0.6;">
+          <div class="peca-card-title">読み込み中...</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 4. Partial Data -->
+    <div id="state-partial" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Partial Data (Firewall Unknown)</h2>
+        <div class="peca-card">
+          <div class="peca-grid">
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Uptime</span>
+              <span class="peca-metric-value">00:00:30</span>
+            </div>
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Port Status</span>
+              <span class="peca-badge peca-badge-warning" style="width: fit-content;">ポート確認中 (Unknown)</span>
+            </div>
+            <div class="peca-metric-item">
+              <span class="peca-metric-label">Global Endpoint</span>
+              <span class="peca-metric-value" style="font-size: var(--peca-font-size-sm); color: var(--peca-text-muted);">未検出 (Probing...)</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 5. Forbidden State -->
+    <div id="state-forbidden" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Access Forbidden (403)</h2>
+        <div class="peca-alert peca-alert-warning" role="alert">
+          <div class="peca-alert-icon">&#9888;</div>
+          <div class="peca-alert-content">
+            <strong>管理者権限が必要です:</strong> この設定画面を閲覧または変更するには、認証トークンを入力してください。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 6. Disconnected State -->
+    <div id="state-disconnected" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Daemon Disconnected</h2>
+        <div class="peca-alert peca-alert-error" role="alert">
+          <div class="peca-alert-icon">&#10008;</div>
+          <div class="peca-alert-content">
+            <strong>接続切断:</strong> PeerCast デーモン (127.0.0.1:7144) への接続が拒絶されました。デーモンが起動しているか確認してください。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 7. Stale Response Ignored -->
+    <div id="state-stale" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Stale Response Protection (REQ-084)</h2>
+        <div class="peca-alert peca-alert-info">
+          <div class="peca-alert-icon">&#8505;</div>
+          <div class="peca-alert-content">
+            遅延レスポンス (seq=2) を無視しました。最新のリクエスト (seq=4) が既に完了しています。画面の不整合は防止されました。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 8. Failed Mutation Guard -->
+    <div id="state-failed" class="state-view" style="display: none;">
+      <section class="gallery-section">
+        <h2 class="gallery-section-title">Uncertain Mutation Retry Guard (REQ-084)</h2>
+        <div class="peca-alert peca-alert-error" role="alert">
+          <div class="peca-alert-icon">&#9888;</div>
+          <div class="peca-alert-content">
+            <strong>操作の中断:</strong> 設定更新の通信中に切断が発生しました。二重実行や設定破壊を防ぐため、自動再試行はブロックされました。現在の状態を確認してから手動で再実行してください。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Semantic Event Log -->
+    <section class="gallery-section" style="margin-top: var(--peca-space-xl);">
+      <h3 style="font-size: var(--peca-font-size-sm); color: var(--peca-text-muted);">Semantic Event Dispatch Log</h3>
+      <div id="event-log" class="event-log" aria-live="polite">
+        [Ready] Fixture gallery loaded. Zero network requests issued.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      logEvent('Theme changed to: ' + theme);
+    }
+
+    function toggleMotion() {
+      const btn = document.getElementById('motion-btn');
+      if (document.documentElement.style.getPropertyValue('--peca-transition-fast') === '0ms') {
+        document.documentElement.style.removeProperty('--peca-transition-fast');
+        document.documentElement.style.removeProperty('--peca-transition-normal');
+        btn.textContent = 'Motion: Normal';
+        logEvent('Reduced motion: Disabled');
+      } else {
+        document.documentElement.style.setProperty('--peca-transition-fast', '0ms');
+        document.documentElement.style.setProperty('--peca-transition-normal', '0ms');
+        btn.textContent = 'Motion: Reduced';
+        logEvent('Reduced motion: Forced Enabled');
+      }
+    }
+
+    function showState(stateName) {
+      document.querySelectorAll('.state-view').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('.state-btn').forEach(btn => btn.classList.remove('active'));
+
+      const target = document.getElementById('state-' + stateName);
+      if (target) {
+        target.style.display = 'block';
+      }
+
+      event.target.classList.add('active');
+      logEvent('Transitioned to state: ' + stateName);
+    }
+
+    function logEvent(msg) {
+      const log = document.getElementById('event-log');
+      const time = new Date().toISOString().substring(11, 19);
+      log.innerHTML += '<br>[' + time + '] ' + msg;
+      log.scrollTop = log.scrollHeight;
+    }
+  </script>
+</body>
+</html>

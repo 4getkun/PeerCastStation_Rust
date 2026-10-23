@@ -1,0 +1,92 @@
+/**
+ * Status Card Component Structural Styles (REQ-082)
+ *
+ * Localized styles referencing semantic tokens exclusively.
+ */
+
+.peca-card {
+  background-color: var(--peca-surface-card);
+  color: var(--peca-text-primary);
+  border: 1px solid var(--peca-border-subtle);
+  border-radius: var(--peca-radius-lg);
+  box-shadow: var(--peca-shadow-card);
+  padding: var(--peca-space-lg);
+  margin-bottom: var(--peca-space-md);
+  transition: box-shadow var(--peca-transition-fast);
+}
+
+.peca-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--peca-border-subtle);
+  padding-bottom: var(--peca-space-sm);
+  margin-bottom: var(--peca-space-md);
+}
+
+.peca-card-title {
+  font-size: var(--peca-font-size-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--peca-text-primary);
+}
+
+.peca-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--peca-space-md);
+}
+
+.peca-metric-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.peca-metric-label {
+  font-size: var(--peca-font-size-xs);
+  color: var(--peca-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--peca-space-2xs);
+}
+
+.peca-metric-value {
+  font-size: var(--peca-font-size-xl);
+  font-weight: 700;
+  color: var(--peca-text-primary);
+  font-family: var(--peca-font-family-mono);
+}
+
+.peca-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--peca-space-2xs) var(--peca-space-xs);
+  font-size: var(--peca-font-size-xs);
+  font-weight: 600;
+  border-radius: var(--peca-radius-pill);
+  line-height: 1;
+}
+
+.peca-badge-success {
+  background-color: var(--peca-state-success-bg);
+  color: var(--peca-state-success-text);
+  border: 1px solid var(--peca-state-success-border);
+}
+
+.peca-badge-warning {
+  background-color: var(--peca-state-warning-bg);
+  color: var(--peca-state-warning-text);
+  border: 1px solid var(--peca-state-warning-border);
+}
+
+.peca-badge-error {
+  background-color: var(--peca-state-error-bg);
+  color: var(--peca-state-error-text);
+  border: 1px solid var(--peca-state-error-border);
+}
+
+.peca-badge-info {
+  background-color: var(--peca-state-info-bg);
+  color: var(--peca-state-info-text);
+  border: 1px solid var(--peca-state-info-border);
+}

@@ -905,8 +905,45 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
       6. Uncertain mutation retry prohibition (`UncertainMutationRetryForbidden` on transport failure).
       7. Channels controller empty vs. loaded states (`ScreenState::Empty` on zero items, `Loaded` on items).
 
+### [2026-10-24] Task P37D Implementation: Themeable Pure Presentation & Fixture Gallery
+- **Requirements Covered**: REQ-082, REQ-083
+- **Files Added / Changed**:
+  - `ui/css/tokens.css`
+  - `ui/css/components/status_card.css`
+  - `ui/css/components/channel_table.css`
+  - `ui/css/components/alert_banner.css`
+  - `ui/fixtures/index_fixtures.json`
+  - `ui/fixtures/channels_fixtures.json`
+  - `ui/fixtures/gallery.html`
+  - `crates/peercast-rpc/src/client.rs`
+  - `crates/peercast-rpc/tests/test_p37d_presentation.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Components do not import transport or domain crates; mock transport cannot silently replace a failed real backend in production (REQ-083).
+  - Semantic Design Tokens Architecture (`ui/css/tokens.css`):
+    - Replaced scattered inline style literals with standardized CSS variables for surfaces (`--peca-surface-*`), typography (`--peca-font-*`), spacing (`--peca-space-*`), brand accents (`--peca-color-*`), and WCAG AA contrast feedback states (`--peca-state-*`).
+    - Standardized keyboard navigation focus rings (`--peca-focus-ring: #034f84`, `outline-offset: 2px`).
+    - Included full theme overrides for `[data-theme="dark"]` and `[data-theme="high-contrast"]` (WCAG AAA).
+    - Added `@media (prefers-reduced-motion: reduce)` rules collapsing transitions to 0ms and animations to 0.001ms.
+  - Component Structural Styles:
+    - Pure CSS components (`status_card.css`, `channel_table.css`, `alert_banner.css`) referencing tokens exclusively without inline hardcoded hex colors.
+  - Standalone Offline Fixture Gallery (`ui/fixtures/gallery.html`):
+    - Renders 100% offline with zero external network or CDN script dependencies.
+    - Demonstrates all 8 required states:
+      1. Normal / Loaded (Index status card and active channel table).
+      2. Empty state (No channels broadcasting).
+      3. Loading state (Active sequence token spinner).
+      4. Partial data (Firewall status unknown, missing endpoints).
+      5. Forbidden (403 Unauthorized administrator alert).
+      6. Disconnected (Daemon offline alert banner).
+      7. Stale response ignored (Superseded sequence notification).
+      8. Failed mutation retry guard (Uncertain mutation stop/block alert).
+  - Production Mock Fallback Prohibition:
+    - Verified in `test_p37d_production_cannot_silently_use_mock_on_failure` that transport drops immediately trigger fast failures and transition controllers to `Disconnected`, strictly barring any silent mock fallback.
+  - Test Matrix Verified:
+    - 5 comprehensive tests passing in `test_p37d_presentation.rs`: tokens file completeness, component style token references, fixture gallery 8-state coverage with zero CDN dependencies, fixture JSON deserialization into Rust ViewModels, and production mock fallback prohibition.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37D — Create themeable pure presentation** (Prerequisites: P37C; Requirements: REQ-082, REQ-083).
 - **P37E — Enforce boundaries and prove redesign isolation** (Prerequisites: P37D; Requirements: REQ-080, REQ-086).
+- **P37F — Write minimal-context design handoff** (Prerequisites: P37E; Requirements: REQ-087).

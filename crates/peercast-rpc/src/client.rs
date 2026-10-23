@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -146,7 +147,8 @@ impl RpcTransport for MockRpcTransport {
 }
 
 /// View model representing channel details in the presentation layer (REQ-081).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelViewModel {
     pub channel_id: String,
     pub name: String,
@@ -174,7 +176,8 @@ impl From<ChannelSummary> for ChannelViewModel {
 }
 
 /// View model representing version and identity info (REQ-081).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct VersionInfoViewModel {
     pub agent_name: String,
     pub api_version: String,
@@ -182,7 +185,8 @@ pub struct VersionInfoViewModel {
 }
 
 /// View model representing overall server status (REQ-081).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct StatusViewModel {
     pub uptime_formatted: String,
     pub uptime_seconds: u64,

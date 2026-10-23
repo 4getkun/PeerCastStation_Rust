@@ -1,0 +1,59 @@
+{
+  "normal": {
+    "version": {
+      "agentName": "PeerCastStation/1.0.0 (Rust)",
+      "apiVersion": "1.0.0"
+    },
+    "status": {
+      "uptimeSeconds": 86400,
+      "uptimeFormatted": "24:00:00",
+      "portStatusLabel": "ポート開放中 (Open)",
+      "isFirewalled": false,
+      "localEndpoint": "127.0.0.1:7144",
+      "globalEndpoint": "203.0.113.42:7144"
+    },
+    "plugins": [
+      {
+        "name": "PCP",
+        "isUsable": true,
+        "assembly": {
+          "name": "peercast-pcp",
+          "version": "1.0.0",
+          "copyright": "GPL-3.0-or-later"
+        }
+      },
+      {
+        "name": "HTTP",
+        "isUsable": true,
+        "assembly": {
+          "name": "peercast-http",
+          "version": "1.0.0",
+          "copyright": "GPL-3.0-or-later"
+        }
+      }
+    ]
+  },
+  "partial": {
+    "version": {
+      "agentName": "PeerCastStation/1.0.0 (Rust)",
+      "apiVersion": "1.0.0"
+    },
+    "status": {
+      "uptimeSeconds": 30,
+      "uptimeFormatted": "00:00:30",
+      "portStatusLabel": "ポート確認中 (Unknown)",
+      "isFirewalled": null,
+      "localEndpoint": "127.0.0.1:7144",
+      "globalEndpoint": null
+    },
+    "plugins": []
+  },
+  "forbidden": {
+    "error": "Forbidden",
+    "reason": "Administrative authentication required to access full servent status."
+  },
+  "disconnected": {
+    "error": "Disconnected",
+    "reason": "Cannot connect to PeerCast daemon at 127.0.0.1:7144 (connection refused)."
+  }
+}

@@ -1,0 +1,175 @@
+/**
+ * PeerCastStation Semantic Design Tokens (REQ-082)
+ *
+ * All colors, spacing, typography, states, and elevation must be referenced
+ * via semantic custom properties. Never hardcode scattered inline literals.
+ */
+
+:root {
+  /* Surface Tokens */
+  --peca-surface-bg: #f8f9fa;
+  --peca-surface-card: #ffffff;
+  --peca-surface-subtle: #f1f3f5;
+  --peca-surface-elevated: #ffffff;
+
+  /* Text Tokens */
+  --peca-text-primary: #212529;
+  --peca-text-secondary: #495057;
+  --peca-text-muted: #6c757d;
+  --peca-text-inverse: #ffffff;
+
+  /* Brand & Accent Tokens */
+  --peca-color-primary: #034f84;
+  --peca-color-primary-hover: #02385e;
+  --peca-color-accent: #2e8ece;
+  --peca-color-accent-hover: #2270a6;
+
+  /* Feedback & State Tokens (WCAG AA Contrast Compliant) */
+  --peca-state-success-bg: #d4edda;
+  --peca-state-success-text: #155724;
+  --peca-state-success-border: #c3e6cb;
+
+  --peca-state-warning-bg: #fff3cd;
+  --peca-state-warning-text: #856404;
+  --peca-state-warning-border: #ffeeba;
+
+  --peca-state-error-bg: #f8d7da;
+  --peca-state-error-text: #721c24;
+  --peca-state-error-border: #f5c6cb;
+
+  --peca-state-info-bg: #d1ecf1;
+  --peca-state-info-text: #0c5460;
+  --peca-state-info-border: #bee5eb;
+
+  /* Focus & Keyboard Navigation Tokens */
+  --peca-focus-ring: #034f84;
+  --peca-focus-outline-width: 3px;
+  --peca-focus-outline-offset: 2px;
+
+  /* Spacing Scale (8pt grid system) */
+  --peca-space-2xs: 4px;
+  --peca-space-xs: 8px;
+  --peca-space-sm: 12px;
+  --peca-space-md: 16px;
+  --peca-space-lg: 24px;
+  --peca-space-xl: 32px;
+  --peca-space-2xl: 48px;
+
+  /* Typography Scale */
+  --peca-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --peca-font-family-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --peca-font-size-xs: 0.75rem;    /* 12px */
+  --peca-font-size-sm: 0.875rem;   /* 14px */
+  --peca-font-size-base: 1rem;     /* 16px */
+  --peca-font-size-lg: 1.125rem;   /* 18px */
+  --peca-font-size-xl: 1.25rem;    /* 20px */
+  --peca-font-size-2xl: 1.5rem;    /* 24px */
+  --peca-line-height-base: 1.5;
+
+  /* Border & Elevation Tokens */
+  --peca-border-subtle: #dee2e6;
+  --peca-border-strong: #ced4da;
+  --peca-radius-sm: 4px;
+  --peca-radius-md: 6px;
+  --peca-radius-lg: 8px;
+  --peca-radius-pill: 9999px;
+  --peca-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --peca-shadow-dropdown: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+  /* Transition Tokens */
+  --peca-transition-fast: 150ms ease;
+  --peca-transition-normal: 250ms ease;
+}
+
+/* Dark Theme Overrides */
+[data-theme="dark"] {
+  --peca-surface-bg: #121212;
+  --peca-surface-card: #1e1e1e;
+  --peca-surface-subtle: #2d2d2d;
+  --peca-surface-elevated: #282828;
+
+  --peca-text-primary: #f8f9fa;
+  --peca-text-secondary: #dee2e6;
+  --peca-text-muted: #adb5bd;
+  --peca-text-inverse: #121212;
+
+  --peca-color-primary: #58a6ff;
+  --peca-color-primary-hover: #79b8ff;
+  --peca-color-accent: #388bfd;
+  --peca-color-accent-hover: #58a6ff;
+
+  --peca-state-success-bg: #132e1b;
+  --peca-state-success-text: #56d364;
+  --peca-state-success-border: #238636;
+
+  --peca-state-warning-bg: #342700;
+  --peca-state-warning-text: #e3b341;
+  --peca-state-warning-border: #9e6a03;
+
+  --peca-state-error-bg: #3d1214;
+  --peca-state-error-text: #f85149;
+  --peca-state-error-border: #da3633;
+
+  --peca-state-info-bg: #0c2d42;
+  --peca-state-info-text: #58a6ff;
+  --peca-state-info-border: #1f6feb;
+
+  --peca-focus-ring: #58a6ff;
+  --peca-border-subtle: #30363d;
+  --peca-border-strong: #484f58;
+  --peca-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* High-Contrast Theme Overrides (WCAG AAA) */
+[data-theme="high-contrast"] {
+  --peca-surface-bg: #000000;
+  --peca-surface-card: #000000;
+  --peca-surface-subtle: #1a1a1a;
+  --peca-surface-elevated: #000000;
+
+  --peca-text-primary: #ffffff;
+  --peca-text-secondary: #ffff00;
+  --peca-text-muted: #ffffff;
+  --peca-text-inverse: #000000;
+
+  --peca-color-primary: #00ffff;
+  --peca-color-primary-hover: #ffffff;
+  --peca-color-accent: #ffff00;
+
+  --peca-state-success-bg: #000000;
+  --peca-state-success-text: #00ff00;
+  --peca-state-success-border: #00ff00;
+
+  --peca-state-warning-bg: #000000;
+  --peca-state-warning-text: #ffff00;
+  --peca-state-warning-border: #ffff00;
+
+  --peca-state-error-bg: #000000;
+  --peca-state-error-text: #ff0055;
+  --peca-state-error-border: #ff0055;
+
+  --peca-state-info-bg: #000000;
+  --peca-state-info-text: #00ffff;
+  --peca-state-info-border: #00ffff;
+
+  --peca-focus-ring: #ffff00;
+  --peca-focus-outline-width: 4px;
+  --peca-border-subtle: #ffffff;
+  --peca-border-strong: #ffffff;
+}
+
+/* Reduced Motion Override (REQ-082) */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --peca-transition-fast: 0ms !important;
+    --peca-transition-normal: 0ms !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

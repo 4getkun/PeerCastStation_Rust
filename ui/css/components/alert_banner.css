@@ -1,0 +1,82 @@
+/**
+ * Alert Banner Component Structural Styles (REQ-082)
+ */
+
+.peca-alert {
+  display: flex;
+  align-items: flex-start;
+  padding: var(--peca-space-md);
+  margin-bottom: var(--peca-space-md);
+  border-radius: var(--peca-radius-md);
+  border: 1px solid transparent;
+  font-size: var(--peca-font-size-sm);
+  line-height: var(--peca-line-height-base);
+}
+
+.peca-alert-icon {
+  margin-right: var(--peca-space-sm);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.peca-alert-content {
+  flex-grow: 1;
+}
+
+.peca-alert-success {
+  background-color: var(--peca-state-success-bg);
+  color: var(--peca-state-success-text);
+  border-color: var(--peca-state-success-border);
+}
+
+.peca-alert-warning {
+  background-color: var(--peca-state-warning-bg);
+  color: var(--peca-state-warning-text);
+  border-color: var(--peca-state-warning-border);
+}
+
+.peca-alert-error {
+  background-color: var(--peca-state-error-bg);
+  color: var(--peca-state-error-text);
+  border-color: var(--peca-state-error-border);
+}
+
+.peca-alert-info {
+  background-color: var(--peca-state-info-bg);
+  color: var(--peca-state-info-text);
+  border-color: var(--peca-state-info-border);
+}
+
+.peca-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--peca-space-xs) var(--peca-space-md);
+  font-size: var(--peca-font-size-sm);
+  font-weight: 600;
+  border-radius: var(--peca-radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  background-color: var(--peca-color-primary);
+  color: var(--peca-text-inverse);
+  transition: background-color var(--peca-transition-fast);
+}
+
+.peca-btn:hover {
+  background-color: var(--peca-color-primary-hover);
+}
+
+.peca-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.peca-btn-outline {
+  background-color: transparent;
+  color: var(--peca-color-primary);
+  border-color: var(--peca-border-strong);
+}
+
+.peca-btn-outline:hover {
+  background-color: var(--peca-surface-subtle);
+}
