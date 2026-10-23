@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.5.0 (Execution Phase: Tasks P01-P31 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P31 PASSED; Next: P32 — Implement named parent-selection policy)  
+> **Document Version**: 2.6.0 (Execution Phase: Tasks P01-P32 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P32 PASSED; Next: P33 — Implement bounded gossip forwarding)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -655,9 +655,35 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Zero-sleep Deterministic Testing:
     - All time queries operate via `CacheClock`, enabling 100% deterministic, zero-sleep fake-clock tests (`test_p31_host_freshness_cooldown.rs`, 7 tests passing).
 
+### [2026-10-24] Task P32 Implementation: Named Parent-Selection Policy and Retry Coordination
+- **Requirements Covered**: REQ-042, REQ-043 (and REQ-062)
+- **Files Added / Changed**:
+  - `crates/peercast-core/src/parent_selection.rs`
+  - `crates/peercast-core/src/lib.rs`
+  - `crates/peercast-core/tests/test_p32_parent_selection.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Parent selection is proven to be a named local node policy, not a universal wire-order rule (REQ-043). No universal 10-second default or unfounded subnet assumptions are used.
+  - Implemented Named Policies:
+    - `StationWeightedRandomPolicy`: faithful port of PeerCastStation `PCPSourceStream.cs` lines 924-932:
+      `score = (IsSiteLocal ? 8000 : 0) + rnd.NextDouble() * ((IsReceiving ? 4000 : 0) + (!IsRelayFull ? 2000 : 0) + max(10 - hops, 0)*100 + relayCount*10)`.
+    - `PeerCastYtGreedyHopPolicy`: faithful port of PeerCast-YT `pickHits` in `chanhit.cpp`, which prioritizes minimal upstream hops (`255 - hops`) among eligible hits.
+  - Policy Diversity Verified in Tests:
+    - Tested Candidate A (hops 1, remote) vs Candidate B (hops 8, site-local):
+    - Under Station policy, Candidate B wins because the additive site-local boost (+8000) dominates remote candidates.
+    - Under PeerCast-YT policy, Candidate A wins because it minimizes hops ($1 < 8$).
+  - Pre-scoring Structural Eligibility Invariant:
+    - Self session ID matches, self contact socket matches, unspecified IPs (`0.0.0.0`, `::`), port 0, stale nodes (age > threshold), and cooled-down endpoints in `EndpointCooldownTable` are completely excluded BEFORE scoring. Score cannot override structural eligibility.
+  - Locality Detection (`LocalityDetector`):
+    - Parity with Station `PCPSourceStream.IsSiteLocal`: matches candidate endpoints against local listener endpoints; falls back to RFC 1918 / loopback / link-local addresses when enabled; nodes without global endpoints default to site-local.
+  - Reconnect Budget and Station 3/2 Backoff Arithmetic (REQ-043, REQ-062):
+    - Bounded attempts per selection cycle (`max_attempts_per_cycle`, default 5).
+    - Station reference backoff: delay starts at 1,000ms, advances via integer arithmetic `(delay * 3) / 2` (1000ms -> 1500ms -> 2250ms -> 3375ms -> 5062ms -> 7593ms...), capped at 30,000ms.
+    - Successful connection resets budget and restores base 1,000ms backoff.
+  - Deterministic Testing:
+    - Built-in zero-dependency deterministic PRNG ([`DeterministicRng`]) and fixed sequences ([`FixedSequenceRng`]) ensure 100% reproducible test fixtures (7 tests passing in `test_p32_parent_selection.rs`).
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P32 — Implement named parent-selection policy** (Prerequisites: P31; Requirements: REQ-042, REQ-043).
 - **P33 — Implement bounded gossip forwarding** (Prerequisites: P32; Requirements: REQ-044).
 - **P34 — Implement controlled YP announcements** (Prerequisites: P33; Requirements: REQ-035, REQ-062, REQ-063).

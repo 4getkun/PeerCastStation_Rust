@@ -14,6 +14,7 @@ pub mod actor;
 pub mod cache;
 pub mod subscriber;
 pub mod host_registry;
+pub mod parent_selection;
 
 pub use id4::{ID4, Id4Error};
 pub use scalar::{Scalar, ScalarError};
@@ -39,4 +40,9 @@ pub use host_registry::{
     CooldownEntry, EndpointCooldownTable, EndpointIdentity, HostRegistry, RegisteredHost,
     UpsertAction, is_candidate_eligible, DEFAULT_COOLDOWN_DURATION, DEFAULT_FRESHNESS_THRESHOLD,
     DEFAULT_MAX_HOSTS, DEFAULT_MAX_IGNORED_ENDPOINTS,
+};
+pub use parent_selection::{
+    DeterministicRng, FixedSequenceRng, LocalityDetector, ParentSelectionPolicy, ParentSelector,
+    PeerCastYtGreedyHopPolicy, ReconnectBudget, RetryDecision, RngSource, StationWeightedRandomPolicy,
+    SystemRng,
 };
