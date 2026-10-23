@@ -968,8 +968,27 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 5 comprehensive tests passing in `test_p37e_boundary_enforcement.rs`: zero workspace violations, negative fixture violation detection, presentation theme/layout verification, backend contract hash immutability, and controller functional equivalence.
 
+### [2026-10-24] Task P37F Implementation: Minimal-Context Design Handoff Guide
+- **Requirements Covered**: REQ-087
+- **Files Added / Changed**:
+  - `docs/DESIGN_CHANGE_GUIDE.md`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Guide references only existing, verified files and commands discoverable from the project; claims zero phantom test runs (REQ-087).
+  - Explicit Three-Tier Change Taxonomy:
+    - Tier 1: Theme & Token-only (Pure CSS cosmetic changes, no recompilation or backend edits).
+    - Tier 2: Component & Layout-only (Presentational rearrangement, no raw network calls or ViewModel changes).
+    - Tier 3: New Behavior & Contracts (Domain/API changes requiring RPC contract updates and full integration tests).
+  - Complete Tracing Documentation:
+    - Trace A (Read Flow): End-to-end tracing from UI template -> `IndexController` (sequence token generation & stale read check) -> `PeerCastRpcClient` -> `RpcDispatcher` -> `RpcState` / Domain, with sequence diagrams and exact file hyperlinks.
+    - Trace B (Mutation Flow): End-to-end tracing from Settings submit button -> `SettingsController` (early-return re-entrancy guard) -> `PeerCastRpcClient` (`is_mutating_method` safety) -> `RpcDispatcher` (admin access enforcement) -> `ServentSettings` mutation, including network drop uncertainty handling (`UncertainMutationRetryForbidden`).
+  - Practical Concrete Examples:
+    - Included before/after diff for brand accent token replacement (`tokens.css`).
+    - Included markup snippet for layout density switching (`data-density="compact"`).
+  - Verified Runnable Commands:
+    - Documented exact, working test runner commands for boundary enforcement, presentation verification, controller states, RPC contract, and full workspace.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37F — Write minimal-context design handoff** (Prerequisites: P37E; Requirements: REQ-087).
 - **P38 — Implement secure management API** (Prerequisites: P37; Requirements: REQ-064, REQ-065).
+- **P39 — Clear and package web assets** (Prerequisites: P38, P37F; Requirements: REQ-066).
