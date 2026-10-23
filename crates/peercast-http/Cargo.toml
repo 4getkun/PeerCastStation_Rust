@@ -1,0 +1,17 @@
+[package]
+name = "peercast-http"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+peercast-core = { path = "../peercast-core" }
+peercast-format = { path = "../peercast-format" }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync", "time", "io-util", "rt"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "time"] }
+sha2 = { workspace = true }

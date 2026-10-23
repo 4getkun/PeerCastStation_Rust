@@ -110,6 +110,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "peercast-http"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "peercast-core",
+ "peercast-format",
+ "sha2",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "peercast-pcp"
 version = "0.1.0"
 dependencies = [
