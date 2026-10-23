@@ -9,7 +9,7 @@ license.workspace = true
 peercast-core = { path = "../peercast-core" }
 bytes = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["net", "sync", "time", "io-util", "rt"] }
+tokio = { workspace = true, features = ["net", "sync", "time", "io-util", "rt", "macros"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "time"] }

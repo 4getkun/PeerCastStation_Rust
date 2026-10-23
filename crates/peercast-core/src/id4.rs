@@ -77,6 +77,19 @@ impl ID4 {
     pub const CHAN_INFO: ID4 = ID4(*b"info");
     pub const CHAN_TRCK: ID4 = ID4(*b"trck");
 
+    // Channel Info tags
+    pub const INFO_NAME: ID4  = ID4(*b"name");
+    pub const INFO_GENRE: ID4 = ID4(*b"gnre");
+    pub const INFO_DESC: ID4  = ID4(*b"desc");
+    pub const INFO_URL: ID4   = ID4(*b"url\0");
+    pub const INFO_BITR: ID4  = ID4(*b"bitr");
+    pub const INFO_TYPE: ID4  = ID4(*b"type");
+
+    // Channel Track tags
+    pub const TRCK_NAME: ID4    = ID4(*b"name");
+    pub const TRCK_CREATOR: ID4 = ID4(*b"auth");
+    pub const TRCK_URL: ID4     = ID4(*b"url\0");
+
     // Packet tags
     pub const PKT_TYPE: ID4 = ID4(*b"type");
     pub const PKT_HEAD: ID4 = ID4(*b"head");

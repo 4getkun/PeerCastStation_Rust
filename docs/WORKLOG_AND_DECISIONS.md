@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.7.0 (Execution Phase: Tasks P01-P33 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P33 PASSED; Next: P34 — Implement controlled YP announcements)  
+> **Document Version**: 2.8.0 (Execution Phase: Tasks P01-P34 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P34 PASSED; Next: P35 — Implement bounded directory parsing)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -705,8 +705,38 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 8 comprehensive tests passing in `test_p33_gossip_forwarding.rs` covering TTL 0/1/2, hop overflow at 255, local destinations, reflection loops, unknown groups, duplicate storm suppression, bounded cache capacity, and source exclusion.
 
+### [2026-10-24] Task P34 Implementation: Controlled YellowPage Announcements
+- **Requirements Covered**: REQ-035, REQ-062, REQ-063
+- **Files Added / Changed**:
+  - `crates/peercast-core/src/id4.rs`
+  - `crates/peercast-pcp/Cargo.toml`
+  - `crates/peercast-pcp/src/yellow_page.rs`
+  - `crates/peercast-pcp/src/lib.rs`
+  - `crates/peercast-pcp/tests/test_p34_yp_announcements.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Automated tests NEVER announce to public directories without authorized destination (REQ-063). `PCPYellowPageClient` enforces `allow_public_announcements`; attempting to announce to non-loopback public destinations without explicit authorization fails with `UnauthorizedPublicDestination`.
+  - Station Announcement Protocol Parity (REQ-035):
+    - Transmits a `bcst` parent Atom containing `chan` and `host` child atoms with:
+      - `ttl = 1`
+      - `hops = 0`
+      - `from = session_id`
+      - `group = 1` (`BroadcastGroup::ROOT`)
+      - `cid = channel_id`
+      - Do NOT use C++ channel ID hashing for Station-compatible announcements.
+    - Verified against exact Station C# layout (`PCPSourceStream.cs` / `PCPYellowPageClient.cs`).
+  - Reference Update Policy & 3/2 Backoff Arithmetic (REQ-062):
+    - 30-second periodic announcement update interval (`DEFAULT_YP_UPDATE_INTERVAL`).
+    - Error retry backoff: begins at 1000ms, advances via integer arithmetic `delay = (delay * 3) / 2` (1000ms -> 1500ms -> 2250ms -> 3375ms -> 5062ms -> 7593ms...), capped at 30,000ms.
+    - Success resets backoff to 1000ms.
+  - Terminal Response State Machine & Shutdown:
+    - `Banned`: `dis\0 != 0` flag in `oleh` terminates retries immediately, setting `YpConnectionStatus::TerminalBanned`.
+    - `ServerQuit`: directory `quit` atom with code `0x01000000` terminates retries immediately, setting `YpConnectionStatus::TerminalServerQuit`.
+    - `Final Owner Removal`: channels are tracked via atomic refcount. When refcount hits 0, client transmits a clean `quit` atom and ceases all announcements (`YpConnectionStatus::Idle`).
+  - Test Matrix Verified:
+    - 7 comprehensive tests passing in `test_p34_yp_announcements.rs` covering Station-format Atom byte parity, public destination security guards, 3/2 integer backoff arithmetic, full loopback socket handshake and announcement, terminal banned, terminal server-quit, and refcount shutdown.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P34 — Implement controlled YP announcements** (Prerequisites: P33; Requirements: REQ-035, REQ-062, REQ-063).
 - **P35 — Implement bounded directory parsing** (Prerequisites: P34; Requirements: REQ-063).
+- **P36 — Complete dual-stack IPv4/IPv6 interop** (Prerequisites: P21, P34; Requirements: REQ-026, REQ-027, REQ-071).
