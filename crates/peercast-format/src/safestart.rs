@@ -14,6 +14,10 @@ pub enum SafeStartMode {
     /// from interframes even when cont == 0.
     VideoKeyframe,
 
+    /// MPEG-2 TS video stream requiring Random Access Indicator (RAI) or IDR boundary (REQ-050, REQ-053).
+    /// PAT/PMT packets alone are strictly NOT treated as proof of keyframes!
+    TsVideoKeyframe,
+
     /// Audio-only format (e.g. MP3, AAC audio-only, Ogg Vorbis).
     /// Safe start point is any unfragmented packet boundary; never waits for video keyframes.
     AudioOnly,
@@ -94,6 +98,26 @@ pub fn inspect_flv_keyframe(data: &[u8]) -> bool {
     // Tag body byte 0 is at offset 11: upper 4 bits are FrameType
     let frame_type = data[11] >> 4;
     frame_type == 1 || frame_type == 4 // 1 = Keyframe, 4 = Generated keyframe
+}
+
+/// Inspects whether raw payload is an MPEG-2 TS packet starting a video keyframe (REQ-050, REQ-053).
+/// Checks for Random Access Indicator (RAI) in adaptation field.
+/// PAT and PMT packets have RAI == 0 and are never mistaken for keyframes.
+pub fn inspect_ts_keyframe(data: &[u8]) -> bool {
+    if data.len() < 188 || data[0] != 0x47 {
+        return false;
+    }
+    // Check adaptation field control bits 5-4 of byte 3
+    let afc = (data[3] & 0x30) >> 4;
+    if (afc & 0x02) == 0 {
+        return false;
+    }
+    let af_len = data[4] as usize;
+    if af_len < 1 {
+        return false;
+    }
+    // Flag byte is at index 5: bit 6 is Random Access Indicator (RAI)
+    (data[5] & 0x40) != 0
 }
 
 /// Format-aware safe-start selector enforcing REQ-050 and REQ-055.
@@ -204,8 +228,15 @@ impl SafeStartSelector {
                 }
 
                 // Rule 3: Video formats require a true keyframe, NOT merely cont == 0 (REQ-050)!
-                let is_keyframe = is_keyframe_hint
-                    .unwrap_or_else(|| inspect_flv_keyframe(&content.data));
+                let is_keyframe = is_keyframe_hint.unwrap_or_else(|| {
+                    if self.config.mode == SafeStartMode::TsVideoKeyframe
+                        || (content.data.len() >= 188 && content.data[0] == 0x47)
+                    {
+                        inspect_ts_keyframe(&content.data)
+                    } else {
+                        inspect_flv_keyframe(&content.data)
+                    }
+                });
 
                 if is_keyframe {
                     self.phase = SafeStartPhase::Streaming {
@@ -255,10 +286,13 @@ impl SafeStartSelector {
             return None;
         }
 
-        if self.config.mode == SafeStartMode::VideoKeyframe {
+        if matches!(
+            self.config.mode,
+            SafeStartMode::VideoKeyframe | SafeStartMode::TsVideoKeyframe
+        ) {
             // Scan backwards from newest to oldest for a keyframe
             for &item in matching_epoch_items.iter().rev() {
-                if inspect_flv_keyframe(&item.data) {
+                if inspect_flv_keyframe(&item.data) || inspect_ts_keyframe(&item.data) {
                     return Some(item);
                 }
             }

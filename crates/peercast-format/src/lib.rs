@@ -16,8 +16,8 @@ pub use flv::{
     FlvTagType, DEFAULT_MAX_FLV_TAG_SIZE, FLV_HEADER_PRELUDE_LEN,
 };
 pub use safestart::{
-    inspect_flv_keyframe, SafeStartConfig, SafeStartDecision, SafeStartMode, SafeStartPhase,
-    SafeStartSelector, DEFAULT_SAFE_START_TIMEOUT,
+    inspect_flv_keyframe, inspect_ts_keyframe, SafeStartConfig, SafeStartDecision, SafeStartMode,
+    SafeStartPhase, SafeStartSelector, DEFAULT_SAFE_START_TIMEOUT,
 };
 pub use sniffer::{
     detect_container, ContainerInfo, ContainerType, SniffBuffer, SniffError, SniffResult,
