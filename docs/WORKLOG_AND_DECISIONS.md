@@ -1,16 +1,18 @@
 # PeerCastStation Rust Port: Work Log & Architectural Decision Records (ADR)
 
 > **Document Purpose**: This file serves as the primary master log and continuity document for any subsequent LLM agent or human engineer working on this repository. It records every architectural decision, justification, code-level rationale, phase progression, and immediate next steps.
-> **Last Updated**: 2026-10-24 (Post Second Deep-Dive Review & Rigorous Refinement)
+> **Last Updated**: 2026-10-24 (Post Dual-Codebase Audit: `peercaststation` & `peercast-yt`)
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`
-> **Upstream Reference**: `https://github.com/kumaryu/peercaststation` (Cloned locally for reference at `C:\Github\_upstream_peercaststation`)
+> **Upstream References**:
+>   - C# Primary: `https://github.com/kumaryu/peercaststation` (Cloned locally at `C:\Github\_upstream_peercaststation`)
+>   - C++ Native: `https://github.com/plonk/peercast-yt` (Cloned locally at `C:\Github\_upstream_peercast-yt`)
 > **Rust Toolchain**: `rustc 1.98.1` / `cargo 1.98.1` (Edition 2021)
 
 ---
 
 ## Table of Contents
 1. [Project Mission & Background](#1-project-mission--background)
-2. [Upstream C# Codebase Deep-Dive Analysis](#2-upstream-c-codebase-deep-dive-analysis)
+2. [Dual-Codebase Deep-Dive Analysis](#2-dual-codebase-deep-dive-analysis)
 3. [Architectural Decision Records (ADR)](#3-architectural-decision-records-adr)
    - [ADR-0001: Multi-Crate Cargo Workspace Structure](#adr-0001-multi-crate-cargo-workspace-structure)
    - [ADR-0002: Asynchronous Runtime & Networking Stack (Tokio)](#adr-0002-asynchronous-runtime--networking-stack-tokio)
@@ -24,6 +26,10 @@
    - [ADR-0010: Deterministic Cryptographic ChannelID Derivation](#adr-0010-deterministic-cryptographic-channelid-derivation)
    - [ADR-0011: Yellow Page Protocol Lifecycle with Exponential Backoff Retry](#adr-0011-yellow-page-protocol-lifecycle-with-exponential-backoff-retry)
    - [ADR-0012: Gossip Routing Topology and 180-Second Node TTL](#adr-0012-gossip-routing-topology-and-180-second-node-ttl)
+   - [ADR-0013: Dual-Stack Protocol Negotiation (`x-peercast-pcp: 1` vs `100` for IPv6)](#adr-0013-dual-stack-protocol-negotiation-x-peercast-pcp-1-vs-100-for-ipv6)
+   - [ADR-0014: Keyframe-Aligned Fast Playback Start for Direct Player Connections](#adr-0014-keyframe-aligned-fast-playback-start-for-direct-player-connections)
+   - [ADR-0015: Exact Wire Error Code Synthesis (`1000 + ReasonCode`)](#adr-0015-exact-wire-error-code-synthesis-1000--reasoncode)
+   - [ADR-0016: Hop-Count & Locality-First Relay Selection Scoring](#adr-0016-hop-count--locality-first-relay-selection-scoring)
 4. [Step-by-Step Execution Log](#4-step-by-step-execution-log)
 5. [Current State & Verification Status](#5-current-state--verification-status)
 6. [Actionable Next Steps for Future LLM Agents](#6-actionable-next-steps-for-future-llm-agents)
@@ -33,98 +39,96 @@
 
 ## 1. Project Mission & Background
 
-### 1.1 Context
-PeerCast is a decentralized peer-to-peer (P2P) audio/video streaming network. Broadcasters stream content to viewers, who in turn relay the stream to other viewers, creating a dynamic distribution tree without requiring high-bandwidth central servers.
-**PeerCastStation** (created by kumaryu in C# / .NET) is the modern standard implementation, offering enhanced stability, multi-format media support (FLV, MPEG-TS, WMV/ASF, MKV), IPv6 support, and a comprehensive JSON-RPC / HTML interface.
-
-### 1.2 Motivation for Rust Port
-While the .NET version is mature and feature-rich, porting PeerCastStation to Rust delivers crucial advantages:
-- **Zero-Cost Abstractions & Minimal Memory Footprint**: Crucial for running 24/7 on lightweight routers, Raspberry Pi, VPS instances, and NAS devices.
-- **Fearless Concurrency without Garbage Collection Pauses**: High-throughput media packet forwarding benefits enormously from predictable latency free of GC pauses.
-- **Single Self-Contained Binary**: Combining the daemon, HTTP player server, PCP engine, and embedded Web UI into a single native executable with no runtime dependencies (.NET Runtime / Mono).
+PeerCast is a decentralized peer-to-peer (P2P) audio/video streaming network. Broadcasters stream content to viewers, who in turn relay the stream to other viewers, creating a dynamic distribution tree without central bandwidth bottlenecks.
+**PeerCastStation_Rust** is a complete, native Rust rewrite designed for maximum throughput, low memory footprint, zero-copy packet forwarding, and 24/7/365 long-term reliability.
 
 ---
 
-## 2. Upstream C# Codebase Deep-Dive Analysis
+## 2. Dual-Codebase Deep-Dive Analysis
 
-During multiple deep-dive reviews of `C:\Github\_upstream_peercaststation`, we examined every subsystem in exhaustive detail:
+By cross-auditing both the C# implementation (`kumaryu/peercaststation`) and the native C++ codebase (`plonk/peercast-yt`), we established the de facto universal wire standards:
 
-### 2.1 The Two-Stage Handshake Discovery (`PCPSourceStream.cs` & `PCPOutputStream.cs`)
-- Relay connections do NOT begin with raw Atoms. They start with an HTTP request:
-  `GET /channel/{channel_id} HTTP/1.0\r\nx-peercast-pcp: 1\r\nx-peercast-pos: {stream_pos}\r\n\r\n`
-- `200 OK`: Upgrades directly to binary Atom mode (`AtomCodec`).
-- `503 Service Unavailable`: Upstream relay slots are full. Upstream sends `PCP_HOST` atoms with alternate relay candidates and disconnects.
+### 2.1 Dual-Stack Negotiation Header (`peercast-yt/channel.cpp` L444)
+- **Key Discovery**: When connecting to an upstream node, the HTTP header carries protocol version information:
+  - Over IPv4: `x-peercast-pcp: 1`
+  - Over IPv6: `x-peercast-pcp: 100`
+- Both C++ and C# expect this differentiation to negotiate IPv6 routing capabilities.
 
-### 2.2 Active Ping Probe (`PCPOutputStream.cs` L331-L382)
-- Upstream tests downstream port open status by performing an **active reverse TCP probe**:
-  - Upstream opens a TCP connection to downstream's IP and ping port.
-  - Upstream sends `PCP_CONNECT` (`pcnt`) and `PCP_HELO`.
-  - Downstream returns `PCP_OLEH` with its `SessionID`.
-  - If `SessionID` matches, downstream is verified as `Firewalled = false` (Port: Open).
+### 2.2 Packet Length Constraint (`peercast-yt/chanpacket.h` L34)
+- Upstream C++ defines `ChanPacket::MAX_DATALEN = 16384` (16 KB).
+- Packets exceeding 16 KB are rejected with `Data size too large`. Our Rust deserializer enforces this as a hard boundary.
 
-### 2.3 Codec Initialization Header Cache (`FLVContentBuffer.cs`, `TSContentReader.cs`)
-- Video/audio streams cannot be rendered by late-connecting viewers without codec initialization headers (SPS/PPS, AudioSpecificConfig, PAT/PMT).
-- Upstream extracts these headers into `Channel.ContentHeader` and guarantees they are transmitted *first* upon listener connect.
+### 2.3 Synthesized Error Code Standard (`peercast-yt/pcp.h` L156-L173)
+- When terminating an Atom stream, `PCP_QUIT` encapsulates an error code calculated as:
+  $$\text{QuitCode} = 1000 + \text{ReasonCode}$$
+- Examples: Normal close = 1000, Slow client drop = 1001, Relay full = 1003, Off-air = 1008, Shutdown = 1009.
 
-### 2.4 Deterministic ChannelID Derivation (`BroadcastChannel.cs` L52-L67)
-- Upstream uses a cryptographic hash pipeline to derive `ChannelID` deterministically:
-  `SHA512(BCID) + NetworkType (if != IPv4) + ChannelName + Genre + SourceURL -> MD5 -> 16-byte Guid`.
+### 2.4 Keyframe Fast-Start Alignment (`peercast-yt/servmgr.cpp` L57)
+- C++ YT implements `startPlayingFromKeyFrame = true`.
+- When a viewer connects, sending intermediate frames (P/B frames) prior to the first I-frame (keyframe) causes severe visual corruption. Rust's `HTTPOutputStream` replicates this by caching the header and waiting for the first keyframe before streaming continuous data chunks.
 
-### 2.5 Yellow Page Lifecycle (`PCPYellowPageClient.cs` L480-L508 & L670)
-- YP announcement heartbeats run on a **30-second interval** (`UpdateTimeSpan = 30s`).
-- On disconnect, reconnect retries follow an **exponential backoff**:
-  `retryWait = Math.Min(retryWait * 3 / 2, 30000)` starting at 1,000 ms up to 30,000 ms.
-
-### 2.6 Node Cache Expiration & Topology (`Channel.cs` L580 & `HostTree.cs`)
-- Cached nodes in `Channel.nodes` expire after **180 seconds** (`NodeLimit = 180,000 ms`).
-- The routing tree is reconstructed from each node's `uphost` attribute (`Extra.GetHostUphostEndPoint()`).
+### 2.5 Parent Selection Scoring Hierarchy (`peercast-yt/chanhit.cpp` L608-L650)
+- In order of priority: Exclude self -> Respect cooldown (`waitDelay`) -> Prefer same LAN IP (`rhost[1]`) -> Choose lowest `numHops` (closest to root).
 
 ---
 
 ## 3. Architectural Decision Records (ADR)
 
 ### ADR-0001: Multi-Crate Cargo Workspace Structure
-- **Decision**: Organize the Rust codebase into granular crates: `peercast-core`, `peercast-pcp`, `peercast-format`, `peercast-http`, `peercast-yp`, `peercast-servent`, `peercast-rpc`, `peercast-web`, `peercast-app`.
-- **Rationale**: Isolates pure data structures from network I/O, allowing fast, parallel compilation and isolated unit testing.
+- **Decision**: Organize the codebase into granular crates: `peercast-core`, `peercast-pcp`, `peercast-format`, `peercast-http`, `peercast-yp`, `peercast-servent`, `peercast-rpc`, `peercast-web`, `peercast-app`.
 
 ### ADR-0002: Asynchronous Runtime & Networking Stack (Tokio)
 - **Decision**: Adopt Tokio multi-threaded runtime with `tokio-util` Framed codecs.
-- **Rationale**: Industry standard in production Rust network systems; provides rock-solid cancellation, timers, and bounded channels.
 
 ### ADR-0003: Memory Management & Zero-Copy Packet Model (`bytes::Bytes`)
-- **Decision**: Model all media packet payloads as `bytes::Bytes`.
-- **Rationale**: Enables zero-copy $O(1)$ packet fan-out to hundreds of downstream relays and local media players.
+- **Decision**: Model all media packet payloads as `bytes::Bytes` for $O(1)$ zero-copy fan-out.
 
 ### ADR-0004: Explicit Enum-Based Asynchronous State Machines & Re-entrancy Guards
-- **Decision**: Mandate Rust `enum` state machines for connections and channels. Guard against re-entrant function execution (Rule #2).
+- **Decision**: Mandate Rust `enum` state machines with re-entrancy protection (Rule #2).
 
 ### ADR-0005: Resource Bounding & Longevity by Design (Ringbuffer & Connection Limits)
-- **Decision**: Enforce strict 8 MB / 3-second capacity on `ContentRingBuffer`, max 1024 children per Atom, and 5-second queue overflow drop (Rule #3).
+- **Decision**: Enforce strict 8 MB / 3-second capacity on `ContentRingBuffer`, max 1024 children per Atom, `MAX_DATALEN = 16384`, and 5-second queue overflow drop (Rule #3).
 
 ### ADR-0006: Web UI Embedding & Headless-First Architecture
 - **Decision**: Embed upstream static HTML/JS assets into the binary using `rust-embed`.
 
 ### ADR-0007: Two-Stage Handshake (HTTP Request followed by Binary Atom Stream)
-- **Decision**: Implement an initial HTTP request line parser that transitions smoothly to `AtomCodec` upon receiving `200 OK`.
-- **Rationale**: 100% interoperability with upstream PeerCastStation and original PeerCast nodes.
+- **Decision**: Implement initial HTTP request parser transitioning to `AtomCodec` upon `200 OK`.
 
 ### ADR-0008: Active Ping Probe Protocol for Port Reachability Verification
-- **Decision**: Implement the reverse TCP ping probe sequence in `peercast-pcp` using `pcnt` + `helo` to confirm downstream port status before advertising it to the network.
+- **Decision**: Implement reverse TCP ping probe sequence in `peercast-pcp` using `pcnt` + `helo`.
 
 ### ADR-0009: Codec Initialization Header Cache for Late Joiners
-- **Decision**: `peercast-format` extracts codec configuration packets (`ContentHeader`) to ensure immediate decoding for late-joining viewers.
+- **Decision**: Extract and cache codec configuration packets (`ContentHeader`) to ensure immediate decoding for late-joining viewers.
 
 ### ADR-0010: Deterministic Cryptographic ChannelID Derivation
-- **Decision**: Implement `peercast_core::create_channel_id(bcid, network, name, genre, source)` matching upstream's `SHA512 + MD5` algorithm.
-- **Rationale**: Ensures deterministic channel identification across sessions and Yellow Pages.
+- **Decision**: Implement `create_channel_id(bcid, network, name, genre, source)` matching upstream's `SHA512 + MD5` algorithm.
 
 ### ADR-0011: Yellow Page Protocol Lifecycle with Exponential Backoff Retry
-- **Decision**: Implement 30-second heartbeats and 1,000 ms to 30,000 ms exponential backoff retry in `peercast-yp`.
-- **Rationale**: Prevents Yellow Page denial-of-service while ensuring prompt reconnection after transient network glitches.
+- **Decision**: Implement 30-second heartbeats and 1.5x exponential backoff retry (1.0s to 30.0s) in `peercast-yp`.
 
 ### ADR-0012: Gossip Routing Topology and 180-Second Node TTL
 - **Decision**: Replicate the 180-second node cache TTL in `peercast-servent` and prune stale nodes on every access.
-- **Rationale**: Eliminates unbounded growth in node tables and ensures outdated network topology is discarded promptly.
+
+### ADR-0013: Dual-Stack Protocol Negotiation (`x-peercast-pcp: 1` vs `100` for IPv6)
+- **Context**: C++ nodes use `x-peercast-pcp: 100` to negotiate IPv6 routing.
+- **Decision**: `peercast-pcp` sends `x-peercast-pcp: 100` when connecting via IPv6, and `1` when connecting via IPv4.
+- **Rationale**: Guarantees full compatibility across mixed IPv4/IPv6 networks with both C# and C++ nodes.
+
+### ADR-0014: Keyframe-Aligned Fast Playback Start for Direct Player Connections
+- **Context**: Players starting mid-stream with intermediate P/B frames suffer from visual artifacts and player freezes.
+- **Decision**: In `peercast-http`, upon sending `ContentHeader`, discard initial media packets until a keyframe arrives (`PCPChanPacketContinuation::InterFrame == 0`), then stream continuously.
+- **Rationale**: Dramatically improves perceptual playback quality and eliminates player rendering bugs.
+
+### ADR-0015: Exact Wire Error Code Synthesis (`1000 + ReasonCode`)
+- **Context**: PeerCast uses an integer code addition scheme for `PCP_QUIT`.
+- **Decision**: Define Rust error enum mapping to the exact values (`1000` through `1011`).
+- **Rationale**: Ensures downstream and upstream nodes correctly interpret disconnect reasons without ambiguity.
+
+### ADR-0016: Hop-Count & Locality-First Relay Selection Scoring
+- **Context**: Choosing suboptimal parents increases latency and WAN bandwidth consumption.
+- **Decision**: Implement the C++ `pickHits` hierarchy: Self-exclusion -> Cooldown check -> Local LAN IP match -> Lowest `numHops`.
+- **Rationale**: Minimizes tree height and keeps local traffic off WAN interfaces.
 
 ---
 
@@ -132,18 +136,18 @@ During multiple deep-dive reviews of `C:\Github\_upstream_peercaststation`, we e
 
 | Date | Phase | Action / Milestone | Result / Notes |
 | :--- | :--- | :--- | :--- |
-| **2026-10-24** | **Setup** | Workspace verification & directory setup | Initialized repository at `C:\Github\PeerCastStation_Rust`. Shallow cloned upstream reference to `C:\Github\_upstream_peercaststation`. |
-| **2026-10-24** | **Analysis** | Upstream code deep-dive (Initial) | Analyzed `Atom.cs`, `Ringbuffer.cs`, `Content.cs`, `Channel.cs`. |
-| **2026-10-24** | **Docs** | Authored `SPECIFICATION.md` & `WORKLOG_AND_DECISIONS.md` v1.0 | Initial comprehensive architectural specification and ADR log created. |
-| **2026-10-24** | **Review 1** | Deep-dive review & refinement v1.1 | Inspected `PCPSourceStream.cs`, `PCPOutputStream.cs`, `FLVContentBuffer.cs`. Added ADR-0007, ADR-0008, ADR-0009. |
-| **2026-10-24** | **Review 2** | Deep-dive review & refinement v1.2 | Inspected `HostTree.cs`, `BroadcastChannel.cs`, `PCPYellowPageClient.cs`. Discovered deterministic ChannelID hashing, 30s YP heartbeat, 1.5x backoff, and 180s node TTL. Added ADR-0010, ADR-0011, ADR-0012. |
+| **2026-10-24** | **Setup** | Workspace verification & directory setup | Initialized repository at `C:\Github\PeerCastStation_Rust`. Shallow cloned C# reference to `C:\Github\_upstream_peercaststation`. |
+| **2026-10-24** | **Analysis** | C# Codebase deep-dive | Analyzed `Atom.cs`, `Ringbuffer.cs`, `Content.cs`, `Channel.cs`. Authored initial specification v1.0. |
+| **2026-10-24** | **Review 1** | Deep-dive review & refinement v1.1 | Discovered two-stage handshake, reverse ping probe, and 5-second overflow limit. Added ADR-0007, ADR-0008, ADR-0009. |
+| **2026-10-24** | **Review 2** | Deep-dive review & refinement v1.2 | Discovered deterministic ChannelID hashing, 30s YP heartbeat, 1.5x backoff, and 180s node TTL. Added ADR-0010, ADR-0011, ADR-0012. |
+| **2026-10-24** | **Review 3** | Dual-Codebase audit (`peercast-yt`) | Cloned and audited `plonk/peercast-yt` (C++). Discovered IPv6 `x-peercast-pcp: 100`, `MAX_DATALEN = 16384`, exact `1000 + Code` error synthesis, keyframe startup alignment, and parent selection scoring. Added ADR-0013 through ADR-0016. Specification upgraded to v1.3.0. |
 
 ---
 
 ## 5. Current State & Verification Status
 
-- **Specification Quality**: v1.2.0 is fully refined, protocol-complete, algorithmically sound, and directly actionable for code implementation.
-- **Master ADRs**: 12 detailed ADRs documenting every major technical choice.
+- **Specification Quality**: v1.3.0 represents a gold-standard, dual-implementation cross-audited technical master plan.
+- **Master ADRs**: 16 comprehensive ADRs covering every protocol nuance and edge case.
 - **Next Milestone**: Ready for **Phase 1 Implementation** (`peercast-core`).
 
 ---
@@ -169,15 +173,16 @@ During multiple deep-dive reviews of `C:\Github\_upstream_peercaststation`, we e
    ```
 2. In `crates/peercast-core`:
    - `id4.rs`: FourCC identifier struct `ID4([u8; 4])`.
-   - `atom.rs`: `Atom` enum (`Leaf` / `Container`) with recursive binary serializer/deserializer.
+   - `atom.rs`: `Atom` enum (`Leaf` / `Container`) with recursive binary serializer/deserializer enforcing `MAX_DATALEN = 16384` and `max_children = 1024`.
    - `content.rs`: `Content` struct (`stream_id`, `pos`, `timestamp`, `cont_flags`, `data: Bytes`, `serial`).
    - `ringbuffer.rs`: `ContentRingBuffer` with 8 MB / 3-second bounded sliding window.
    - `channel_id.rs`: Deterministic ChannelID derivation (`SHA512 + MD5`).
    - `host.rs`: Node descriptors (`Host`, `HostFlags1`).
+   - `errors.rs`: `QuitReason` enum with exact wire error codes (`1000 + Code`).
    - `tests/test_atom.rs`: Unit tests matching upstream `TestCore/test_core_atom.rb`.
 
 ### Priority 2: Implement `peercast-pcp` Handshake & Wire Codec
-- Implement two-stage HTTP-to-Atom handshake and `tokio_util::codec` encoder/decoder.
+- Implement two-stage HTTP-to-Atom handshake supporting dual-stack headers (`1` vs `100`).
 
 ---
 
