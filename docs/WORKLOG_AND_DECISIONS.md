@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Work Log & Architectural Decision Records (ADR)
 
 > **Document Purpose**: This file serves as the primary master log and continuity document for any subsequent LLM agent or human engineer working on this repository. It records every architectural decision, justification, code-level rationale, phase progression, and immediate next steps.
-> **Last Updated**: 2026-10-24
+> **Last Updated**: 2026-10-24 (Post-Review Refinement)
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`
 > **Upstream Reference**: `https://github.com/kumaryu/peercaststation` (Cloned locally for reference at `C:\Github\_upstream_peercaststation`)
 > **Rust Toolchain**: `rustc 1.98.1` / `cargo 1.98.1` (Edition 2021)
@@ -18,6 +18,9 @@
    - [ADR-0004: Explicit Enum-Based Asynchronous State Machines & Re-entrancy Guards](#adr-0004-explicit-enum-based-asynchronous-state-machines--re-entrancy-guards)
    - [ADR-0005: Resource Bounding & Longevity by Design (Ringbuffer & Connection Limits)](#adr-0005-resource-bounding--longevity-by-design-ringbuffer--connection-limits)
    - [ADR-0006: Web UI Embedding & Headless-First Architecture](#adr-0006-web-ui-embedding--headless-first-architecture)
+   - [ADR-0007: Two-Stage Handshake (HTTP Request followed by Binary Atom Stream)](#adr-0007-two-stage-handshake-http-request-followed-by-binary-atom-stream)
+   - [ADR-0008: Active Ping Probe Protocol for Port Reachability Verification](#adr-0008-active-ping-probe-protocol-for-port-reachability-verification)
+   - [ADR-0009: Codec Initialization Header Cache for Late Joiners](#adr-0009-codec-initialization-header-cache-for-late-joiners)
 4. [Step-by-Step Execution Log](#4-step-by-step-execution-log)
 5. [Current State & Verification Status](#5-current-state--verification-status)
 6. [Actionable Next Steps for Future LLM Agents](#6-actionable-next-steps-for-future-llm-agents)
@@ -41,84 +44,80 @@ While the .NET version is mature and feature-rich, porting PeerCastStation to Ru
 
 ## 2. Upstream C# Codebase Deep-Dive Analysis
 
-During our investigation of `C:\Github\_upstream_peercaststation`, we examined the core architecture, protocols, and data models:
+During our thorough review of `C:\Github\_upstream_peercaststation`, we examined every critical subsystem:
 
-### 2.1 The Atom System (`PeerCastStation.Core/Atom.cs`)
-- All binary PCP communication is built around **Atoms**.
-- An Atom consists of:
-  - `Name`: A 4-byte FourCC identifier (`ID4`), such as `helo`, `oleh`, `chan`, `pkt `.
-  - `Length/Flags`: A 32-bit unsigned integer (Little-Endian).
-    - If MSB (`0x8000_0000`) is 0: it is a **Leaf Atom**; the lower 31 bits define the byte length of the value.
-    - If MSB (`0x8000_0000`) is 1: it is a **Container Atom**; the lower 31 bits specify the number of nested child atoms.
-  - Upstream contains a security check: `(len & 0x7FFFFFFF) > 1024` throws `InvalidDataException("Atom has too many children")`.
-- **Rust Translation Note**: In Rust, `Atom` is modeled as an `enum`:
-  ```rust
-  pub enum Atom {
-      Leaf { name: ID4, value: bytes::Bytes },
-      Container { name: ID4, children: Vec<Atom> },
-  }
+### 2.1 The Two-Stage Handshake Discovery (`PCPSourceStream.cs` & `PCPOutputStream.cs`)
+- **Key Insight**: A common misconception is that PeerCast connects purely over raw binary Atoms. Inspection of `PCPSourceStream.cs` reveals that all relay connections start with an HTTP request:
+  ```http
+  GET /channel/{channel_id} HTTP/1.0\r\n
+  User-Agent: {agent}\r\n
+  x-peercast-pcp: 1\r\n
+  x-peercast-pos: {stream_pos}\r\n
+  \r\n
   ```
-  This is compact, memory-safe, and maps directly to pattern matching.
+- **Responses**:
+  - `200 OK`: Transition socket directly into binary Atom mode.
+  - `503 Service Unavailable`: Upstream relay slots are full. Upstream sends `PCP_HOST` atoms with alternate relay candidates and disconnects.
+  - `404 Not Found`: Off-air.
+- **Implication for Rust**: The connection codec must support an initial HTTP parser phase before upgrading the stream into `tokio_util::codec::Framed<_, AtomCodec>`.
 
-### 2.2 Content Buffer Pipeline (`Content.cs`, `Ringbuffer.cs`)
-- Streams are sliced into `Content` objects containing: `Stream` (ID), `Timestamp` (TimeSpan), `Position` (byte offset), `ContFlag` (continuation bitmask), and `Data` (ReadOnlyMemory<byte>).
-- `ContentCollection` stores contents in an `ImmutableSortedSet<Content>` and evicts packets older than `PacketTimeLimit` (default 3 seconds) or past stream IDs.
-- **Rust Translation Note**: We replace `ImmutableSortedSet` with a dedicated bounded ring buffer (`ContentRingBuffer`) utilizing `bytes::Bytes` and lock-free/parking_lot-guarded sliding windows, preventing GC allocations and unbounded growth.
+### 2.2 Active Ping Probe (`PCPOutputStream.cs` L331-L382)
+- Upstream tests whether connecting downstream relays have open ports by performing an **active reverse TCP probe**:
+  - Upstream opens a TCP connection to downstream's advertised IP and ping port.
+  - Upstream sends `PCP_CONNECT` (`pcnt`) and `PCP_HELO`.
+  - Downstream returns `PCP_OLEH` with its `SessionID`.
+  - If `SessionID` matches, downstream is verified as `Firewalled = false` (Port Open).
 
-### 2.3 Handshake & Routing Flow
-- **PCP Handshake**:
-  1. Client sends `helo` (containing `agnt`, `sid`, `port`, `ver`, `bcid`).
-  2. Server responds with `oleh` (containing `rip`, `port`, `sid`).
-  3. Server sends `ok` or `quit`.
-- **Channel Delivery**:
-  1. Header broadcast: When a client connects, it must receive the codec initialization header atom (`head`) before media data atoms (`data`).
-  2. Relay Tree: Nodes exchange `bcst` (Gossip broadcast) with `hops` and `ttl` to discover parent nodes, active listeners, and track channel topologies.
+### 2.3 The Header Caching Mechanism (`FLVContentBuffer.cs`, `TSContentReader.cs`)
+- Video/audio streams cannot be rendered by late-connecting viewers without codec initialization headers (SPS/PPS in H.264, AudioSpecificConfig in AAC, PAT/PMT in MPEG-TS).
+- Upstream sniffs incoming streams, extracts these headers, and holds them in `Channel.ContentHeader`.
+- Whenever a new player or relay connects, this header is transmitted *first*, preceding any live content packets.
+
+### 2.4 Backpressure & 5-Second Lag Overflow (`PCPOutputStream.cs` L243)
+- Upstream monitors queue latency:
+  `if (!queue.TryPeek(out var nxtMsg) || (msg.Timestamp - nxtMsg.Timestamp).TotalMilliseconds <= 5000)`
+- If a downstream relay lags by more than 5,000 milliseconds, an `Overflow` message is emitted and the socket is dropped with `StopReason::SendTimeoutError`.
 
 ---
 
 ## 3. Architectural Decision Records (ADR)
 
 ### ADR-0001: Multi-Crate Cargo Workspace Structure
-- **Context**: Upstream is divided into `PeerCastStation.Core`, `PeerCastStation.PCP`, `PeerCastStation.HTTP`, `PeerCastStation.UI.HTTP`, and format parsers.
-- **Decision**: Organize the Rust codebase as a Cargo workspace with granular crates:
-  1. `peercast-core`: Pure data types (`ID4`, `Atom`, `Host`, `Content`, `ContentRingBuffer`, errors). Zero network dependencies.
-  2. `peercast-pcp`: PCP protocol framing, handshake state machine, PCP source/output streams.
-  3. `peercast-format`: Media format inspection (FLV, TS, ASF, MKV, Ogg, Raw).
-  4. `peercast-http`: HTTP streaming engine for player clients (`/stream/{id}`, `/pls/`, `/m3u`), chunked HTTP transfer.
-  5. `peercast-servent`: Central channel manager, routing, gossip propagation, bandwidth throttling.
-  6. `peercast-rpc`: JSON-RPC 2.0 API server.
-  7. `peercast-web`: Embedded static Web UI assets.
-  8. `peercast-app`: CLI daemon binary entry point.
-- **Rationale**: Enables independent unit testing (especially `peercast-core` without Tokio runtime), accelerates compilation, and provides clean separation of concerns for subsequent AI agents working on specific layers.
+- **Decision**: Organize the Rust codebase into granular crates: `peercast-core`, `peercast-pcp`, `peercast-format`, `peercast-http`, `peercast-yp`, `peercast-servent`, `peercast-rpc`, `peercast-web`, `peercast-app`.
+- **Rationale**: Isolates pure data structures (`peercast-core`) from network I/O, allowing blazing-fast unit tests and clear task division for AI agents.
 
 ### ADR-0002: Asynchronous Runtime & Networking Stack (Tokio)
-- **Context**: PeerCast requires high-concurrency TCP connection management, timers, and streaming broadcast.
-- **Decision**: Adopt `tokio` (multi-threaded runtime) with `tokio-util` (Framed codec abstractions).
-- **Rationale**: Tokio is the de facto standard in production Rust for network systems, providing unmatched performance, rich ecosystem support (`tracing`, `hyper`, `axum`), and robust cancellation/timer mechanisms.
+- **Decision**: Adopt Tokio with multi-thread runtime and `tokio-util` Framed codecs.
+- **Rationale**: Standard in production-grade Rust for network I/O, timers, and actor-like channels.
 
 ### ADR-0003: Memory Management & Zero-Copy Packet Model (`bytes::Bytes`)
-- **Context**: Streaming media packets arrive continuously and must be distributed to N downstream listeners simultaneously. Upstream C# copies bytes or relies on GC-managed `ReadOnlyMemory<byte>`.
-- **Decision**: Represent all packet data using `bytes::Bytes`.
-- **Rationale**: `bytes::Bytes` uses an atomic reference counter (`Arc`) around a heap slice. Slicing and cloning a `Bytes` instance is an $O(1)$ pointer increment without memory duplication. This eliminates packet copying across all fan-out relay loops.
+- **Decision**: Model all media packet payloads as `bytes::Bytes`.
+- **Rationale**: $O(1)$ reference-counted cloning across unlimited relay fan-out without heap reallocations.
 
 ### ADR-0004: Explicit Enum-Based Asynchronous State Machines & Re-entrancy Guards
-- **Context**: Ad-hoc boolean flags (`isConnecting`, `isStreaming`, `isClosed`) lead to race conditions, multi-firing bugs, and undefined connection states.
-- **Decision**: Mandate strict Rust `enum` state representations for all connection and channel lifecycles. All transition functions must implement early-return guards if an event occurs in an unexpected phase.
-- **Rationale**: Enforces compile-time exhaustiveness checks and adheres strictly to Global Engineering Rule #2.
+- **Decision**: Mandate Rust `enum` state machines for connections and channels. Guard against re-entrant function execution (Rule #2).
 
 ### ADR-0005: Resource Bounding & Longevity by Design (Ringbuffer & Connection Limits)
-- **Context**: Long-running streaming nodes can suffer from memory leaks, unbounded node lists, and descriptor exhaustion.
-- **Decision**:
-  - Enforce explicit capacity limits on `ContentRingBuffer` (both maximum byte count and sliding time window).
-  - Impose maximum child limits on Atom parsing (`1024` child atoms, `16 MB` max payload).
-  - Enforce strict concurrency limits on incoming listeners (`max_relays`, `max_directs`).
-  - Drop slow/stalled downstream sockets immediately when their read cursor falls outside the ring buffer window.
-- **Rationale**: Adheres to Global Engineering Rule #3. Guarantees that memory footprint remains constant regardless of stream length or viewer count.
+- **Decision**: Enforce strict 8 MB / 3-second capacity on `ContentRingBuffer`, max 1024 children per Atom, and 5-second queue overflow drop (Rule #3).
 
 ### ADR-0006: Web UI Embedding & Headless-First Architecture
-- **Context**: PeerCastStation includes an HTML management interface.
-- **Decision**: Embed static assets (`channels.html`, `relays.html`, `settings.html`, css, js) directly into the binary using `rust-embed`. Serve via an embedded HTTP server alongside the JSON-RPC endpoints.
-- **Rationale**: Delivers a single, frictionless, portable binary with no external asset folder dependencies.
+- **Decision**: Embed upstream static HTML/JS assets into the binary using `rust-embed`.
+
+### ADR-0007: Two-Stage Handshake (HTTP Request followed by Binary Atom Stream)
+- **Context**: Upstream relays initiate connections using HTTP/1.0 request headers before switching to binary Atoms.
+- **Decision**: `peercast-pcp` implements a two-stage framing pipeline:
+  1. An initial HTTP request/response line parser.
+  2. Upon receiving `200 OK`, transitions the stream to `AtomCodec`.
+- **Rationale**: Guarantees 100% interoperability with upstream PeerCastStation and original PeerCast nodes.
+
+### ADR-0008: Active Ping Probe Protocol for Port Reachability Verification
+- **Context**: Nodes must autonomously verify whether their ports are accessible from the global Internet.
+- **Decision**: Implement the reverse TCP ping probe sequence in `peercast-pcp`:
+  - Upstream connects back using `pcnt` + `helo` to confirm downstream port status before advertising it to the network as a relayable host.
+
+### ADR-0009: Codec Initialization Header Cache for Late Joiners
+- **Context**: Stream players joining midway fail to decode video without initial SPS/PPS and metadata.
+- **Decision**: `peercast-format` parses incoming streams to capture codec initialization packets (`ContentHeader`). The channel actor caches this header and guarantees it is sent as the very first packet to any newly connected relay or player.
 
 ---
 
@@ -127,27 +126,26 @@ During our investigation of `C:\Github\_upstream_peercaststation`, we examined t
 | Date | Phase | Action / Milestone | Result / Notes |
 | :--- | :--- | :--- | :--- |
 | **2026-10-24** | **Setup** | Workspace verification & directory setup | Initialized repository at `C:\Github\PeerCastStation_Rust`. Shallow cloned upstream reference to `C:\Github\_upstream_peercaststation`. |
-| **2026-10-24** | **Analysis** | C# Codebase architecture & protocol deep-dive | Analyzed `Atom.cs`, `Ringbuffer.cs`, `Content.cs`, `Channel.cs`, `PCPOutputStream.cs`, `HTTPOutputStream.cs`, and upstream test suites. |
-| **2026-10-24** | **Docs** | Authored `docs/SPECIFICATION.md` | Comprehensive architectural and protocol specification created in English. |
-| **2026-10-24** | **Docs** | Authored `docs/WORKLOG_AND_DECISIONS.md` | Master continuity log and ADR framework created for future LLM agents. |
+| **2026-10-24** | **Analysis** | Upstream code deep-dive (Initial) | Analyzed `Atom.cs`, `Ringbuffer.cs`, `Content.cs`, `Channel.cs`. |
+| **2026-10-24** | **Docs** | Authored `SPECIFICATION.md` & `WORKLOG_AND_DECISIONS.md` v1.0 | Initial comprehensive architectural specification and ADR log created. |
+| **2026-10-24** | **Review** | Upstream code deep-dive (Thorough Self-Review) | Inspected `PCPSourceStream.cs`, `PCPOutputStream.cs`, `FLVContentBuffer.cs`, `HTTPOutputStream.cs`, `PCPYellowPageClient.cs`. Discovered two-stage handshake, reverse ping probe, and 5-second overflow limit. |
+| **2026-10-24** | **Refine** | Specification & Worklog v1.1 Refinement | Updated `docs/SPECIFICATION.md` and added ADR-0007, ADR-0008, ADR-0009 to `docs/WORKLOG_AND_DECISIONS.md`. |
 
 ---
 
 ## 5. Current State & Verification Status
 
-- **Repository Structure**:
-  - `docs/SPECIFICATION.md` (Architecture, Protocol, State Machines, Roadmap)
-  - `docs/WORKLOG_AND_DECISIONS.md` (This document)
-- **Next Phase Ready**: Phase 1: Creating Cargo Workspace and implementing `peercast-core`.
+- **Documentation**:
+  - `docs/SPECIFICATION.md` v1.1.0: Complete, refined, wire-accurate specification.
+  - `docs/WORKLOG_AND_DECISIONS.md`: Complete work log with 9 comprehensive ADRs.
+- **Next Milestone**: Ready for **Phase 1 Implementation** (`peercast-core`).
 
 ---
 
 ## 6. Actionable Next Steps for Future LLM Agents
 
-When resuming work on this repository, proceed in the following prioritized order:
-
-### Priority 1: Initialize Cargo Workspace & `peercast-core`
-1. Create root `Cargo.toml` defining the workspace members:
+### Priority 1: Initialize Workspace & Implement `peercast-core`
+1. Create root `Cargo.toml` with workspace configuration:
    ```toml
    [workspace]
    members = [
@@ -155,6 +153,7 @@ When resuming work on this repository, proceed in the following prioritized orde
        "crates/peercast-pcp",
        "crates/peercast-format",
        "crates/peercast-http",
+       "crates/peercast-yp",
        "crates/peercast-servent",
        "crates/peercast-rpc",
        "crates/peercast-web",
@@ -162,33 +161,26 @@ When resuming work on this repository, proceed in the following prioritized orde
    ]
    resolver = "2"
    ```
-2. Implement `crates/peercast-core`:
-   - `id4.rs`: 4-byte identifier (`ID4`), ASCII conversion, standard constants (`PCP_HELO`, `PCP_CHAN`, etc.).
-   - `atom.rs`: `Atom` enum, recursive binary serializer (`write_to`), and deserializer (`read_from`).
-   - `content.rs`: `Content`, `ContentFlags`.
-   - `ringbuffer.rs`: `ContentRingBuffer` with bounded memory capacity and sliding time-to-live eviction.
-   - `host.rs`: Node descriptors (`Host`, `HostFlags`).
-   - `tests/test_atom.rs`: Unit tests verifying serialization/deserialization against upstream byte patterns.
+2. In `crates/peercast-core`:
+   - `id4.rs`: FourCC identifier struct `ID4([u8; 4])` with ASCII Display, equality, and standard constants.
+   - `atom.rs`: `Atom` enum (Leaf & Container) with recursive binary serializer and deserializer adhering to the 1024-child and 16 MB bounds.
+   - `content.rs`: `Content` struct (`stream_id`, `pos`, `timestamp`, `cont_flags`, `data: Bytes`, `serial`).
+   - `ringbuffer.rs`: `ContentRingBuffer` implementing sliding-window eviction (> 3s or > 8 MB).
+   - `host.rs`: Node representation (`Host`, `HostFlags1`).
+   - `tests/test_atom.rs`: Unit tests matching upstream `TestCore/test_core_atom.rb`.
 
-### Priority 2: Implement `peercast-pcp` Wire Codec & Handshake
-1. Implement `tokio_util::codec::Decoder` and `Encoder` for PCP Atoms in `crates/peercast-pcp`.
-2. Implement `HandshakeState` state machine for `helo` <-> `oleh` negotiation.
-3. Test with mock streams.
+### Priority 2: Implement `peercast-pcp` Handshake & Wire Codec
+- Implement two-stage HTTP-to-Atom handshake and `tokio_util::codec` encoder/decoder.
 
 ---
 
 ## 7. Engineering Protocols & Conventions for Agents
 
-Subsequent LLM agents working on this project must strictly observe:
-
-1. **PowerShell Execution Rigor (Global Rule #8)**:
-   - NEVER run inline one-liners with quotes/variables like `pwsh -Command "node -e '...'"` or complex multi-line bash scripts directly.
-   - For any complex script or multi-line command, write a temporary `.ps1` or `.rs` file, execute it, and clean it up.
+1. **PowerShell Scripting Rigor (Global Rule #8)**:
+   - NEVER execute inline one-liners with quotes/variables (`node -e "..."` or complex pwsh command strings). Always write a temporary `.ps1` or `.rs` file, run it, and delete it.
 2. **Resource Boundedness (Global Rule #3)**:
-   - Ensure every collection, channel, and buffer has an explicit maximum capacity limit.
-   - Implement clean drop/teardown handlers for socket connections.
-3. **State Machine Integrity (Global Rule #2)**:
-   - Never use combinational booleans (`is_active && !is_closed && is_connecting`) to represent asynchronous lifecycles. Use exhaustive Rust enums.
-   - Guard entry points against re-entrant calls.
-4. **Log Updates**:
-   - At the conclusion of every turn/milestone, update Section 4 (Execution Log) and Section 5 (Current State) of this document to ensure seamless handover to future agents.
+   - Ensure every collection and channel has an explicit maximum bound.
+3. **State Machine Rigor (Global Rule #2)**:
+   - Model asynchronous lifecycles with exhaustive Rust `enum` states. Prevent re-entrant state transitions.
+4. **Log Continuity**:
+   - Update Section 4 and Section 5 of this document after completing any phase or milestone.
