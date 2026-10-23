@@ -5,10 +5,22 @@
 //! - REQ-056: Bounded container sniffing for FLV, TS, MKV/WebM, ASF, and Ogg.
 //! - Global Rule 3: Bounded memory buffers and non-consuming replay guarantees.
 
+pub mod asf;
 pub mod flv;
 pub mod safestart;
 pub mod sniffer;
 pub mod ts;
+
+pub use asf::{
+    parse_asf_top_level_header, AsfBitrateRecord, AsfContentDescription, AsfDemuxOutput,
+    AsfDemuxer, AsfDemuxerState, AsfFileProperties, AsfGuid, AsfMetadata, AsfObjectHeader,
+    AsfParseError, AsfStreamProperties, AsfTransportProfile, WmspFrame, WmspFrameType,
+    ASF_CONTENT_DESCRIPTION_GUID, ASF_DATA_OBJECT_GUID, ASF_FILE_PROPERTIES_GUID,
+    ASF_OBJECT_HEADER_LEN, ASF_STREAM_BITRATE_GUID, ASF_STREAM_PROPERTIES_GUID,
+    ASF_STREAM_TYPE_AUDIO_GUID, ASF_STREAM_TYPE_VIDEO_GUID, ASF_TOP_LEVEL_HEADER_GUID,
+    ASF_TOP_LEVEL_HEADER_MIN_LEN, ASF_TOP_LEVEL_HEADER_PRELUDE_LEN,
+    DEFAULT_MAX_ASF_BUFFER_CAPACITY, DEFAULT_MAX_ASF_OBJECT_SIZE,
+};
 
 pub use flv::{
     FlvDemuxOutput, FlvDemuxer, FlvFileHeader, FlvHeaderSnapshotBuilder, FlvMetadata,
