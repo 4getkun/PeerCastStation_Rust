@@ -7,10 +7,15 @@
 //!   blindly to HTTP/1.0 or MMS streams.
 //! - Global Rule 3: bounded queue buffers and prompt subscriber resource release upon disconnect.
 
+pub mod ingest;
 pub mod playlist;
 pub mod router;
 pub mod streamer;
 
+pub use ingest::{
+    parse_ingest_handshake, read_chunked_stream, HttpPushConfig, HttpPushIngestListener,
+    IngestError, IngestHandshake, MAX_INGEST_CHUNK_SIZE, MAX_INGEST_HEADER_SIZE,
+};
 pub use playlist::{
     escape_xml, sanitize_single_line, PlaylistBuilder, PlaylistEntry, PlaylistError, PlaylistFormat,
 };
