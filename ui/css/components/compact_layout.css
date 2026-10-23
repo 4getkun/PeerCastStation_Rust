@@ -1,0 +1,38 @@
+/**
+ * Compact Layout Variation (REQ-086)
+ *
+ * Provides a high-density presentation layout through pure CSS tokens
+ * and component class overrides without modifying any controller or domain logic.
+ */
+
+[data-density="compact"] {
+  --peca-space-sm: 6px;
+  --peca-space-md: 10px;
+  --peca-space-lg: 14px;
+  --peca-font-size-base: 0.875rem; /* 14px */
+  --peca-font-size-lg: 1rem;       /* 16px */
+  --peca-font-size-xl: 1.125rem;   /* 18px */
+}
+
+[data-density="compact"] .peca-card {
+  padding: var(--peca-space-md);
+  margin-bottom: var(--peca-space-sm);
+}
+
+[data-density="compact"] .peca-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--peca-space-sm);
+}
+
+[data-density="compact"] .peca-table th,
+[data-density="compact"] .peca-table td {
+  padding: 4px var(--peca-space-sm);
+}
+
+[data-density="compact"] .peca-metric-value {
+  font-size: var(--peca-font-size-lg);
+}
+
+[data-density="compact"] .peca-alert {
+  padding: var(--peca-space-xs) var(--peca-space-sm);
+}

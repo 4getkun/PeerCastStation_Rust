@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PeerCastStation UI Component & Screen Fixture Gallery (REQ-082, REQ-083)</title>
   <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/themes/nord.css">
   <link rel="stylesheet" href="../css/components/status_card.css">
   <link rel="stylesheet" href="../css/components/channel_table.css">
   <link rel="stylesheet" href="../css/components/alert_banner.css">
+  <link rel="stylesheet" href="../css/components/compact_layout.css">
   <style>
     body {
       font-family: var(--peca-font-family);
@@ -103,7 +105,13 @@
       <select id="theme-select" class="peca-btn peca-btn-outline" onchange="setTheme(this.value)">
         <option value="default">Default Light</option>
         <option value="dark">Dark</option>
+        <option value="nord">Nord Theme (Arctic Blue)</option>
         <option value="high-contrast">High Contrast (WCAG AAA)</option>
+      </select>
+      <label for="density-select" style="font-size: var(--peca-font-size-sm); font-weight: 600;">Layout:</label>
+      <select id="density-select" class="peca-btn peca-btn-outline" onchange="setDensity(this.value)">
+        <option value="normal">Normal Layout</option>
+        <option value="compact">Compact Density (REQ-086)</option>
       </select>
       <button class="peca-btn peca-btn-outline" onclick="toggleMotion()" id="motion-btn">Motion: Auto</button>
     </div>
@@ -310,6 +318,11 @@
     function setTheme(theme) {
       document.documentElement.setAttribute('data-theme', theme);
       logEvent('Theme changed to: ' + theme);
+    }
+
+    function setDensity(density) {
+      document.documentElement.setAttribute('data-density', density);
+      logEvent('Layout density changed to: ' + density);
     }
 
     function toggleMotion() {

@@ -942,8 +942,34 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 5 comprehensive tests passing in `test_p37d_presentation.rs`: tokens file completeness, component style token references, fixture gallery 8-state coverage with zero CDN dependencies, fixture JSON deserialization into Rust ViewModels, and production mock fallback prohibition.
 
+### [2026-10-24] Task P37E Implementation: Boundary Enforcement & Redesign Isolation
+- **Requirements Covered**: REQ-080, REQ-086
+- **Files Added / Changed**:
+  - `ui/css/themes/nord.css`
+  - `ui/css/components/compact_layout.css`
+  - `ui/fixtures/gallery.html`
+  - `crates/peercast-rpc/Cargo.toml`
+  - `crates/peercast-rpc/tests/test_p37e_boundary_enforcement.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Functional failures are never suppressed by updating visual snapshots or editing backend logic; architectural checks detect violations reliably (REQ-080, REQ-086).
+  - Automated Architectural Boundary Scanner:
+    - Scans presentation assets for forbidden direct network invocations (`fetch(`, `$.ajax(`, `XMLHttpRequest`, `axios`).
+    - Scans presentation controllers for forbidden CSS class references (`peca-`, `btn-`, `alert-`) or DOM manipulation (`document.`, `window.`, `getElementById`).
+    - Verified against real workspace (0 violations).
+    - Verified against an intentional negative test fixture in `test_p37e_scanner_catches_negative_fixtures`, catching all 3 synthetic violations accurately.
+  - Theme and Layout Exercise Through Presentation Files Exclusively:
+    - Added Nord Theme (`ui/css/themes/nord.css`): Arctic blue palette referencing semantic tokens.
+    - Added Compact Density Layout (`ui/css/components/compact_layout.css`): High-density padding/font scale through CSS class overrides.
+    - Updated fixture gallery (`ui/fixtures/gallery.html`) with interactive theme and layout switches.
+  - Cryptographic Proof of Backend Contract Immutability:
+    - Computed and verified SHA-256 hashes of backend contract files (`protocol.rs`, `server.rs`, `RPC_CONTRACT.md`), proving zero changes to backend contracts across the design exercise.
+  - Functional Equivalence:
+    - Verified all queries (`IndexController`, `ChannelsController`, `SettingsController`) and mutations behave identically before and after presentation additions.
+  - Test Matrix Verified:
+    - 5 comprehensive tests passing in `test_p37e_boundary_enforcement.rs`: zero workspace violations, negative fixture violation detection, presentation theme/layout verification, backend contract hash immutability, and controller functional equivalence.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37E — Enforce boundaries and prove redesign isolation** (Prerequisites: P37D; Requirements: REQ-080, REQ-086).
 - **P37F — Write minimal-context design handoff** (Prerequisites: P37E; Requirements: REQ-087).
+- **P38 — Implement secure management API** (Prerequisites: P37; Requirements: REQ-064, REQ-065).

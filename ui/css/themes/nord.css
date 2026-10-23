@@ -1,0 +1,49 @@
+/**
+ * Nord Theme Definition (REQ-082, REQ-086)
+ *
+ * Implements arctic, north-bluish color palette using semantic tokens.
+ * Modifies presentation ONLY without altering controllers or backend contracts.
+ */
+
+[data-theme="nord"] {
+  /* Polar Night (Surfaces) */
+  --peca-surface-bg: #2e3440;
+  --peca-surface-card: #3b4252;
+  --peca-surface-subtle: #434c5e;
+  --peca-surface-elevated: #4c566a;
+
+  /* Snow Storm (Text) */
+  --peca-text-primary: #eceff4;
+  --peca-text-secondary: #e5e9f0;
+  --peca-text-muted: #d8dee9;
+  --peca-text-inverse: #2e3440;
+
+  /* Frost (Brand & Accents) */
+  --peca-color-primary: #88c0d0;
+  --peca-color-primary-hover: #8fbcbb;
+  --peca-color-accent: #81a1c1;
+  --peca-color-accent-hover: #5e81ac;
+
+  /* Aurora (Feedback States - WCAG AA Contrast) */
+  --peca-state-success-bg: #2c423b;
+  --peca-state-success-text: #a3be8c;
+  --peca-state-success-border: #8fa87b;
+
+  --peca-state-warning-bg: #4a3e2a;
+  --peca-state-warning-text: #ebcb8b;
+  --peca-state-warning-border: #d4b574;
+
+  --peca-state-error-bg: #452931;
+  --peca-state-error-text: #bf616a;
+  --peca-state-error-border: #a84f58;
+
+  --peca-state-info-bg: #2e3c4d;
+  --peca-state-info-text: #81a1c1;
+  --peca-state-info-border: #5e81ac;
+
+  /* Focus & Borders */
+  --peca-focus-ring: #88c0d0;
+  --peca-border-subtle: #4c566a;
+  --peca-border-strong: #616e85;
+  --peca-shadow-card: 0 2px 4px rgba(0, 0, 0, 0.4);
+}

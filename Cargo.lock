@@ -200,6 +200,7 @@ dependencies = [
  "peercast-core",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "tokio",
 ]
