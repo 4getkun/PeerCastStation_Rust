@@ -987,8 +987,38 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Verified Runnable Commands:
     - Documented exact, working test runner commands for boundary enforcement, presentation verification, controller states, RPC contract, and full workspace.
 
+### [2026-10-24] Task P38 Implementation: Secure Management API & Access Controls
+- **Requirements Covered**: REQ-064, REQ-065
+- **Files Added / Changed**:
+  - `crates/peercast-rpc/src/security.rs`
+  - `crates/peercast-rpc/src/lib.rs`
+  - `crates/peercast-rpc/tests/test_p38_secure_management.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Administrative interfaces are NEVER exposed publicly by default; secrets are NEVER logged in plaintext (REQ-065).
+  - Listener Binding Isolation:
+    - `ListenerKind::Loopback`: Bound to `127.0.0.1` / `[::1]`, grants administrative mutation privileges to local processes by default.
+    - `ListenerKind::PublicRelay`: Bound to public/remote interfaces, strictly restricted to `AccessLevel::Playback`. All administrative mutations (`setSettings`, `stopChannel`, `addListener`, etc.) return `-32001` (`UNAUTHORIZED`).
+  - Explicit Authenticated Remote Exposure:
+    - Remote administration requires explicit opt-in (`allow_remote_admin = true`) AND a configured secret authentication token.
+    - Token accepted via `X-PeerCast-Auth-Token` header, HTTP `Authorization: Bearer <token>`, or URL `?token=<token>` (Station `APIHost.cs:1439` query token parity).
+  - Browser Security & CSRF Mitigation:
+    - Enforces mandatory `X-Requested-With` header on mutating POST requests; missing header yields HTTP 400 Bad Request.
+    - Validates `Origin` / `Referer` headers against allowed origins; cross-origin requests from foreign websites yield HTTP 403 Forbidden.
+  - HTTP Framing & Protocol Parity:
+    - Content-Length validation: missing header yields HTTP 411 Length Required; body exceeding 64 KiB yields HTTP 413 Payload Too Large.
+    - Notifications (requests omitting `id`) return HTTP 204 No Content (Station `APIHost.cs:1466` parity).
+    - GET `/api/1` returns JSON agent and API version metadata (Station `APIHost.cs:1478` parity).
+  - Secret Redaction & Log Security:
+    - `redact_secrets` redacts raw secret tokens, `?token=...`, `&token=...`, and Bearer credentials with cursor-based replacement, preventing secret leakage into logs.
+  - SSRF Protection Policy:
+    - Validates outbound connection destinations.
+    - Explicitly PERMITS valid user-selected LAN relays (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`), loopback, and public Internet IPs per REQ-065.
+    - STRICTLY BLOCKS cloud instance metadata services (`169.254.169.254`, `fd00:ec2::254`), multicast, broadcast, and unspecified addresses.
+  - Test Matrix Verified:
+    - 9 comprehensive tests passing in `test_p38_secure_management.rs`: loopback default access, public relay listener mutation blocking, explicit authenticated remote admin, CSRF/origin protection, request framing limits, notification 204 response, GET version info, secret redaction, and SSRF destination validation.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P38 — Implement secure management API** (Prerequisites: P37; Requirements: REQ-064, REQ-065).
 - **P39 — Clear and package web assets** (Prerequisites: P38, P37F; Requirements: REQ-066).
+- **P40 — Implement persistence and lifecycle controls** (Prerequisites: P38; Requirements: REQ-014, REQ-067).

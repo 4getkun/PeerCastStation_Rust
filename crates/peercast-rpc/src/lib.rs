@@ -3,6 +3,7 @@
 pub mod client;
 pub mod controller;
 pub mod protocol;
+pub mod security;
 pub mod server;
 
 pub use client::{
@@ -15,6 +16,10 @@ pub use controller::{
 };
 pub use protocol::{
     rpc_code, RpcErrorObject, RpcId, RpcRequest, RpcResponse,
+};
+pub use security::{
+    redact_secrets, validate_relay_destination, HttpRequestContext, HttpRpcResponse, ListenerKind,
+    SecureRpcHandler, SecurityError, SecurityPolicy,
 };
 pub use server::{
     AccessLevel, ChannelSummary, MethodAccessRequired, PluginAssemblyInfo, PluginSummary,
