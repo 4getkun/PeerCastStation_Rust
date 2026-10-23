@@ -855,8 +855,27 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
     - Phase 2: `channels.html` and `play.html`.
     - Phase 3: `settings.html` and `relays.html`.
 
+### [2026-10-24] Task P37B Implementation: Typed API Adapter and View Contracts
+- **Requirements Covered**: REQ-081, REQ-084
+- **Files Added / Changed**:
+  - `crates/peercast-rpc/src/client.rs`
+  - `crates/peercast-rpc/src/lib.rs`
+  - `crates/peercast-rpc/tests/test_p37b_client_adapter.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Mock success is NEVER used to hide unsupported real API behavior (REQ-064, REQ-081). Calling deferred methods through mock or live transport returns explicit `ClientRpcError::UnsupportedMethod` with capability details.
+  - Centralized Typed API Client (`PeerCastRpcClient<T: RpcTransport>`):
+    - UI controllers interact exclusively with typed methods (`get_version_info`, `get_status`, `get_channels`, `get_settings`, `set_settings`, `get_auth_token`, `get_plugins`). No raw RPC method strings are constructed in presentation components.
+    - `RpcTransport` abstraction enables `MockRpcTransport` (offline controller testing without a running daemon) and `InprocessDispatcherTransport` (direct in-memory roundtrips).
+  - Presentation View Models Decoupled from Wire Formats:
+    - `ChannelViewModel`: converts wire bitrate into formatted display bitrate (e.g. "1500 kbps"), preserving numeric rates for sorting while providing display-ready text.
+    - `StatusViewModel`: formats raw seconds into `HH:MM:SS`, maps firewall booleans to Japanese localized labels ("ポート開放中 (Open)", "ポート未開放 (Firewalled)"), and formats endpoint socket strings.
+  - Non-Idempotent Mutation Protection (REQ-084):
+    - `PeerCastRpcClient::is_mutating_method` flags state-altering calls (`setSettings`, `stopChannel`, `setChannelInfo`, `addYellowPage`, etc.). Callers are strictly barred from blindly retrying uncertain mutations on transport disconnects.
+  - Test Matrix Verified:
+    - 6 comprehensive tests passing in `test_p37b_client_adapter.rs` covering mock transport queries without a daemon, ViewModel conversions, error normalization, unsupported method capability reporting without fake success, mutation retry classification, and in-memory client-dispatcher roundtrips.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37B — Implement typed API adapter and view contracts** (Prerequisites: P37A; Requirements: REQ-081, REQ-084).
 - **P37C — Extract presentation controllers** (Prerequisites: P37B; Requirements: REQ-081, REQ-084).
+- **P37D — Create themeable pure presentation** (Prerequisites: P37C; Requirements: REQ-082, REQ-083).
