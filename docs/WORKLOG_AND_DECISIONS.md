@@ -584,8 +584,35 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
     - Stream feeds chunked at arbitrary byte boundaries (1-byte, 3-byte slices) yield identical framing without data corruption or memory leaks (Global Rule 3).
     - Clean EOF and explicit End-of-Stream (`$E`) transitions transition demuxer into `Ended` state with early-return re-entrancy protection (Global Rule 2).
 
+### [2026-10-24] Task P29 Implementation: Matroska (MKV) and WebM EBML Demuxer
+- **Requirements Covered**: REQ-051, REQ-055, REQ-056
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/mkv.rs`
+  - `crates/peercast-format/src/lib.rs`
+  - `crates/peercast-format/tests/test_p29_mkv_parser.rs`
+- **Decisions & Parity Observations**:
+  - Parity and security stop/block guard strictly satisfied: MKV parser contract established independently using EBML variable-size integer encoding (VINT, 1..=8 bytes). No cloning of FLV 9-byte header or tag assumptions (REQ-055).
+  - VINT parser supports:
+    - Standard length determination: `leading_zeros() + 1` (1..=8 bytes).
+    - Unknown/undefined size marker recognition (all data bits 1, e.g. `0x01 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF` on Segment elements) for streaming inputs.
+    - Zero first-byte rejection (`InvalidVintFirstByte`).
+  - Container-level safe-start and keyframe detection (REQ-055):
+    - Parity with PeerCast-YT `hasKeyFrame`: `SimpleBlock` (`0xA3`) examines bit 7 of the flags byte (`flags & 0x80 != 0`) to identify keyframes.
+    - `BlockGroup` (`0xA0`) identifies keyframes via the absence of `ReferenceBlock` (`0xFB`) child elements.
+  - Header snapshot generation and accumulation:
+    - Pre-cluster elements (`EBML`, `Segment` header, `SeekHead`, `Info`, `Tracks`, `Tags`, `Void`, `CRC32`) are gathered into a comprehensive `HeaderSnapshot`.
+    - When the first `Cluster` element (`0x1F 0x43 0xB6 0x75`) is reached, the accumulated snapshot is emitted with position 0, and subsequent blocks/clusters are streamed contiguously.
+  - End-to-end integration verified against real upstream fixtures:
+    - `test.mkv` (7.83 MB): parsed successfully, `HeaderSnapshot` established at pos 0, classified as "MKV" (`video/x-matroska`, `.mkv`), verified > 100 media blocks and multiple keyframes.
+    - `test.webm` (1.80 MB): parsed successfully, classified as "WEBM" (`video/webm`, `.webm`).
+  - Header replacement and epoch tracking (REQ-051):
+    - Mid-stream arrival of a new EBML element transitions state machine, bumps `current_epoch`, clears stale header elements, and generates a new `HeaderSnapshotReady` upon next cluster.
+  - Incremental streaming and budget protections (Global Rule 3):
+    - 5-byte chunked streaming verified to produce identical demux events to monolithic feeds.
+    - Oversized elements exceeding budget are safely rejected with `ElementSizeExceeded`.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P29 — Implement MKV support independently** (Prerequisites: P25; Requirements: REQ-051, REQ-055, REQ-056).
 - **P30 — Implement Ogg and decide audio-only scope** (Prerequisites: P25; Requirements: REQ-051, REQ-055, REQ-056).
+- **P31 — Implement host freshness and failure cooldown** (Prerequisites: P21; Requirements: REQ-042).
