@@ -7,6 +7,7 @@
 
 pub mod asf;
 pub mod flv;
+pub mod mkv;
 pub mod safestart;
 pub mod sniffer;
 pub mod ts;
@@ -26,6 +27,13 @@ pub use flv::{
     FlvDemuxOutput, FlvDemuxer, FlvFileHeader, FlvHeaderSnapshotBuilder, FlvMetadata,
     FlvParseError, FlvParserEvent, FlvParserPhase, FlvStreamParser, FlvTag, FlvTagHeader,
     FlvTagType, DEFAULT_MAX_FLV_TAG_SIZE, FLV_HEADER_PRELUDE_LEN,
+};
+pub use mkv::{
+    inspect_mkv_keyframe, parse_ebml_element, MkvDemuxOutput, MkvDemuxer, MkvDemuxerState,
+    MkvElement, MkvElementHeader, MkvMetadata, MkvParseError, VInt, DEFAULT_MAX_MKV_BUFFER_CAPACITY,
+    DEFAULT_MAX_MKV_ELEMENT_SIZE, ID_BLOCK, ID_BLOCK_GROUP, ID_CLUSTER, ID_DOC_TYPE,
+    ID_EBML, ID_INFO, ID_REFERENCE_BLOCK, ID_SEGMENT, ID_SIMPLE_BLOCK, ID_TIMECODE,
+    ID_TIMECODE_SCALE, ID_TRACKS,
 };
 pub use safestart::{
     inspect_flv_keyframe, inspect_ts_keyframe, SafeStartConfig, SafeStartDecision, SafeStartMode,
