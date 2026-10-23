@@ -434,7 +434,8 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
 | `test_p24_safestart.rs` | `crates/peercast-format` | 6 | 0 | PASSED |
 | `test_p25_http_playback.rs` | `crates/peercast-http` | 6 | 0 | PASSED |
 | `test_p26_http_ingest.rs` | `crates/peercast-http` | 5 | 0 | PASSED |
-| **Total** | | **109** | **0** | **ALL PASSED** |
+| `test_p27_ts_parser.rs` | `crates/peercast-format` | 5 | 0 | PASSED |
+| **Total** | | **114** | **0** | **ALL PASSED** |
 
 ---
 
@@ -526,10 +527,25 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Client cancellation and broken-pipe disconnects cleanly caught and resources freed.
   - End-to-end integration verified: simulated ffmpeg/OBS HTTP POST FLV stream feeds de-chunker, which feeds `FlvDemuxer`, successfully extracting `HeaderSnapshot` and media keyframes.
 
+### [2026-10-24] Task P27 Implementation: Independent MPEG-2 TS Demuxer
+- **Requirements Covered**: REQ-053, REQ-056
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/ts.rs`
+  - `crates/peercast-format/src/lib.rs`
+  - `crates/peercast-format/tests/test_p27_ts_parser.rs`
+- **Decisions & Parity Observations**:
+  - Implemented standard 188-byte MPEG-2 TS framing parser completely independent from FLV logic.
+  - Strict framing bounds enforced: 192-byte and 204-byte packets (e.g. BDAV or DVB-ASI with FEC) are rejected without explicit configuration, satisfying the stop/block criteria.
+  - Implemented `PatTable` and `PmtTable` section parsers extracting program mappings, PCR PID, and elementary stream types.
+  - Declared supported codec subset explicitly: H.264 video (`0x1B`), MPEG-2 video (`0x02`), AAC audio (`0x0F` ADTS / `0x11` LATM), and MP3 audio (`0x03` / `0x04`). Unsupported stream types are safely flagged rather than crashing.
+  - Normalized continuity counter on PAT and PMT packets (Station parity `bytes[3] &= 0xF0`) to build deterministic 376-byte `HeaderSnapshot`.
+  - Re-tested reconstructed `HeaderSnapshot` bytes with independent PAT/PMT parsers to confirm round-trip decodability.
+  - Verified epoch invalidation and snapshot regeneration upon PMT PID and stream configuration changes (REQ-051, REQ-053).
+  - Detected random access points via Random Access Indicator (RAI) in adaptation field on video PIDs.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P27 — Implement TS support independently** (Prerequisites: P25; Requirements: REQ-053, REQ-056). Change scope: TS parser/fixtures; separate from FLV.
 - **P28 — Implement safe-start for TS** (Prerequisites: P27, P24; Requirements: REQ-050, REQ-055).
 - **P29 — Establish internal channel ownership model** (Prerequisites: P20, P25; Requirements: REQ-020, REQ-021).
 - **P30 — Port tracker collection/filtering core** (Prerequisites: P29; Requirements: REQ-040, REQ-041).
