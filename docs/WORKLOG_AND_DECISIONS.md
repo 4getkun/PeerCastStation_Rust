@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.3.0 (Execution Phase: Tasks P01-P20 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P20 PASSED; Next: P21 — Prove controlled IPv4 interoperability)  
+> **Document Version**: 2.5.0 (Execution Phase: Tasks P01-P31 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P31 PASSED; Next: P32 — Implement named parent-selection policy)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -611,8 +611,53 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
     - 5-byte chunked streaming verified to produce identical demux events to monolithic feeds.
     - Oversized elements exceeding budget are safely rejected with `ElementSizeExceeded`.
 
+### [2026-10-24] Task P30 Implementation: Ogg Framing, Codec Scoping, and MP3 Decision
+- **Requirements Covered**: REQ-051, REQ-055, REQ-056
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/ogg.rs`
+  - `crates/peercast-format/src/mp3.rs`
+  - `crates/peercast-format/src/lib.rs`
+  - `crates/peercast-format/tests/test_p30_ogg_mp3_parser.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Supporting the Ogg container does NOT mean claiming support for every codec it can hold (REQ-056). Explicitly scoped supported codecs: Vorbis (`audio/ogg`), Opus (`audio/ogg`), and Theora (`video/ogg`). Unknown codecs (e.g. Skeleton, FLAC, Speex, Daala) return `OggParseError::UnsupportedCodec`.
+  - RFC 3533 page parser implementation:
+    - Capture pattern `OggS` (`0x4F 0x67 0x67 0x53`), version 0, header flags (continuation, BOS, EOS), 64-bit granulepos, 32-bit serial number, 32-bit sequence number, and standard CRC-32 checksum verification (`0x04C11DB7`).
+    - Lacing table reassembly with 255-byte segment spans and bounded packet assembly buffer (Global Rule 3).
+  - Codec Header Extraction and Snapshot Generation:
+    - Vorbis: gathers identification header (`\x01vorbis`), comment header (`\x03vorbis`), and setup header (`\x05vorbis`) before snapshot emission.
+    - Opus: gathers identification header (`OpusHead`) and comment header (`OpusTags`) before snapshot emission.
+    - Theora: gathers identification header (`\x80theora`), comment header (`\x81theora`), and setup header (`\x82theora`).
+  - Audio-only safe start (REQ-055): Vorbis and Opus streams emit packets immediately after header initialization without waiting for video keyframes.
+  - Chained Ogg stream support (REQ-051, RFC 3533):
+    - When an EOS page is reached, logical bitstream ends; an immediate BOS with a new serial number transitions the demuxer, bumps `current_epoch`, clears stale header state, and creates a fresh `HeaderSnapshot`.
+  - Explicit MP3 support decision:
+    - MP3 audio is supported for direct playback (`audio/mpeg`, `.mp3`) and relay without transcoding. Includes MPEG audio frame header parser (`0xFFE` / `0xFFF` sync) and ID3v2 tag skipping.
+
+### [2026-10-24] Task P31 Implementation: Host Freshness and Failure Cooldown
+- **Requirements Covered**: REQ-042 (and REQ-043)
+- **Files Added / Changed**:
+  - `crates/peercast-core/src/host_registry.rs`
+  - `crates/peercast-core/src/lib.rs`
+  - `crates/peercast-core/tests/test_p31_host_freshness_cooldown.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Single 180-second timer does NOT control unrelated concepts. Station's 180-second node age check is in `Channel` (`NodeLimit = 180000 ms`); its 180-second ignored-source setting is in `PCPSourceStream` (`ignoredTime = 180000 ms`). These are completely separate monotonic timers and configurable thresholds in the Rust port.
+  - Separation of Concerns and Invariant Preservation:
+    - Host freshness in `HostRegistry`: tracks live peer nodes per channel, records monotonic `last_seen_offset`, calculates node age, and filters stale nodes exceeding `freshness_threshold`.
+    - Failure cooldown in `EndpointCooldownTable`: tracks connection failures (timeout, refused, 404, 503) per channel or globally, and enforces `cooldown_duration`.
+    - **Crucial Invariant Tested**: Receiving a gossip packet or freshening a host in `HostRegistry` NEVER resets or clears an active failure cooldown in `EndpointCooldownTable`. Conversely, recording a failure in `EndpointCooldownTable` NEVER alters host freshness or node age in `HostRegistry`.
+  - Endpoint Identity & Session Deduplication:
+    - `EndpointIdentity`: supports channel-scoped (`pcp://{addr}/channel/{cid}`) and global host (`pcp://{addr}`) endpoints. A global failure cooldown blocks connection attempts to all channels on that host address.
+    - `HostRegistry` deduplication: keyed primarily by `(ChannelId, SessionId)`. If a peer restarts with a new session ID at the same socket address, the old session entry is evicted and replaced (`UpsertAction::ReplacedEndpoint`).
+  - Bounded Resources & Physical Memory Cleanup (REQ-042, Global Rule 3):
+    - Both `HostRegistry` and `EndpointCooldownTable` enforce configurable maximum capacities (`max_hosts`, `max_entries`).
+    - Insertion at capacity first prunes expired entries; if still full, evicts the oldest entry (FIFO/LRU on monotonic timestamps).
+    - Physical cleanup (`prune_expired()`) physically removes expired entries from internal HashMaps and indexes, ensuring zero unbounded heap growth during long running operations.
+  - Zero-sleep Deterministic Testing:
+    - All time queries operate via `CacheClock`, enabling 100% deterministic, zero-sleep fake-clock tests (`test_p31_host_freshness_cooldown.rs`, 7 tests passing).
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P30 — Implement Ogg and decide audio-only scope** (Prerequisites: P25; Requirements: REQ-051, REQ-055, REQ-056).
-- **P31 — Implement host freshness and failure cooldown** (Prerequisites: P21; Requirements: REQ-042).
+- **P32 — Implement named parent-selection policy** (Prerequisites: P31; Requirements: REQ-042, REQ-043).
+- **P33 — Implement bounded gossip forwarding** (Prerequisites: P32; Requirements: REQ-044).
+- **P34 — Implement controlled YP announcements** (Prerequisites: P33; Requirements: REQ-035, REQ-062, REQ-063).
