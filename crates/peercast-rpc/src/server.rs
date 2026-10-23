@@ -52,15 +52,21 @@ impl Default for ServentSettings {
 }
 
 /// Channel summary exposed via `getChannels`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelSummary {
     pub channel_id: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub status: String,
+    #[serde(default)]
     pub bitrate: u32,
+    #[serde(default)]
     pub mime_type: String,
+    #[serde(default)]
     pub total_relays: u32,
+    #[serde(default)]
     pub total_directs: u32,
 }
 
@@ -111,14 +117,26 @@ impl Default for StatusSnapshot {
     }
 }
 
+/// Plugin assembly version metadata (matches Station APIHost.cs:192).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PluginAssemblyInfo {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub copyright: String,
+}
+
 /// Plugin description exposed via `getPlugins`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginSummary {
     pub name: String,
+    #[serde(default)]
     pub is_usable: bool,
-    pub assembly_name: String,
-    pub version: String,
-    pub copyright: String,
+    #[serde(default)]
+    pub assembly: PluginAssemblyInfo,
 }
 
 /// Core RPC state container accessed by the dispatcher.
@@ -146,9 +164,11 @@ impl Default for RpcState {
             plugins: vec![PluginSummary {
                 name: "PeerCastCore".to_string(),
                 is_usable: true,
-                assembly_name: "peercast-core".to_string(),
-                version: "0.1.0".to_string(),
-                copyright: "GPL-3.0-or-later".to_string(),
+                assembly: PluginAssemblyInfo {
+                    name: "peercast-core".to_string(),
+                    version: "0.1.0".to_string(),
+                    copyright: "GPL-3.0-or-later".to_string(),
+                },
             }],
             user_config: HashMap::new(),
         }
@@ -397,22 +417,7 @@ impl RpcDispatcher {
 
             "getPlugins" => {
                 let st = self.state.read().await;
-                let plugins_json: Vec<Value> = st
-                    .plugins
-                    .iter()
-                    .map(|p| {
-                        json!({
-                            "name": p.name,
-                            "isUsable": p.is_usable,
-                            "assembly": {
-                                "name": p.assembly_name,
-                                "version": p.version,
-                                "copyright": p.copyright
-                            }
-                        })
-                    })
-                    .collect();
-                RpcResponse::success(id, json!(plugins_json))
+                RpcResponse::success(id, json!(st.plugins))
             }
 
             // --- Explicitly Deferred Methods (REQ-064: NO success stubs!) ---

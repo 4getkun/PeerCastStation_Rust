@@ -80,7 +80,7 @@ pub trait RpcTransport: Send + Sync {
 pub type RpcCallLog = Vec<(String, Option<Value>)>;
 
 /// Type alias for mock canned response map.
-pub type MockResponseMap = HashMap<String, Result<Value, RpcErrorObject>>;
+pub type MockResponseMap = HashMap<String, Result<Value, ClientRpcError>>;
 
 /// Mock transport for offline testing of controllers without a running daemon (REQ-081, REQ-083).
 #[derive(Debug, Default, Clone)]
@@ -100,8 +100,14 @@ impl MockRpcTransport {
         map.insert(method.to_string(), Ok(result));
     }
 
-    /// Pre-registers an error response for a method.
+    /// Pre-registers an RPC protocol error response for a method.
     pub async fn register_error(&self, method: &str, error: RpcErrorObject) {
+        let mut map = self.responses.lock().await;
+        map.insert(method.to_string(), Err(ClientRpcError::from(error)));
+    }
+
+    /// Pre-registers a client error (e.g. transport, unauthorized) for a method.
+    pub async fn register_client_error(&self, method: &str, error: ClientRpcError) {
         let mut map = self.responses.lock().await;
         map.insert(method.to_string(), Err(error));
     }
@@ -127,7 +133,7 @@ impl RpcTransport for MockRpcTransport {
         if let Some(res) = responses.get(method) {
             match res {
                 Ok(val) => Ok(val.clone()),
-                Err(err) => Err(ClientRpcError::from(err.clone())),
+                Err(err) => Err(err.clone()),
             }
         } else {
             Err(ClientRpcError::Rpc {

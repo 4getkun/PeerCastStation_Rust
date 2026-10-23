@@ -874,8 +874,39 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 6 comprehensive tests passing in `test_p37b_client_adapter.rs` covering mock transport queries without a daemon, ViewModel conversions, error normalization, unsupported method capability reporting without fake success, mutation retry classification, and in-memory client-dispatcher roundtrips.
 
+### [2026-10-24] Task P37C Implementation: Presentation Controllers with Explicit State Machines
+- **Requirements Covered**: REQ-081, REQ-084, Global Rule 2, Global Rule 3
+- **Files Added / Changed**:
+  - `crates/peercast-rpc/src/controller.rs`
+  - `crates/peercast-rpc/src/server.rs`
+  - `crates/peercast-rpc/src/client.rs`
+  - `crates/peercast-rpc/src/lib.rs`
+  - `crates/peercast-rpc/tests/test_p37c_controllers.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: 3+ boolean flags are completely eliminated in favor of typed Enum state machines (`ScreenState<T>` and `MutationState`) with sequence tokens and re-entrancy guards (Global Rule 2, REQ-084).
+  - Explicit State Machine Architecture:
+    - `ScreenState<T>`: `Initial`, `Loading { seq }`, `Loaded(T)`, `Empty`, `Error { message, code }`, `Forbidden { reason }`, `Disconnected`.
+    - `MutationState`: `Idle`, `Pending { action, seq }`, `Succeeded`, `Failed`.
+    - Early-return re-entrancy guards: duplicate mutations dispatched while `MutationState::is_pending()` immediately return `ControllerError::DuplicatePendingMutation` before any network or mutation processing occurs.
+  - Stale Read Rejection via Monotonic Sequence Tokens:
+    - Queries increment `seq_counter` (`AtomicU64`). When an asynchronous read resolves, its sequence token is verified against the latest issued token. If superseded by a newer query, the response is discarded with `ControllerError::StaleResponseIgnored` and the presentation state remains untouched.
+  - Mutation Retry Safety (REQ-084):
+    - Non-idempotent operations encountering transport drops return `ControllerError::UncertainMutationRetryForbidden`, barring automatic blind retry loops on uncertain server mutations.
+  - Wire Fidelity Parity with Station C# `APIHost.cs`:
+    - `PluginSummary` and `PluginAssemblyInfo` aligned with Station `GetPlugins()` JSON schema (`name`, `isUsable`, `assembly: { name, version, copyright }`).
+    - `ChannelSummary` fields provided with `#[serde(default)]` resilience.
+  - Test Matrix Verified:
+    - 7 comprehensive tests passing in `test_p37c_controllers.rs`:
+      1. Index screen lifecycle (`Initial` -> `Loaded`) with view model verification.
+      2. Index screen access control (`Unauthorized` -> `ScreenState::Forbidden`).
+      3. Index screen network drop (`Transport` error -> `ScreenState::Disconnected`).
+      4. Stale read rejection (`StaleResponseIgnored` verified with concurrent delayed mock transport).
+      5. Settings mutation re-entrancy guard (`DuplicatePendingMutation` on concurrent dispatch).
+      6. Uncertain mutation retry prohibition (`UncertainMutationRetryForbidden` on transport failure).
+      7. Channels controller empty vs. loaded states (`ScreenState::Empty` on zero items, `Loaded` on items).
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37C — Extract presentation controllers** (Prerequisites: P37B; Requirements: REQ-081, REQ-084).
 - **P37D — Create themeable pure presentation** (Prerequisites: P37C; Requirements: REQ-082, REQ-083).
+- **P37E — Enforce boundaries and prove redesign isolation** (Prerequisites: P37D; Requirements: REQ-080, REQ-086).
