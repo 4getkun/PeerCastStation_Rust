@@ -25,6 +25,7 @@ pub enum RoutingError {
 pub enum HttpMethod {
     Get,
     Head,
+    Post,
 }
 
 /// HTTP version.
@@ -47,6 +48,14 @@ pub enum RouteTarget {
         channel_id_hex: String,
         format: PlaylistFormat,
         extension: Option<String>,
+    },
+    /// Static / embedded web asset route (e.g. `/`, `/index.html`, `/css/tokens.css`).
+    StaticAsset {
+        path: String,
+    },
+    /// JSON-RPC 2.0 API endpoint (`/api/1` or `/api/1/peercaststation.js`).
+    RpcApi {
+        subpath: String,
     },
 }
 
@@ -91,6 +100,7 @@ impl HttpRequest {
         let method = match method_str {
             "GET" => HttpMethod::Get,
             "HEAD" => HttpMethod::Head,
+            "POST" => HttpMethod::Post,
             other => return Err(RoutingError::MethodNotAllowed(other.to_string())),
         };
 
@@ -150,6 +160,18 @@ impl HttpRequest {
 
         let target = RouteTarget::parse_path(path_part)?;
 
+        // Enforce method constraints per target route (REQ-060)
+        match target {
+            RouteTarget::Stream { .. } | RouteTarget::Playlist { .. } | RouteTarget::StaticAsset { .. } => {
+                if method != HttpMethod::Get && method != HttpMethod::Head {
+                    return Err(RoutingError::MethodNotAllowed(method_str.to_string()));
+                }
+            }
+            RouteTarget::RpcApi { .. } => {
+                // RPC API supports GET and POST
+            }
+        }
+
         Ok(HttpRequest {
             method,
             version,
@@ -184,6 +206,26 @@ impl RouteTarget {
                 channel_id_hex,
                 format,
                 extension: ext,
+            })
+        } else if trimmed == "api/1" || trimmed.starts_with("api/1/") {
+            Ok(RouteTarget::RpcApi {
+                subpath: trimmed.strip_prefix("api/1").unwrap_or("").to_string(),
+            })
+        } else if trimmed.is_empty()
+            || trimmed.ends_with(".html")
+            || trimmed.ends_with(".css")
+            || trimmed.ends_with(".js")
+            || trimmed.ends_with(".json")
+            || trimmed.ends_with(".svg")
+            || trimmed.ends_with(".png")
+            || trimmed.ends_with(".ico")
+            || trimmed.starts_with("html/")
+            || trimmed.starts_with("ui/")
+            || trimmed.starts_with("css/")
+            || trimmed.starts_with("fixtures/")
+        {
+            Ok(RouteTarget::StaticAsset {
+                path: format!("/{}", trimmed),
             })
         } else {
             Err(RoutingError::NotFound(path.to_string()))

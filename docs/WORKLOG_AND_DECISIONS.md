@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.8.0 (Execution Phase: Tasks P01-P34 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P34 PASSED; Next: P35 — Implement bounded directory parsing)  
+> **Document Version**: 2.11.0 (Execution Phase: Tasks P01-P39 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P39 PASSED; Next: P40 — Implement persistence and lifecycle controls)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -1017,8 +1017,37 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 9 comprehensive tests passing in `test_p38_secure_management.rs`: loopback default access, public relay listener mutation blocking, explicit authenticated remote admin, CSRF/origin protection, request framing limits, notification 204 response, GET version info, secret redaction, and SSRF destination validation.
 
+### [2026-10-24] Task P39 Implementation: Audit Licenses and Integrate Embedded UI
+- **Requirements Covered**: REQ-066
+- **Files Added / Changed**:
+  - `docs/LICENSE_AUDIT.md`
+  - `crates/peercast-http/src/embedded_assets.rs`
+  - `crates/peercast-http/src/router.rs`
+  - `crates/peercast-http/src/lib.rs`
+  - `crates/peercast-http/tests/test_p39_embedded_ui.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Reuse and license scope fully audited and recorded before packaging; zero unvetted third-party assets redistributed (REQ-066).
+  - License Audit & Asset Provenance:
+    - `docs/LICENSE_AUDIT.md` created, documenting project licensing (GPL-3.0-or-later, MIT, Apache-2.0), origin references to upstream PeerCastStation (kumaryu) and PeerCast-YT (plonk), and an asset-by-asset provenance matrix for all HTML, CSS, JavaScript, and JSON fixtures.
+  - Zero Remote CDN Dependencies Guarantee:
+    - Verified that all embedded HTML, CSS, and JS reference exclusively local relative URIs.
+    - Added HTTP Content-Security-Policy (`default-src 'self'; script-src 'self' 'unsafe-inline'; ...`) preventing any remote asset resolution.
+    - Verified offline capability without network access.
+  - Embedded Asset Serving & Cache Efficiency:
+    - `crates/peercast-http/src/embedded_assets.rs` embeds static web assets directly into the binary compilation via compile-time bytes.
+    - Deterministic SHA-256 ETags generated per asset.
+    - `build_asset_http_response` supports conditional HTTP `If-None-Match`, returning `304 Not Modified` with zero body and matching ETag.
+    - Standard security headers added: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`.
+  - HTTP Router Method Constraints:
+    - Expanded `peercast-http` router to support `RouteTarget::StaticAsset` and `RouteTarget::RpcApi` alongside streaming routes.
+    - Added strict HTTP method enforcement per target: `/stream` and `/pls` routes strictly enforce `GET`/`HEAD` (rejecting `POST` with `405 MethodNotAllowed` per REQ-060).
+    - `/api/1` endpoints accept `POST` and `GET`.
+  - Test Matrix Verified:
+    - 6 comprehensive tests passing in `test_p39_embedded_ui.rs`: embedded assets serving and MIME types, conditional GET 304 Not Modified, security headers and CSP, zero remote asset dependencies, static router integration with method constraints, and license audit completeness.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P39 — Clear and package web assets** (Prerequisites: P38, P37F; Requirements: REQ-066).
 - **P40 — Implement persistence and lifecycle controls** (Prerequisites: P38; Requirements: REQ-014, REQ-067).
+- **P41 — Validate target packaging** (Prerequisites: P39, P40; Requirements: REQ-066, REQ-067, REQ-070).
+- **P42 — Run parser fuzz and fault campaigns** (Prerequisites: P08, P20, P26..P30, P35; Requirements: REQ-025, REQ-027, REQ-056, REQ-070).

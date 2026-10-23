@@ -7,10 +7,15 @@
 //!   blindly to HTTP/1.0 or MMS streams.
 //! - Global Rule 3: bounded queue buffers and prompt subscriber resource release upon disconnect.
 
+pub mod embedded_assets;
 pub mod ingest;
 pub mod playlist;
 pub mod router;
 pub mod streamer;
+
+pub use embedded_assets::{
+    build_asset_http_response, get_embedded_asset, AssetHttpResponse, EmbeddedAsset,
+};
 
 pub use ingest::{
     parse_ingest_handshake, read_chunked_stream, HttpPushConfig, HttpPushIngestListener,
