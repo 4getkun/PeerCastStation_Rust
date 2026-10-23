@@ -6,12 +6,17 @@
 //! - Global Rule 3: Bounded memory buffers and non-consuming replay guarantees.
 
 pub mod flv;
+pub mod safestart;
 pub mod sniffer;
 
 pub use flv::{
     FlvDemuxOutput, FlvDemuxer, FlvFileHeader, FlvHeaderSnapshotBuilder, FlvMetadata,
     FlvParseError, FlvParserEvent, FlvParserPhase, FlvStreamParser, FlvTag, FlvTagHeader,
     FlvTagType, DEFAULT_MAX_FLV_TAG_SIZE, FLV_HEADER_PRELUDE_LEN,
+};
+pub use safestart::{
+    inspect_flv_keyframe, SafeStartConfig, SafeStartDecision, SafeStartMode, SafeStartPhase,
+    SafeStartSelector, DEFAULT_SAFE_START_TIMEOUT,
 };
 pub use sniffer::{
     detect_container, ContainerInfo, ContainerType, SniffBuffer, SniffError, SniffResult,
