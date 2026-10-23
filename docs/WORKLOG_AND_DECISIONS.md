@@ -433,7 +433,8 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
 | `test_p23_flv_parser.rs` | `crates/peercast-format` | 9 | 0 | PASSED |
 | `test_p24_safestart.rs` | `crates/peercast-format` | 6 | 0 | PASSED |
 | `test_p25_http_playback.rs` | `crates/peercast-http` | 6 | 0 | PASSED |
-| **Total** | | **104** | **0** | **ALL PASSED** |
+| `test_p26_http_ingest.rs` | `crates/peercast-http` | 5 | 0 | PASSED |
+| **Total** | | **109** | **0** | **ALL PASSED** |
 
 ---
 
@@ -510,10 +511,24 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Real TCP loopback test streams chunked FLV to client, which de-chunks and decodes cleanly via `FlvStreamParser`.
   - Client disconnect terminates streaming loop promptly and releases subscriber resources.
 
+### [2026-10-24] Task P26 Implementation: First Ingest Endpoint
+- **Requirements Covered**: REQ-061, REQ-065
+- **Files Added / Changed**:
+  - `crates/peercast-http/src/ingest.rs`
+  - `crates/peercast-http/src/lib.rs`
+  - `crates/peercast-http/tests/test_p26_http_ingest.rs`
+- **Decisions & Parity Observations**:
+  - Parity contract adhered to Station's `HTTPPushSourceStream`: opens a dedicated listener at its configured source URI and accepts HTTP POST. A universal `/push/{id}` route is explicitly NOT invented as standard upstream behavior (REQ-061).
+  - Implemented `HttpPushIngestListener` and incremental de-chunking stream decoder `read_chunked_stream` enforcing max header (8 KiB) and max chunk (16 MiB) budgets.
+  - Authorized/unauthorized access control tested: bearer token header and query parameter (?auth=...) authenticated; missing or wrong token rejected with 401 Unauthorized.
+  - Non-POST methods (GET, PUT) rejected with 405 Method Not Allowed.
+  - Port binding conflict handling proven: conflicting bind surfaces `IngestError::BindError` without panicking.
+  - Client cancellation and broken-pipe disconnects cleanly caught and resources freed.
+  - End-to-end integration verified: simulated ffmpeg/OBS HTTP POST FLV stream feeds de-chunker, which feeds `FlvDemuxer`, successfully extracting `HeaderSnapshot` and media keyframes.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P26 — Define and implement first ingest endpoint** (Prerequisites: P25; Requirements: REQ-061, REQ-065). Change scope: explicitly selected ingest listener contract (HTTP POST ingest, authorization, binding).
 - **P27 — Implement TS support independently** (Prerequisites: P25; Requirements: REQ-053, REQ-056). Change scope: TS parser/fixtures; separate from FLV.
 - **P28 — Implement safe-start for TS** (Prerequisites: P27, P24; Requirements: REQ-050, REQ-055).
 - **P29 — Establish internal channel ownership model** (Prerequisites: P20, P25; Requirements: REQ-020, REQ-021).
