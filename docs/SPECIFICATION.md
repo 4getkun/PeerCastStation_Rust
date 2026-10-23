@@ -1,234 +1,236 @@
-# PeerCastStation Rust Port: Architectural & Technical Specification
+# PeerCastStation Rust Port: Architectural Specification & Implementation Blueprint
 
-> **Document Version**: 1.1.0 (Refined after Upstream Deep-Dive Review)  
-> **Status**: APPROVED / ACTIVE SPECIFICATION & IMPLEMENTATION BLUEPRINT  
+> **Document Version**: 1.2.0 (Post Second Deep-Dive Review & Rigorous Refinement)  
+> **Status**: APPROVED / ACTIVE SPECIFICATION & IMPLEMENTATION MASTER PLAN  
 > **Target Upstream Reference**: [kumaryu/peercaststation (GitHub)](https://github.com/kumaryu/peercaststation)  
 > **Author**: Antigravity Engineering Agent  
 > **Target Ecosystem**: Rust 2021/2024 Edition, Tokio Multi-Threaded Async Runtime  
 
 ---
 
-## 1. Executive Summary & Goals
+## 1. Executive Summary & Core Mission
 
 ### 1.1 Objective
-This document outlines the complete architectural design, wire-level protocol specification, and phased implementation blueprint for porting **PeerCastStation**—the definitive C#/.NET implementation of the PeerCast P2P streaming protocol—to **Rust**.
+This document provides the definitive architectural specification and actionable implementation blueprint for developing **PeerCastStation_Rust**, a complete, memory-safe, cross-platform Rust port of the standard PeerCast servent (originally authored in C#/.NET by kumaryu).
 
-### 1.2 Core Design Principles
-1. **100% Binary & Wire Interoperability**: Flawlessly communicate with existing PeerCast nodes (PeerCast v0.1216+, PeerCastStation C#, PeerCast-IM), Yellow Pages (YP: SP, TP, etc.), and media players (VLC, mpv, MPC-HC, WMP).
-2. **Two-Stage Handshake Conformance**: Strictly replicate the authentic PeerCast connection bootstrap: HTTP-based capability negotiation followed immediately by binary Atom exchanges.
-3. **Zero-Copy Fan-Out & Memory Safety**: Leverage Rust's ownership model and `bytes::Bytes` to distribute media chunks to hundreds of downstream relays/listeners with zero buffer copying ($O(1)$ fan-out).
-4. **Deterministic Resource Bounds (Longevity by Design)**: Enforce strict bounded queues, ring buffers, and node caches. Eliminate unbounded growth, memory leaks, and socket descriptor exhaustion for continuous 24/7/365 uptime (adhering to Rule #3).
-5. **Strict State Machine Formalization**: All asynchronous connections, channel lifecycles, and relay handshakes are modeled with explicit Rust `enum` state machines with re-entrancy protection (Rule #2).
-6. **Single Portable Native Binary**: Headless daemon with embedded Web UI assets (`rust-embed`) and JSON-RPC 2.0 API.
+### 1.2 Non-Negotiable Engineering Principles
+1. **100% Binary & Wire Protocol Conformity**: Seamless interoperability with existing PeerCast nodes (PeerCast v0.1216+, PeerCastStation C#, PeerCast-IM), Yellow Pages (YP), and media players (VLC, mpv, MPC-HC, WMP).
+2. **Authentic Two-Stage Handshake**: Replicate the exact PeerCast connection sequence: HTTP-based handshake (`GET /channel/...`) followed by immediate protocol upgrade to binary Atoms.
+3. **Deterministic ChannelID Derivation**: Reproduce the cryptographic algorithm (`SHA512(BCID) + Network + Metadata -> MD5`) to ensure identical Channel IDs across the network.
+4. **Zero-Copy Fan-Out**: Distribute streaming packets using atomic reference-counted slices (`bytes::Bytes`) to ensure $O(1)$ packet dispatch without heap reallocation.
+5. **Deterministic Resource Bounds (Rule #3)**: Strictly cap all buffers (8 MB / 3-second sliding ring buffer), packet queues (5-second drop guard), and node caches (180-second TTL) to guarantee indefinite 24/7/365 uptime.
+6. **Strict State Machine Modeling (Rule #2)**: Eliminate combinatorial booleans in favor of explicit Rust `enum` state machines with re-entrancy protection.
+7. **Single Self-Contained Native Executable**: Headless daemon, embedded Web UI assets (`rust-embed`), and JSON-RPC 2.0 API compiled into one static binary.
 
 ---
 
-## 2. Upstream C# Codebase Analysis & Crate Decomposition
+## 2. Upstream C# Analysis & Crate Decomposition
 
-Based on deep source inspection of `kumaryu/peercaststation`, the upstream codebase is cleanly factored into functional areas mapped directly to Rust workspace crates:
-
-| Upstream C# Project & Key Files | Primary Responsibilities | Target Rust Crate |
+| Upstream C# Component | Key Source Files | Target Rust Crate |
 | :--- | :--- | :--- |
-| `PeerCastStation.Core`<br>(`Atom.cs`, `Ringbuffer.cs`, `Content.cs`, `Host.cs`, `Channel.cs`, `AccessController.cs`) | Atom FourCC (`ID4`), Atom serialization, bounded `ContentRingBuffer`, node descriptors, channel manager, bandwidth monitoring | `peercast-core` |
-| `PeerCastStation.PCP`<br>(`PCPSourceStream.cs`, `PCPOutputStream.cs`, `PCPYellowPageClient.cs`, `PCPVersion.cs`) | HTTP initial handshake (`GET /channel/...`), PCP Atom handshake (`helo`/`oleh`), active ping probe, gossip broadcast (`bcst`), relay flow control | `peercast-pcp` |
-| `PeerCastStation.HTTP`<br>(`HTTPOutputStream.cs`, `HTTPSourceStream.cs`, `PlayList.cs`, `HTTPLiveStreamingSegmenter.cs`) | Player HTTP streaming (`/stream/{id}`), playlist generation (`.pls`, `.m3u`, `.asx`), HTTP Push ingest (OBS/ffmpeg), HLS TS chunker | `peercast-http` |
-| `PeerCastStation.FLV`, `.TS`, `.ASF`, `.MKV`<br>(`FLVContentBuffer.cs`, `TSContentReader.cs`, `FLVFileParser.cs`) | Media container inspection, codec initialization header caching (FLV sequence header, TS PAT/PMT, ASF header objects) | `peercast-format` |
-| `PeerCastStation.PCP` + `PeerCastStation.UI.HTTP`<br>(`PCPYellowPageClient.cs`, `YPChannelsHost.cs`) | Yellow Page directory integration: HTTP `index.txt` parser/query, PCP YP announcements (`PCP_ROOT`), heartbeats | `peercast-yp` |
-| `PeerCastStation.Core` + `PeerCastStation.App`<br>(`PeerCast.cs`, `PortMapperPlugin.cs`, `ChannelCleaner.cs`) | Servent orchestration, relay channel vs broadcast channel, UPnP / NAT-PMP port mapping, channel auto-cleaner | `peercast-servent` |
-| `PeerCastStation.UI.HTTP`<br>(`APIHost.cs`, `JSONRPC.cs`, `html/` static assets) | JSON-RPC 2.0 API, embedded web administration interface | `peercast-rpc` + `peercast-web` |
-| `PecaStationd` / `PeerCastStation.App` | CLI entry point, configuration file persistence (`settings.json`), graceful shutdown | `peercast-app` (binary) |
+| **Core Primitives & Buffers** | `Atom.cs`, `Ringbuffer.cs`, `Content.cs`, `Host.cs`, `Channel.cs`, `AccessController.cs` | `crates/peercast-core` |
+| **PCP Protocol & Handshakes** | `PCPSourceStream.cs`, `PCPOutputStream.cs`, `PCPVersion.cs` | `crates/peercast-pcp` |
+| **Media Framing & Headers** | `FLVContentBuffer.cs`, `TSContentReader.cs`, `FLVFileParser.cs`, `FLVToMPEG2TS.cs` | `crates/peercast-format` |
+| **HTTP Player & Ingest** | `HTTPOutputStream.cs`, `HTTPSourceStream.cs`, `PlayList.cs`, `HTTPLiveStreamingSegmenter.cs` | `crates/peercast-http` |
+| **Yellow Page Integration** | `PCPYellowPageClient.cs`, `YPChannelsHost.cs` | `crates/peercast-yp` |
+| **Servent & Channel Manager** | `PeerCast.cs`, `BroadcastChannel.cs`, `RelayChannel.cs`, `HostTree.cs`, `ChannelCleaner.cs` | `crates/peercast-servent` |
+| **RPC & Web Interface** | `APIHost.cs`, `JSONRPC.cs`, `html/` static assets | `crates/peercast-rpc` + `crates/peercast-web` |
+| **Daemon Entry Point** | `PecaStationd`, `PeerCastStation.App` | `crates/peercast-app` (binary) |
 
 ---
 
-## 3. Rust Workspace Architecture
+## 3. Wire Protocol & Algorithmic Specifications
+
+### 3.1 Two-Stage Connection Bootstrap
+
+All relay connections adhere to this exact sequence:
 
 ```mermaid
-graph TD
-    App["peercast-app (CLI Daemon Binary)"]
-    Servent["peercast-servent (Node & Channel Orchestrator)"]
-    RPC["peercast-rpc (JSON-RPC 2.0 Engine)"]
-    Web["peercast-web (Embedded Web UI Assets)"]
-    HTTP["peercast-http (HTTP Streaming & Ingest Server)"]
-    PCP["peercast-pcp (PeerCast Protocol Engine)"]
-    YP["peercast-yp (Yellow Page Client & Indexer)"]
-    Format["peercast-format (Container Sniffers & Header Cache)"]
-    Core["peercast-core (Primitives, Atom, Bounded Ringbuffer)"]
+sequenceDiagram
+    participant Downstream as Downstream Relay / Viewer
+    participant Upstream as Upstream Servent Node
 
-    App --> Servent
-    App --> RPC
-    App --> Web
-    Servent --> HTTP
-    Servent --> PCP
-    Servent --> YP
-    Servent --> Format
-    Servent --> Core
-    PCP --> Core
-    HTTP --> Core
-    YP --> Core
-    Format --> Core
-    RPC --> Servent
+    Note over Downstream,Upstream: Stage 1: HTTP Handshake
+    Downstream->>Upstream: GET /channel/{ChannelID_Hex32} HTTP/1.0\r\nx-peercast-pcp: 1\r\nx-peercast-pos: {Pos}\r\n\r\n
+    alt Relay Accepted
+        Upstream-->>Downstream: HTTP/1.0 200 OK\r\n\r\n
+        Note over Downstream,Upstream: Stage 2: Binary Atom Protocol Switch
+        Downstream->>Upstream: Atom(PCP_HELO: agnt, sid, port/ping, ver)
+        Upstream-->>Downstream: Atom(PCP_OLEH: rip, agnt, sid, ver)
+        opt Active Ping Probe (if 'ping' present)
+            Upstream->>Downstream: Secondary TCP connect -> Atom(PCP_CONNECT) + Atom(PCP_HELO)
+            Downstream-->>Upstream: Atom(PCP_OLEH) with matching SessionID
+            Note over Upstream: Port verified OPEN (IsFirewalled = false)
+        end
+        Upstream-->>Downstream: Atom(PCP_CHAN: head [Codec Init Header])
+        loop Continuous Stream Delivery
+            Upstream-->>Downstream: Atom(PCP_CHAN: pkt [data, pos, cont])
+        end
+    else Relay Full (503)
+        Upstream-->>Downstream: HTTP/1.0 503 Service Unavailable\r\n\r\n
+        Upstream-->>Downstream: Atom(PCP_HOST: alternative candidate nodes)
+        Note over Downstream: Downstream closes socket and tries candidates
+    else Channel Off-Air (404)
+        Upstream-->>Downstream: HTTP/1.0 404 Not Found\r\n\r\n
+    end
+```
+
+### 3.2 Deterministic ChannelID Generation Algorithm
+In PeerCast, a broadcast's ChannelID is not random; it is deterministically derived from broadcast metadata so viewers can reconnect to identical channel identities:
+
+$$\text{BCID\_Hash} = \text{SHA512}(\text{BroadcastID})$$
+$$\text{Buffer} = [\text{NetworkType if } \neq \text{IPv4}] \parallel \text{BCID\_Hash} \parallel \text{ChannelName} \parallel \text{Genre} \parallel \text{SourceURL}$$
+$$\text{ChannelID} = \text{MD5}(\text{Buffer}) \quad (\text{16 bytes, formatted as UUID/GUID})$$
+
+### 3.3 Active Ping Probe (Port Reachability Test)
+1. Downstream advertises `ping: port` in its `helo` Atom if its WAN reachability is unknown.
+2. Upstream establishes a secondary TCP connection to downstream's IP on the advertised `ping` port within 2,000 ms.
+3. Upstream sends `PCP_CONNECT` (`pcnt`) followed by `PCP_HELO`.
+4. Downstream replies with `PCP_OLEH` containing its `SessionID`.
+5. If the `SessionID` matches, upstream flags downstream as `Firewalled = false` (Port: Open), enabling it to receive child relays.
+
+### 3.4 Gossip Protocol & Routing Tree (`bcst` / `host`)
+- **Broadcast Packets (`bcst`)**: Propagate metadata and control signals across the relay tree:
+  - `ttl`: Time-To-Live (decremented at each hop; dropped when 0).
+  - `hops`: Hop counter (incremented at each relay).
+  - `from`: Originating SessionID.
+  - `dest`: Target SessionID (or broadcast target).
+  - `grp`: `BroadcastGroup` flags (`1 = Root/YP`, `2 = Trackers/Upstream`, `4 = Relays/Downstream`).
+- **Node Expiration (Rule #3)**: Nodes in `Channel.nodes` are pruned if no update is received for **180 seconds** (`NodeLimit = 180,000 ms`).
+
+### 3.5 Yellow Page (YP) Protocol & Lifecycle
+- **PCP YP Announce**:
+  1. Broadcaster connects to YP via TCP (`pcp://yp.peercast.org:7144`).
+  2. Sends `helo` <-> receives `oleh`.
+  3. Sends `chan` (ChannelID, BCID, Name, Genre, Bitrate, URL, etc.).
+  4. Sends `host` (ChannelID, SessionID, GlobalIP, Port, NumListeners, NumRelays, Uptime, OldPos, NewPos, HostFlags1: `Tracker | Relay | Direct | Receiving`).
+  5. **Heartbeat**: Updates `host` stats every **30 seconds** (`UpdateTimeSpan = 30s`).
+  6. **Reconnection Backoff**: On disconnect, retries with exponential backoff starting at 1,000 ms up to a maximum of 30,000 ms:
+     $$\text{retry\_wait} = \min(\text{retry\_wait} \times 1.5, 30000 \text{ ms})$$
+- **HTTP YP Index Query**: Downloads and parses `index.txt`, matching the `<>` delimited format:
+  `Name<>ID(Hex32)<>TIP<>URL<>Genre<>Desc<>Listeners<>Relays<>Bitrate<>Type<>Comment<>Track<>Album<>Creator`
+
+---
+
+## 4. Media Pipeline & Codec Header Synthesis
+
+### 4.1 Late-Joiner Problem & Header Caching
+When a client joins mid-stream, it cannot decode audio/video without initial codec parameter sets.
+`peercast-format` parses incoming bitstreams to construct and cache a consolidated `ContentHeader`:
+
+- **FLV**: Captures 9-byte FLV header + AMF0 `onMetaData` + AVC Sequence Header (SPS/PPS) + AAC AudioSpecificConfig.
+- **MPEG-TS**: Captures PAT (PID 0) and PMT tables, updating them continuously.
+- **ASF/WMV**: Captures the complete 50-byte+ ASF Header Object.
+
+### 4.2 Playback Fan-Out & Pipeline Flow
+
+```mermaid
+graph LR
+    Source["ISourceStream (PCP Relay / HTTP Push)"]
+    Sniffer["peercast-format (Header Sniffer)"]
+    RingBuf["ContentRingBuffer (3s / 8MB Window)"]
+    SinkManager["Channel Output Dispatcher"]
+    PCPOut["PCPOutputStream (Downstream Relays)"]
+    HTTPOut["HTTPOutputStream (VLC / mpv Players)"]
+
+    Source --> Sniffer
+    Sniffer -- "Extracted ContentHeader" --> RingBuf
+    Sniffer -- "Media Packets (Bytes)" --> RingBuf
+    RingBuf --> SinkManager
+    SinkManager -- "Header first, then live Bytes" --> PCPOut
+    SinkManager -- "Header first, then Chunked HTTP" --> HTTPOut
 ```
 
 ---
 
-## 4. Deep-Dive Wire Protocol Specifications
+## 5. Concurrency Architecture & Trait Blueprint
 
-### 4.1 Two-Stage PCP Connection Handshake
+### 5.1 Actor Model without Mutex Contention
+- Reader and writer loops communicate via `tokio::sync::mpsc` bounded channels.
+- Media packets use `bytes::Bytes` for zero-copy sharing across all downstream channels.
 
-A critical finding from `PCPSourceStream.cs` and `PCPOutputStream.cs` is that PeerCast relay connections do NOT begin with raw Atoms. They utilize a **two-stage handshake**:
-
-#### Stage 1: HTTP Relay Request & Response
-The downstream client connects via TCP to the upstream node and sends an HTTP/1.0 request:
-```http
-GET /channel/{ChannelID_Hex32} HTTP/1.0\r\n
-Host: {RemoteHost}:{RemotePort}\r\n
-User-Agent: PeerCastStation-Rust/1.0.0\r\n
-x-peercast-pcp: 1\r\n
-x-peercast-pos: {CurrentStreamPosition}\r\n
-\r\n
-```
-
-**Upstream Response Codes**:
-- `HTTP/1.0 200 OK`: Upstream accepts the relay connection. The socket immediately switches to binary PCP Atom transmission.
-- `HTTP/1.0 503 Service Unavailable`: Upstream relay slots are full (`RelayFull`). Upstream sends a list of alternative candidate nodes (`PCP_HOST` atoms) and closes the socket.
-- `HTTP/1.0 404 Not Found`: Channel is off-air. Client terminates connection attempts.
-
-#### Stage 2: Binary Atom Handshake & Active Ping Probe
-Once `200 OK` (or `503`) is received, the stream transitions seamlessly to binary Atoms:
-1. Downstream sends `helo` (containing `agnt`, `sid`, `port` or `ping`, `ver`).
-2. Upstream responds with `oleh` (containing `rip` [downstream's observed global IP], `agnt`, `sid`, `ver`).
-3. **Active Port Probe (Ping Probe)**:
-   - If downstream provided `ping` (indicating an unknown port status), upstream opens a secondary TCP connection back to downstream's IP on the advertised ping port.
-   - Upstream sends `pcnt` (PCP_CONNECT) followed by `helo`. Downstream responds with `oleh`.
-   - If `SessionID` matches, upstream confirms downstream's port is reachable (`Firewalled = false`), allowing downstream to serve as an active relay.
-4. Normal streaming begins: upstream transmits `head` (codec header), followed by continuous `data` (media chunks) and periodic `bcst` / `host` gossip.
-
-### 4.2 Atom Binary Wire Format
-
-```text
- 0                   1                   2                   3
- 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                       Name (4 ASCII Bytes)                    |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|C|                       Length or Child Count                 |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                       Value Bytes (if C == 0)                 |
-|                       or Child Atoms (if C == 1)              |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-```
-
-- **Bit 31 (MSB, `0x8000_0000`) = 0**: Leaf Atom. Lower 31 bits = payload byte length.
-- **Bit 31 (MSB, `0x8000_0000`) = 1**: Container Atom. Lower 31 bits = count of direct child atoms.
-- **Resource Limits (Rule #3)**:
-  - Max child count: `1024` child atoms per container.
-  - Max leaf length: `16 MB` per Atom.
-
-### 4.3 Full Atom Dictionary
+### 5.2 Core Rust Trait Signatures
 
 ```rust
-// Core FourCC Tag Identifiers
-pub const PCP_HELO: ID4 = ID4(*b"helo");
-pub const PCP_OLEH: ID4 = ID4(*b"oleh");
-pub const PCP_OK:   ID4 = ID4(*b"ok  ");
-pub const PCP_QUIT: ID4 = ID4(*b"quit");
-pub const PCP_CHAN: ID4 = ID4(*b"chan");
-pub const PCP_BCST: ID4 = ID4(*b"bcst");
-pub const PCP_HOST: ID4 = ID4(*b"host");
-pub const PCP_ROOT: ID4 = ID4(*b"root");
-pub const PCP_CONNECT: ID4 = ID4(*b"pcnt");
+// In peercast-core / peercast-pcp:
 
-// Channel & Packet Sub-Atoms
-pub const PCP_CHAN_ID:   ID4 = ID4(*b"id  "); // 16-byte Channel GUID
-pub const PCP_CHAN_BCID: ID4 = ID4(*b"bcid"); // 16-byte Broadcast GUID
-pub const PCP_CHAN_PKT:  ID4 = ID4(*b"pkt "); // Packet container
-pub const PCP_CHAN_POS:  ID4 = ID4(*b"pos "); // Stream byte position
-pub const PCP_CHAN_DATA: ID4 = ID4(*b"data"); // Raw media chunk
-pub const PCP_CHAN_HEAD: ID4 = ID4(*b"head"); // Codec init header
-pub const PCP_CHAN_CONT: ID4 = ID4(*b"cont"); // Continuation bitmask
-pub const PCP_CHAN_INFO: ID4 = ID4(*b"info"); // Channel metadata container
+#[async_trait::async_trait]
+pub trait SourceStream: Send + Sync {
+    /// Runs the ingest loop until completion, disconnect, or error.
+    async fn run(&mut self) -> Result<StopReason, StreamError>;
+    /// Sends an outgoing Atom (e.g. host announcement, gossip ping) upstream.
+    async fn post(&mut self, from: Option<&Host>, packet: Atom) -> Result<(), StreamError>;
+    /// Retrieves current connection statistics.
+    fn connection_info(&self) -> ConnectionInfo;
+}
+
+#[async_trait::async_trait]
+pub trait OutputStream: Send + Sync {
+    /// Enqueues a channel broadcast message or content packet to the downstream client.
+    async fn enqueue(&mut self, message: ChannelMessage) -> Result<(), SendError>;
+    /// Retrieves current transmission stats (bitrate, sent position).
+    fn connection_info(&self) -> ConnectionInfo;
+}
+
+#[async_trait::async_trait]
+pub trait YellowPageClient: Send + Sync {
+    /// Starts background announcement loop for the given channel.
+    async fn announce_channel(&self, channel: Arc<Channel>) -> Result<(), YPError>;
+    /// Queries the directory for available channels.
+    async fn list_channels(&self) -> Result<Vec<ChannelInfo>, YPError>;
+}
 ```
 
----
-
-## 5. Media Pipeline & Header Caching
-
-### 5.1 The Late-Joiner Header Problem
-In live streaming, clients connecting mid-stream cannot decode H.264/AAC or MPEG-TS without stream headers (SPS/PPS, audio config, PAT/PMT).
-Upstream solves this via `FLVContentBuffer` and `TSContentReader`.
-
-### 5.2 Rust Media Header Cache Architecture (`peercast-format`)
-1. **Container Sniffing**: Inspects the first 16 bytes of the stream to identify format:
-   - `46 4C 56 01` -> FLV v1
-   - `47` every 188 bytes -> MPEG-TS
-   - `30 26 B2 75` -> ASF/WMV GUID
-   - `1A 45 DF A3` -> Matroska/WebM
-   - `4F 67 67 53` -> OGG
-2. **Codec Configuration Caching**:
-   - For **FLV**: Extracts AMF0 `onMetaData`, AVC Sequence Header (SPS/PPS), and AAC AudioSpecificConfig. Synthesizes a consolidated `ContentHeader`.
-   - For **MPEG-TS**: Extracts and continuously updates PAT (PID 0) and PMT tables.
-   - For **ASF**: Captures the complete Header Object.
-3. **Immediate Replay**: When a new downstream relay or player connects, `peercast-servent` immediately transmits the cached `ContentHeader` before any live `ContentBody` chunks.
+### 5.3 Flow Control & Queue Overflow Guard (Rule #3)
+- Downstream queues monitor delay:
+  ```rust
+  if packet_timestamp - next_packet_timestamp > Duration::from_millis(5000) {
+      // Lag exceeds 5 seconds: trigger Overflow and drop slow downstream client
+      return Err(SendError::Overflow);
+  }
+  ```
 
 ---
 
-## 6. HTTP Streaming & Player Interoperability
+## 6. Phased Implementation Roadmap & Deliverables
 
-### 6.1 Endpoints
-- `/stream/{channel_id}`: Continuous HTTP chunked media stream (`Transfer-Encoding: chunked`).
-- `/pls/{channel_id}`: PLS playlist file.
-- `/pls/{channel_id}.m3u` / `/stream/{channel_id}.m3u`: M3U playlist file.
-- `/pls/{channel_id}.asx`: ASX playlist file (for WMP).
-- `/hls/{channel_id}/playlist.m3u8`: HLS playlist for mobile browsers.
+### Phase 1: Core Primitives & Wire Codec (`peercast-core`)
+- [ ] Root `Cargo.toml` with workspace configuration.
+- [ ] `id4.rs`: FourCC identifier `ID4([u8; 4])` with endian-safe comparisons, ASCII formatting, and standard constants (`PCP_HELO`, `PCP_CHAN`, etc.).
+- [ ] `atom.rs`: `Atom` enum (`Leaf { name, value: Bytes }` / `Container { name, children: Vec<Atom> }`) with recursive binary parser/serializer.
+  - Enforce bounds: `max_children <= 1024`, `max_leaf <= 16 MB`.
+- [ ] `content.rs`: Streaming `Content` packet (`stream_id`, `pos`, `timestamp`, `cont_flags`, `data: Bytes`, `serial`).
+- [ ] `ringbuffer.rs`: `ContentRingBuffer` with bounded memory capacity (8 MB) and sliding time window (3 seconds).
+- [ ] `host.rs`: Node descriptors (`Host`, `HostFlags1`).
+- [ ] Unit tests matching upstream `test_core_atom.rb` (100% round-trip parity).
 
-### 6.2 Auto-Relay on Demand (`RequestChannel`)
-When a local player requests `/stream/{channel_id}` or `/pls/{channel_id}`:
-1. If the channel is already active, stream output begins immediately.
-2. If inactive, `peercast-servent` automatically initiates tracker lookup via Yellow Pages (or `tip` URL query parameter) and starts relaying in the background.
-3. The HTTP handler awaits `channel.wait_for_ready_header(timeout = 10s)`. Once the header is primed, streaming starts with zero user intervention.
+### Phase 2: PCP Protocol & Two-Stage Handshake (`peercast-pcp`)
+- [ ] HTTP-to-Atom handshake state machine (`HttpHandshaking -> PcpHandshaking -> Established`).
+- [ ] `tokio_util::codec` encoder/decoder for binary Atoms.
+- [ ] Active Ping Probe engine for automated port forwarding verification.
+- [ ] `PCPSourceStream`: Connecting to upstream tracker/relay, parsing incoming `chan` atoms, feeding `ContentRingBuffer`.
+- [ ] `PCPOutputStream`: Serving downstream child relays, flow control, and 5-second lag overflow eviction.
 
----
+### Phase 3: Container Sniffing & HTTP Player Server (`peercast-format` + `peercast-http`)
+- [ ] `peercast-format`: Container sniffer (FLV, TS, ASF, MKV, OGG) and `ContentHeader` caching.
+- [ ] `peercast-http`: HTTP streaming endpoint (`/stream/{channel_id}`) with chunked transfer.
+- [ ] Dynamic playlist generators (`/pls/{channel_id}`, `.m3u`, `.asx`).
+- [ ] On-demand channel auto-start (`RequestChannel`).
+- [ ] End-to-end verification: stream from C# PeerCastStation, play smoothly via VLC / mpv.
 
-## 7. State Machines & Longevity Enforcements
+### Phase 4: Servent Orchestration & Relay Tree (`peercast-servent`)
+- [ ] `ChannelManager`: Managing active `RelayChannel` and `BroadcastChannel` instances.
+- [ ] Gossip routing tree (`bcst`, hop decrement, loop suppression).
+- [ ] Node cache with 180-second TTL cleanup.
+- [ ] Bandwidth monitor and global connection rate limiting (`max_relays`, `max_directs`).
 
-### 7.1 Connection Lifecycle State Machine
+### Phase 5: Yellow Page Integration & Broadcast Ingest (`peercast-yp`)
+- [ ] PCP YP announcement client with 30-second heartbeat and exponential backoff retry.
+- [ ] HTTP `index.txt` directory parser.
+- [ ] `BroadcastChannel` deterministic ChannelID generator (`SHA512 + MD5`).
+- [ ] HTTP Push ingest for OBS Studio and ffmpeg (`POST /push/{channel_id}`).
 
-```mermaid
-stateDiagram-v2
-    [*] --> Idle
-    Idle --> Connecting: TCP Connect initiated
-    Connecting --> HttpHandshaking: TCP Established, Send HTTP GET
-    HttpHandshaking --> PcpHandshaking: Received HTTP 200 OK
-    HttpHandshaking --> HostDiscovery: Received HTTP 503 (Relay Full)
-    HttpHandshaking --> Failed: Received 404 / Error
-    PcpHandshaking --> ActiveStreaming: HELO/OLEH verified
-    PcpHandshaking --> Failed: Timeout / Version mismatch
-    HostDiscovery --> Closed: Host atoms ingested
-    ActiveStreaming --> Closed: Graceful QUIT / StopReason
-    ActiveStreaming --> Dropped: Send timeout (> 5000ms delay)
-    Failed --> Closed
-    Dropped --> Closed
-    Closed --> [*]
-```
-
-### 7.2 Strict Bounded Resource Policy (Rule #3)
-1. **Sliding Window `ContentRingBuffer`**:
-   - Fixed capacity (e.g., 8 MB max or 3 seconds of buffer).
-   - Oldest packets evicted automatically upon arrival of newer packets.
-2. **Slow Client Disconnect (Backpressure Guard)**:
-   - Upstream uses a 5000 ms queue threshold (`(msg.Timestamp - nxtMsg.Timestamp).TotalMilliseconds <= 5000`).
-   - In Rust, if an output queue reaches 5000 ms lag, a `ChannelMessage::Overflow` event triggers, and the client is dropped (`StopReason::SendTimeoutError`) to preserve memory stability.
-3. **Socket Descriptor Limits**: Global limits on maximum simultaneous relays (`max_relays`, default 32) and direct listeners (`max_directs`, default 16).
-
----
-
-## 8. Implementation Roadmap (Phases 1-6)
-
-| Phase | Milestone | Scope & Deliverables |
-| :---: | :--- | :--- |
-| **Phase 1** | **Core Primitives & Wire Codec** | `peercast-core`: `ID4`, `Atom`, `Content`, `ContentRingBuffer`, serializer/deserializer with round-trip unit tests. |
-| **Phase 2** | **PCP Two-Stage Handshake & Codec** | `peercast-pcp`: HTTP handshake parser, Tokio Framed Atom codec, Ping probe engine, `PCPSourceStream`, `PCPOutputStream`. |
-| **Phase 3** | **Container Sniffing & HTTP Player Output** | `peercast-format` + `peercast-http`: FLV/TS header caching, HTTP `/stream/{id}`, playlist generation (`.pls`, `.m3u`, `.asx`). |
-| **Phase 4** | **P2P Relay & Channel Orchestration** | `peercast-servent`: `ChannelManager`, `RelayChannel`, gossip tree propagation, node keep-alive, bump handling. |
-| **Phase 5** | **Yellow Page Integration & Broadcast Ingest** | `peercast-yp`: `index.txt` parser, PCP YP announcement. `BroadcastChannel`: HTTP Push ingest (OBS/ffmpeg). |
-| **Phase 6** | **Management Server & Web UI** | `peercast-rpc` (JSON-RPC 2.0 compatible), `peercast-web` (embedded HTML/JS UI via `rust-embed`), CLI daemon binary. |
+### Phase 6: Management Interface & Daemon Binary (`peercast-rpc` + `peercast-app`)
+- [ ] JSON-RPC 2.0 API implementation (`getVersionInfo`, `getStatus`, `getChannels`, `getSettings`, `setSettings`).
+- [ ] Static Web UI embedding via `rust-embed`.
+- [ ] `peercast-app`: CLI flags (`--port`, `--config`, `--headless`), signal handling (`SIGINT`, `SIGTERM`), structured logging via `tracing`.
