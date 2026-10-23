@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.14.0 (Execution Phase: Tasks P01-P42 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P42 PASSED; Next: P43 — Run bounded operational soak)  
+> **Document Version**: 2.15.0 (Execution Phase: Tasks P01-P43 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P43 PASSED; Next: P44 — Release assessment & production readiness review)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -1144,9 +1144,31 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 5 comprehensive tests passing in `test_p42_fuzz_fault_campaigns.rs`: Atom and PCP protocol fuzzing, container demuxers fuzzing, directory parser fuzzing, HTTP and RPC fuzzing, and fragmentation fault injection.
 
+### [2026-10-24] Task P43 Implementation: Bounded Operational Soak
+- **Requirements Covered**: REQ-003, REQ-027, REQ-070, REQ-071
+- **Files Added / Changed**:
+  - `docs/OPERATIONAL_SOAK_REPORT.md`
+  - `crates/peercast-app/tests/test_p43_operational_soak.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Zero unbounded memory growth, zero leaking background tasks, zero zombie connections after traffic halts (REQ-003, REQ-027, REQ-070).
+  - Predeclared Thresholds Matrix:
+    - Documented all limits in `docs/OPERATIONAL_SOAK_REPORT.md` prior to verification.
+  - Rapid Peer Churn Verification:
+    - Executed 30 rapid sequential connection churn cycles. Verified `active_tasks` and `active_connections` drop strictly to 0 post-traffic.
+  - Slow Peer Backpressure & Eviction (REQ-013):
+    - Tested concurrent fast subscriber and stalled slow subscriber. Verified slow subscriber hits queue capacity bound and is evicted without blocking or stalling the fast subscriber.
+  - Source Restart & Epoch Rollover (REQ-026, REQ-051):
+    - Verified `BoundedContentCache` purges stale Epoch 1 chunks immediately upon receiving Epoch 2 header, cleanly isolating stream generations.
+  - Yellow Pages Exponential Backoff:
+    - Verified `YpBackoffTracker` scales from 5s to 60s max delay over 11 failures, and resets cleanly to 5s on successful restoration.
+  - High-Throughput Shutdown Drain:
+    - Verified 10 concurrent active streaming workers cleanly acknowledge broadcast shutdown signal; confirmed zero surviving tasks.
+  - Test Matrix Verified:
+    - 5 comprehensive tests passing in `test_p43_operational_soak.rs`: peer churn and zero task leak, slow peer backpressure and lag eviction, source restart and epoch rollover, Yellow Pages backoff and recovery, and high-traffic graceful shutdown.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P43 — Run bounded operational soak** (Prerequisites: P36, P41, P42; Requirements: REQ-003, REQ-027, REQ-070, REQ-071).
 - **P44 — Release assessment & production readiness review** (Prerequisites: P41..P43; Requirements: REQ-070..REQ-072).
 - **P45 — Comprehensive end-to-end integration verification** (Prerequisites: P44; Requirements: REQ-070, REQ-071).
+- **Tasks P46-P50**: Full release readiness, interop matrices, operational verification, and final handover.
