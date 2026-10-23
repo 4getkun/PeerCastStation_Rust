@@ -1,0 +1,68 @@
+{
+  "input_sha256": {
+    "SPECIFICATION.md": "4fee47d0efce5624197c6f00ebb8352c6a9eb272cf6b382d88c38bc8bf271cd2",
+    "WORKLOG_AND_DECISIONS.md": "db8d6e07bf9ff43eb0932951756280836999b710a48b1947400dabacb754cd00"
+  },
+  "upstreams": {
+    "cs": {
+      "repository": "kumaryu/peercaststation",
+      "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17"
+    },
+    "cpp": {
+      "repository": "plonk/peercast-yt",
+      "commit": "b60f176317406e79a5468ba80da8be1d83bb6126"
+    }
+  },
+  "review_scope": "selected source functions and callers; no upstream/Rust execution",
+  "local_source_copy_hashes": {
+    "cs/LICENSE.txt": "321e9dcfa1aace3cc6bee089e23b19a62d5503b08498295b2994058e257e47db",
+    "cpp/core/LICENSE": "3f9d5f29ecf12b61c4c20045e23e01c717182fa862bb1e97afa19a91a0ef68c4",
+    "cpp/tests/chanhitlist_unittest.cpp": "af8a6df3ec4412111b49041cf191e91ec76a68e2893f7ec4c4b4f1d6bc79618e",
+    "cpp/tests/gnuid_unittest.cpp": "e23f2e1df4fcd2c82dab1ee0e0c069b095ffff5fd7cb41007c5c467071a52997",
+    "cpp/tests/atomstream_unittest.cpp": "e5e1d39117dbcf59ce8e151c8787557caa28306abb7a91e1d8ac57fd84718258",
+    "cpp/core/common/cstream.cpp": "54ba03228111d1a797b8061b0831824837e978c72d7673f5233f7afd2063c4e6",
+    "cpp/core/common/ogg.cpp": "edd8cb28427da45d96573e8c826e00e78be29899eeb2d7ac32b763334484f2e5",
+    "cpp/core/common/gnuid.h": "b2e44a5feb67dadd26fd544c419cad4d4a4c1c50208573a1eca6c384331e86fe",
+    "cpp/core/common/gnuid.cpp": "d21ffb887ece77d8c8aaa8ae458004343803b909895f5e0bd50f91df8f2cfbf9",
+    "cpp/core/common/stream.h": "a074c72cba1a0c35f93d52fd0ec392bd72653253376f483de5bf33f2336fa75a",
+    "cpp/core/common/chanpacket.cpp": "b36577b45a476795f821d9fcea5eb4f047fdfb21aa34161fae861e29d476c897",
+    "cpp/core/common/mkv.cpp": "f6d969d15e57ca8d05feecbbb243f3f0ae00bfbf4441c0abca510f0b7cc7e402",
+    "cpp/core/common/stream.cpp": "d18ef883b2a5057002b72173aa8801b1f4e9d8382f21aa6eb3f80542161169c0",
+    "cpp/core/common/mms.cpp": "ad8489d425c3ab12baffd4d6a591691061c4b162a158931cb8d9e2ad5f4c4617",
+    "cpp/core/common/servhs.cpp": "c744bd9041678a6e12f8bedebbf9495952bf9a1363c3fff5fb8918e99bc1ae4c",
+    "cpp/core/common/pcp.cpp": "cfe522501910fba56200a273a5ad19a1d42adfdcb5d2630271b909a27f6e19ab",
+    "cpp/core/common/channel.cpp": "7832b2437fff2dd54b0ae2ee712ea00a2c06785ed378f3972242eb7728b44bd0",
+    "cpp/core/common/servmgr.cpp": "80383fbd6fca3d2aa17583d1e3eb7791fcbf8de791419de2ac7b5295b65668aa",
+    "cpp/core/common/pcp.h": "bd1e3e7f204ef04f21b453b533deb4bb748b8b344b776bb28432ac4133c81567",
+    "cpp/core/common/servent.cpp": "2e7b27550e4f83f99959402f8ad3943380889b150b01f503195526e308afd5a1",
+    "cpp/core/common/id.h": "39bec0de1ce3573b17322a7f4fe4ec53e2b66024def60c7fff813df6c5d70080",
+    "cpp/core/common/atom.h": "f4112d37efeea5691dbc0c9d9bfc9b31a32f62d46f039badcbe53a5552276aab",
+    "cpp/core/common/flv.cpp": "696e0c204352bf300913e7d2fefbcdc36f8e3aadb243c0907c6c7d22f5ce01a5",
+    "cpp/core/common/chanhit.cpp": "0eb280511ad5855ac570c340647c77964c52d2bc404d7572e4d4954acae65c3d",
+    "cpp/core/common/chanpacket.h": "6aa338fc42150538310758160efbdd65923c469059fa8bf8eb9add624ee048aa",
+    "cs/PeerCastStation/PeerCastStation.FLV/FLVContentBuffer.cs": "98f1f282bc23a88ad39cc8662ece2345acb4b7c8b760c5207c5a0e03442450f2",
+    "cs/PeerCastStation/PeerCastStation.UI.HTTP/YPChannelsHost.cs": "14866f3361f013ac88fc53060b1379fa2f21cb32442bd7ff4dcae2235935cb23",
+    "cs/PeerCastStation/PeerCastStation.UI.HTTP/APIHost.cs": "c4a88565357fc0ef55275ac9a9504f0c3b393a26da986e0bfd9daf11ed983f75",
+    "cs/PeerCastStation/PeerCastStation.UI.HTTP/JSONRPC.cs": "81fddf897c57bbf6ff2cfd451c078ad39761af922990e45295b6cf34e8f129f2",
+    "cs/PeerCastStation/PeerCastStation.HTTP/HTTPOutputStream.cs": "fd52f8a00b565f4b7b2fa08186b441eafa52c97333a6de63f3797745cce1ae1f",
+    "cs/PeerCastStation/PeerCastStation.HTTP/HTTPPushSourceStream.cs": "2d01ba4b06683c0ba1a3f5237dc4c87f11b76b2c39bc5cdff0419be2a55077d4",
+    "cs/PeerCastStation/PeerCastStation.HTTP/PlayList.cs": "a072fdd12e8b707c7be80825d619c4a50da1c03633203a4be631193ffd1f6955",
+    "cs/PeerCastStation/TestCore/test_core_atom.rb": "c73a43eaeeb595c8c9adc9657f001766221e80b5653c9cf96f20b419a8c2a367",
+    "cs/PeerCastStation/PeerCastStation.PCP/PCPYellowPageClient.cs": "6b7bb9f32cd29056140ff1b87554461660453b56749510df455b4bbd16c0a600",
+    "cs/PeerCastStation/PeerCastStation.PCP/PCPVersion.cs": "5233dc0d35236f7bb00470cfcc1f3d0b52cfe772a8eabc01cbe8f4fe3702edf9",
+    "cs/PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs": "ac5a478c6f8d198a1878f62d7dd0102dda2a1569f1151318bffa15942ee75dce",
+    "cs/PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs": "f1c13941c1d7fbc2d59c1f29e3bce7cd709f1075bba214b064f621ae39734308",
+    "cs/PeerCastStation/PeerCastStation.PCP/PCPPongOutputStream.cs": "690520f97e2b591af2608a7387d5ea9b62fe7dfb7a7ddb1b6b57f053e0182b74",
+    "cs/PeerCastStation/PeerCastStation.TS/TSContentReader.cs": "a7815bfcde070575d72794e170399258cbe9d521d91391311c88a66aeba56cf0",
+    "cs/PeerCastStation/PeerCastStation.ASF/ASFContentReader.cs": "edfb2df05575ea0de9cae9c30548e5a13e9a60f59e38e7157f8a9b6d5462143c",
+    "cs/PeerCastStation/PeerCastStation.Core/AtomCollectionExtensions.cs": "e253f778d92f82c7967d15ef23470339c6ad22f6b621f07ceca7a1d500b412fd",
+    "cs/PeerCastStation/PeerCastStation.Core/Channel.cs": "2a1a7dcc2174fb6eb10e419ce9576f27672eba1b5c45c6963326e124263674bd",
+    "cs/PeerCastStation/PeerCastStation.Core/StreamExtension.cs": "e9ac4a3924367f5dd29a006b0a13ca1bb84e5c8ce12d178f97dcb6541eb83f7b",
+    "cs/PeerCastStation/PeerCastStation.Core/Content.cs": "fd29f0727a6025bfcb255238d6702a39e2dbeced04b16d312ca755197b6b8c79",
+    "cs/PeerCastStation/PeerCastStation.Core/Host.cs": "2c96122a6eba61603cc41963d82f6af110e1d5a45aa02fd0da274cf6dc190b18",
+    "cs/PeerCastStation/PeerCastStation.Core/Ringbuffer.cs": "e79e18557cccb8432434ab95100ebf249a3fd05cc6ee07fc9fffd1d446f28c87",
+    "cs/PeerCastStation/PeerCastStation.Core/Atom.cs": "5be17f0e4c6d9a0154105418d42668b634c3199f23e3e42bc3a75aa9da04c67a",
+    "cs/PeerCastStation/PeerCastStation.Core/BroadcastChannel.cs": "48a360946404e651d306e184bd284094e607f9a0f5c356b731aa255fd740852d"
+  },
+  "source_copy_note": "Hashes describe locally materialized UTF-8 copies, not Git blob identities; a trailing newline may differ."
+}

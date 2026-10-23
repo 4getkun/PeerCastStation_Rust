@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/peercast-core",
+    "crates/peercast-pcp",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["PeerCastStation Rust Contributors"]
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+bytes = "1.10"
+thiserror = "2.0"
+sha2 = "0.10"
+md-5 = "0.10"
+tokio = "1.43"

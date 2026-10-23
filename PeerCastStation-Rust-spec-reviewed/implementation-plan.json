@@ -1,0 +1,1403 @@
+{
+  "schema_version": 1,
+  "status": "planning_only_not_executed",
+  "date_jst": "2026-10-24",
+  "tasks": [
+    {
+      "id": "P01",
+      "title": "Inventory actual workspace",
+      "depends_on": [],
+      "requirements": [
+        "001",
+        "002",
+        "003"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "Read-only repository/environment inspection; write inventory artifact only.",
+      "steps": [
+        "Locate the requested Rust repository; read applicable instructions and current Git branch/status.",
+        "List running owners/tests and identify unrelated edits before any edit.",
+        "Record actual compiler/Cargo, OS, existing crates, tests and configured remotes; classify each as observed or unavailable."
+      ],
+      "acceptance": [
+        "Inventory includes baseline commit, dirty-file list and ownership uncertainty.",
+        "No claim of missing or completed implementation solely from the supplied work log."
+      ],
+      "stop_if": [
+        "Repository inaccessible, competing writer, or ownership of proposed edits uncertain: do not initialize or overwrite."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P02",
+      "title": "Map existing code to requirements",
+      "depends_on": [
+        "P01"
+      ],
+      "requirements": [
+        "001",
+        "004",
+        "070",
+        "072"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "Inventory and traceability documents only.",
+      "steps": [
+        "Map all 58 requirement IDs to existing symbols/tests or explicitly missing/unverified.",
+        "Mark equivalent existing functionality for verification instead of duplicate implementation.",
+        "Record baseline test commands discovered from repository instructions and their results."
+      ],
+      "acceptance": [
+        "Every requirement classified; existing failures retained with logs.",
+        "Each planned change has an identified file owner."
+      ],
+      "stop_if": [
+        "Existing equivalent code differs materially: resolve contract before replacing."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P03",
+      "title": "Freeze first-slice contracts",
+      "depends_on": [
+        "P02"
+      ],
+      "requirements": [
+        "020",
+        "022",
+        "026",
+        "031",
+        "038",
+        "072"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "Protocol field matrix and first-slice design decisions; no production logic.",
+      "steps": [
+        "Trace pinned handlers AND callers for helo/oleh/ok/quit/chan/host fields, types, requiredness, duplicates and unknowns.",
+        "Specify position width/rollover, stream generation changes, reconnect cursor and oversized-header strategy.",
+        "Select one supported media fixture and controlled IPv4 peer topology; explicitly exclude unimplemented profiles."
+      ],
+      "acceptance": [
+        "Field matrix has source locators and positive/negative fixtures.",
+        "No OPEN item needed by the first slice remains implicit."
+      ],
+      "stop_if": [
+        "Conflicting sources without a named profile; missing fixture for a required field."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P04",
+      "title": "Establish minimal build and dependency DAG",
+      "depends_on": [
+        "P03"
+      ],
+      "requirements": [
+        "002",
+        "010"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "Existing Cargo workspace and minimum core/app wiring only.",
+      "steps": [
+        "Preserve existing workspace; add only missing first-slice crates.",
+        "Pin selected toolchain/dependencies consistent with verified policy.",
+        "Check dependency direction; provide adapter contracts below servent."
+      ],
+      "acceptance": [
+        "Workspace check/test baseline runs using recorded commands.",
+        "No adapter imports concrete servent; no dependency cycle."
+      ],
+      "stop_if": [
+        "Dependency or edition change lacks a reason; package access/install requires unavailable authorization."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P05",
+      "title": "Implement raw ID and scalar types",
+      "depends_on": [
+        "P04"
+      ],
+      "requirements": [
+        "020",
+        "021",
+        "022"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core ID4 and fixed-width scalar helpers only.",
+      "steps": [
+        "Represent ID4 as four bytes; support NUL padding without trimming on decode.",
+        "Use explicit little-endian scalar helpers and exact-width validation.",
+        "Separate display formatting from wire storage."
+      ],
+      "acceptance": [
+        "Tests cover pcp newline, sid NUL, empty/overlong IDs and u16/u32 byte order.",
+        "Malformed widths fail without reading outside payload."
+      ],
+      "stop_if": [
+        "Host-native representation leaks into serialized bytes."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P06",
+      "title": "Implement Atom encoder",
+      "depends_on": [
+        "P05"
+      ],
+      "requirements": [
+        "020",
+        "021",
+        "022"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core encoder only.",
+      "steps": [
+        "Encode leaf and parent separately, including empty variants.",
+        "Keep ordered duplicate children.",
+        "Reject size/count overflow before writing an invalid header."
+      ],
+      "acceptance": [
+        "Independent expected bytes match zero-child parent, zero-byte leaf, nested/duplicate cases.",
+        "Generic encoder does not impose packet-data cap on all leaves."
+      ],
+      "stop_if": [
+        "A round-trip test is the sole evidence of correctness."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P07",
+      "title": "Implement incremental Atom decoder",
+      "depends_on": [
+        "P06"
+      ],
+      "requirements": [
+        "025"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core decoder and fragmentation tests only.",
+      "steps": [
+        "Retain unconsumed bytes between reads; distinguish need-more, clean EOF and malformed/truncated input.",
+        "Decode one tree while leaving following trees buffered.",
+        "Use checked lengths and iterative/bounded nesting."
+      ],
+      "acceptance": [
+        "Every split position of fixed valid examples yields the same tree.",
+        "Concatenated Atoms and EOF at every byte boundary are tested.",
+        "Child order and duplicate IDs survive."
+      ],
+      "stop_if": [
+        "Decoder allocates from unchecked peer length or treats incomplete input as success."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P08",
+      "title": "Enforce layered parser budgets",
+      "depends_on": [
+        "P07"
+      ],
+      "requirements": [
+        "025",
+        "026",
+        "027"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core parse budgets and negative tests.",
+      "steps": [
+        "Implement leaf, child, depth, total-node and total-byte budgets independently.",
+        "Charge unknown fields and skipped trees to the same budget.",
+        "Test limit-1, limit, limit+1 and cancellation cleanup."
+      ],
+      "acceptance": [
+        "Each budget rejects only its own invalid case with a stable error.",
+        "Deep nesting and many small leaves cannot bypass cumulative limits.",
+        "Allocation/retained-input accounting is observable."
+      ],
+      "stop_if": [
+        "Budget reset inside a nested child permits unbounded aggregate input."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P09",
+      "title": "Implement protocol identifiers and IP conversions",
+      "depends_on": [
+        "P05"
+      ],
+      "requirements": [
+        "023",
+        "024"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core conversion functions, no channel hashing yet.",
+      "steps": [
+        "Separate canonical protocol ID bytes, .NET GUID layout and display hex.",
+        "Implement complete-byte address reversal for4/16 byte payloads.",
+        "Define invalid lengths and IPv4-mapped-address policy explicitly."
+      ],
+      "acceptance": [
+        "Non-symmetric GUID fixture matches both layouts.",
+        "IPv4 and IPv6 fixed vectors pass; invalid lengths fail."
+      ],
+      "stop_if": [
+        "GUID hashing conversion is reused indiscriminately for sid/cid fields."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P10",
+      "title": "Implement Station broadcast ID profile",
+      "depends_on": [
+        "P09"
+      ],
+      "requirements": [
+        "040",
+        "041"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core Station identity helper and tests only.",
+      "steps": [
+        "Implement SHA512 of .NET-layout BCID, conditional network prefix, BinaryWriter string encoding, MD5 and output GUID conversion.",
+        "Keep received ChannelIDs opaque; name this Station profile explicitly.",
+        "Obtain independently executed .NET/upstream expected outputs before certifying parity."
+      ],
+      "acceptance": [
+        "Empty/Japanese/127-128-byte boundary strings and IPv4/IPv6 tested.",
+        "Independent reference outputs agree; review-generated Python examples alone do not satisfy parity."
+      ],
+      "stop_if": [
+        "Only the same translated algorithm generated both actual and expected outputs."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P11",
+      "title": "Implement raw quit-code preservation",
+      "depends_on": [
+        "P05"
+      ],
+      "requirements": [
+        "038"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core errors and protocol mapping table.",
+      "steps": [
+        "Store raw u32/int wire value with optional known interpretation.",
+        "Map common quit reasons and observed4000 context explicitly.",
+        "Separate local stop reason/retry policy from wire parsing."
+      ],
+      "acceptance": [
+        "1000,1001,1003,1008,1009,4000 and unknown values retain exact raw codes.",
+        "Unknown code does not panic or silently become normal shutdown."
+      ],
+      "stop_if": [
+        "Code assumes all valid values are1000..1011."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P12",
+      "title": "Define actor handles and lifecycle ownership",
+      "depends_on": [
+        "P04"
+      ],
+      "requirements": [
+        "011",
+        "012",
+        "014"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core command/event interfaces and minimal worker harness.",
+      "steps": [
+        "Separate running worker from cloneable command handle and status snapshot.",
+        "Assign cancellation owner, join path and generation token.",
+        "Define terminal outcomes and idempotent stop behavior."
+      ],
+      "acceptance": [
+        "Post while worker runs without second mutable borrow or lock across await.",
+        "Stale generation events ignored; double stop and shutdown during startup tested."
+      ],
+      "stop_if": [
+        "A task is spawned without tracked ownership/join behavior."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P13",
+      "title": "Implement content epochs and bounded cache",
+      "depends_on": [
+        "P12"
+      ],
+      "requirements": [
+        "027",
+        "050",
+        "051"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "core content cache only.",
+      "steps": [
+        "Represent header/body association with stream epoch and transport positions.",
+        "Apply both time and byte eviction, with separate header budget.",
+        "Account retained allocations, gaps/overlap and restart according to P03 contract."
+      ],
+      "acceptance": [
+        "Time-only, byte-only and simultaneous eviction tests pass with a fake clock.",
+        "No old-epoch body follows a new header.",
+        "Oversized shared backing allocation cannot evade accounting."
+      ],
+      "stop_if": [
+        "Missing/oversized header is silently truncated or stale body reused."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P14",
+      "title": "Implement subscriber admission and writers",
+      "depends_on": [
+        "P13"
+      ],
+      "requirements": [
+        "013",
+        "028"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "bounded subscriber queues and fake writers.",
+      "steps": [
+        "Use nonblocking admission in fan-out; per-subscriber writer owns network awaits.",
+        "Enforce byte/count/age limits and explicit slow-peer stop.",
+        "Release queued buffers on cancellation."
+      ],
+      "acceptance": [
+        "One stalled receiver cannot stop a healthy receiver.",
+        "Overflow produces one terminal event; memory returns after subscriber removal.",
+        "Fan-out complexity is documented as O(N)."
+      ],
+      "stop_if": [
+        "Channel actor awaits a slow subscriber or queue has no byte budget."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P15",
+      "title": "Implement bounded HTTP relay header parser",
+      "depends_on": [
+        "P08",
+        "P11",
+        "P12"
+      ],
+      "requirements": [
+        "030",
+        "031",
+        "037"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "pcp HTTP prelude, not direct-player/ingest server.",
+      "steps": [
+        "Parse supported statuses/headers with byte/line/time limits.",
+        "Validate channel hex and reconnect numeric fields.",
+        "Transfer already-read binary tail into Atom decoder."
+      ],
+      "acceptance": [
+        "Header and first Atom in one read work.",
+        "Fragmented CRLF, malformed status, oversized header and timeout tested.",
+        "404 never enters Atom state."
+      ],
+      "stop_if": [
+        "HTTP-to-Atom transition discards buffered bytes."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P16",
+      "title": "Implement relay consumer200 path",
+      "depends_on": [
+        "P15",
+        "P09"
+      ],
+      "requirements": [
+        "031",
+        "032",
+        "034"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "pcp client state machine against scripted local peer.",
+      "steps": [
+        "Connect, send selected network profile and cursor, consume200 and perform helo/oleh.",
+        "Validate identity/version fields using P03 matrix.",
+        "Accept permitted ok/control/chan ordering and preserve unrelated fields."
+      ],
+      "acceptance": [
+        "Scripted success, bad SID/version, disconnect and cancellation in each state pass.",
+        "No pcnt or redundant raw preamble is sent."
+      ],
+      "stop_if": [
+        "Any required handshake field/ordering is guessed rather than in P03."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P17",
+      "title": "Implement relay consumer503 and404 paths",
+      "depends_on": [
+        "P16"
+      ],
+      "requirements": [
+        "032",
+        "033",
+        "038"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "client alternate status branches.",
+      "steps": [
+        "After503 perform helo/oleh before collecting host candidates and quit.",
+        "Validate candidates without connecting automatically outside controlled test scope.",
+        "Map404/off-air and other statuses to explicit outcomes."
+      ],
+      "acceptance": [
+        "503 transcript includes handshake, host list, quit and close in order.",
+        "Empty/invalid candidates and unknown quit values terminate predictably."
+      ],
+      "stop_if": [
+        "503 skips handshake or induces an unbounded reconnect loop."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P18",
+      "title": "Implement relay server handshake branches",
+      "depends_on": [
+        "P17",
+        "P14"
+      ],
+      "requirements": [
+        "032",
+        "033",
+        "034"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "pcp server with scripted local clients.",
+      "steps": [
+        "Serve200/503/404 based on channel/slot state.",
+        "Perform helo validation and oleh; emit Station-compatible ok1 on accepted path.",
+        "Full path sends candidate hosts then appropriate quit after handshake."
+      ],
+      "acceptance": [
+        "Each server path tested independently from client to avoid shared-bug agreement.",
+        "Slots and resources released on every failure/cancel branch."
+      ],
+      "stop_if": [
+        "Client/server tests only connect two copies of the same Rust implementation."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P19",
+      "title": "Implement reverse probe and raw preamble",
+      "depends_on": [
+        "P18"
+      ],
+      "requirements": [
+        "035",
+        "036",
+        "037"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "pcp probe worker and raw preamble codec.",
+      "steps": [
+        "Use pcp newline Atom, observed peer IP and announced port; check returned SID.",
+        "Bound connect/read/write and global/per-peer probe concurrency.",
+        "Test probe-before-oleh ordering and network-profile differences."
+      ],
+      "acceptance": [
+        "Matching/mismatched SID, refused/stalled connection and cancellation tested.",
+        "IPv4 probe proven in controlled topology; IPv6 remains separately marked pending."
+      ],
+      "stop_if": [
+        "Probe can target an unrelated arbitrary address or is mistaken for NAT configuration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P20",
+      "title": "Connect channel packets to cache and relay",
+      "depends_on": [
+        "P19",
+        "P13"
+      ],
+      "requirements": [
+        "026",
+        "050",
+        "051"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "pcp packet adapter; reuse contract from P03.",
+      "steps": [
+        "Validate head/data types, positions and continuation fields.",
+        "Feed epoch/header/body events to cache; split outgoing body safely under16384 bytes.",
+        "Relay unknown extensions within budget without corrupting semantic fields."
+      ],
+      "acceptance": [
+        "Packet cap boundaries, gaps, restart, metadata changes and fragmented transport tested.",
+        "Known fixture bytes are unchanged across relay transport."
+      ],
+      "stop_if": [
+        "Oversized header strategy or rollover semantics still undefined."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P21",
+      "title": "Prove controlled IPv4 interoperability",
+      "depends_on": [
+        "P20",
+        "P10"
+      ],
+      "requirements": [
+        "003",
+        "070",
+        "071"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "test harness and evidence, production changes only for diagnosed defects.",
+      "steps": [
+        "Pin executable versions/build SHAs of Station and YT separately.",
+        "Run both directions for200,503,404, probe and reconnect using controlled endpoints.",
+        "Capture sanitized transcripts and hashes; preserve failures."
+      ],
+      "acceptance": [
+        "Every required first-slice matrix row passes against both independent peers.",
+        "No public YP announcement or unauthorized public traffic used."
+      ],
+      "stop_if": [
+        "Reference executable unavailable: mark blocked, never infer pass from source review."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P22",
+      "title": "Implement bounded container detection",
+      "depends_on": [
+        "P21"
+      ],
+      "requirements": [
+        "050",
+        "056"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "format reader interface and first-slice sniffer.",
+      "steps": [
+        "Use a bounded prefix with replay to chosen reader.",
+        "Declare supported container/codec subset and ambiguous/unsupported outcome.",
+        "Do not consume bytes irretrievably during detection."
+      ],
+      "acceptance": [
+        "Short reads, misleading signatures, empty input and unsupported format tested.",
+        "Selected fixture reaches its reader with identical bytes."
+      ],
+      "stop_if": [
+        "File extension alone selects an unverified parser."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P23",
+      "title": "Implement first FLV header/body path",
+      "depends_on": [
+        "P22"
+      ],
+      "requirements": [
+        "051",
+        "052"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "FLV subset selected in P03; no implicit enhanced-codec support.",
+      "steps": [
+        "Parse header/DataOffset/PreviousTagSize and bounded tags.",
+        "Cache relevant metadata and codec configs with epoch changes.",
+        "Preserve timestamp/transport distinctions and reject malformed lengths."
+      ],
+      "acceptance": [
+        "Fixture includes PreviousTagSize0 and metadata/config ordering.",
+        "Audio-only, changed config, truncated/oversized tag tested.",
+        "Reconstructed bytes parse in an independent reader/player."
+      ],
+      "stop_if": [
+        "9-byte header alone emitted or extended tags silently treated as supported."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P24",
+      "title": "Implement safe-start selection",
+      "depends_on": [
+        "P23",
+        "P13"
+      ],
+      "requirements": [
+        "050",
+        "055"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "format-aware start-point selection.",
+      "steps": [
+        "Use trusted continuation/safe-boundary markers; distinguish packet fragments from frames.",
+        "Bound waiting and define audio-only/no-marker fallback or clear failure.",
+        "Reset selection on format/epoch change."
+      ],
+      "acceptance": [
+        "Interframe-first, fragmented keyframe, audio-only, no-keyframe timeout and restart fixtures pass.",
+        "No indefinite waiting or universal IDR claim."
+      ],
+      "stop_if": [
+        "cont==0 is treated as proof of H.264 IDR for every format."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P25",
+      "title": "Implement direct playback and playlists",
+      "depends_on": [
+        "P24",
+        "P14"
+      ],
+      "requirements": [
+        "060"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "http /stream and /pls adapters.",
+      "steps": [
+        "Validate requested ID; acquire/release subscriber through handle.",
+        "Choose version/media-appropriate framing and MIME; escape playlist fields.",
+        "Handle client disconnect and on-demand startup/shutdown."
+      ],
+      "acceptance": [
+        "Actual player decodes first-slice fixture; slow/cancel paths release resources.",
+        "HTTP framing and playlist escaping have negative tests."
+      ],
+      "stop_if": [
+        "Chunking applied blindly to HTTP1.0/MMS or playback success inferred from HTTP200."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P26",
+      "title": "Define and implement first ingest endpoint",
+      "depends_on": [
+        "P25"
+      ],
+      "requirements": [
+        "061",
+        "065"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "explicitly selected ingest listener contract.",
+      "steps": [
+        "Choose Station-compatible dedicated URI listener or separately approved/documented Rust /push route.",
+        "Specify authorization, binding, channel ownership and supported transfer framing.",
+        "Implement bounded POST ingest feeding existing format pipeline."
+      ],
+      "acceptance": [
+        "Authorized/unauthorized POST, conflicting bind, cancellation and malformed chunking tested.",
+        "ffmpeg/OBS workflow tested only for selected real output protocol and format."
+      ],
+      "stop_if": [
+        "A shared /push/{id} endpoint is invented as universal upstream behavior."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P27",
+      "title": "Implement TS support independently",
+      "depends_on": [
+        "P25"
+      ],
+      "requirements": [
+        "053",
+        "056"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "TS parser/fixtures; separate from FLV.",
+      "steps": [
+        "Bound188-byte framing and PSI reassembly.",
+        "Handle PAT/PMT changes, continuity/discontinuity and codec startup requirements.",
+        "Declare supported codec subset."
+      ],
+      "acceptance": [
+        "Changed tables, truncated sections and transport gaps tested.",
+        "Independent player decodes late join; PAT/PMT-only success is not enough."
+      ],
+      "stop_if": [
+        "No codec configuration/random-access evidence for claimed playback support."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P28",
+      "title": "Implement ASF/MMS support independently",
+      "depends_on": [
+        "P25"
+      ],
+      "requirements": [
+        "054",
+        "056"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "ASF object and MMS framing parser.",
+      "steps": [
+        "Validate GUID/u64 sizes before narrowing and nested traversal.",
+        "Distinguish raw ASF object headers from MMS header frames.",
+        "Use format-specific response profile."
+      ],
+      "acceptance": [
+        "Malformed size/count/truncation and header replacement tested.",
+        "Selected reference/player workflow decodes."
+      ],
+      "stop_if": [
+        "Assumed50-byte minimum or raw ASF path mislabeled MMS-compatible."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P29",
+      "title": "Implement MKV support independently",
+      "depends_on": [
+        "P25"
+      ],
+      "requirements": [
+        "051",
+        "055",
+        "056"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "MKV bounded parser and fixtures only.",
+      "steps": [
+        "Trace pinned MKV reader and define element/codec subset before code.",
+        "Bound variable-length elements/header cache; identify safe cluster/frame starts.",
+        "Integrate epoch and cancellation contract."
+      ],
+      "acceptance": [
+        "Unknown/oversized/truncated elements and mid-stream startup tested.",
+        "Independent decoder/player verifies supported subset."
+      ],
+      "stop_if": [
+        "Parser contract not established; do not clone FLV assumptions."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P30",
+      "title": "Implement Ogg and decide audio-only scope",
+      "depends_on": [
+        "P25"
+      ],
+      "requirements": [
+        "051",
+        "055",
+        "056"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "Ogg reader plus explicit MP3 support decision.",
+      "steps": [
+        "Trace Ogg page/header/serial handling and codec identification.",
+        "Bound lacing/packet reconstruction and chained-stream state.",
+        "Document whether MP3 is supported or deferred with visible capability output."
+      ],
+      "acceptance": [
+        "Truncated pages, serial/header changes and audio-only startup tested.",
+        "Independent playback validates each claimed codec."
+      ],
+      "stop_if": [
+        "Ogg container support is equated with every codec it can contain."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P31",
+      "title": "Implement host freshness and failure cooldown",
+      "depends_on": [
+        "P21"
+      ],
+      "requirements": [
+        "042"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "servent host registry and separate ignored-endpoint table.",
+      "steps": [
+        "Use independent monotonic age/cooldown values and bounded maps.",
+        "Expire via access/insertion and scheduled physical cleanup.",
+        "Define endpoint identity and session deduplication."
+      ],
+      "acceptance": [
+        "Fake-clock tests prove freshness does not accidentally clear failure cooldown or vice versa.",
+        "Expired entries release memory and new host updates refresh only appropriate state."
+      ],
+      "stop_if": [
+        "Single180-second timer controls unrelated concepts."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P32",
+      "title": "Implement named parent-selection policy",
+      "depends_on": [
+        "P31"
+      ],
+      "requirements": [
+        "043"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "servent selector/retry coordination.",
+      "steps": [
+        "Implement explicitly chosen Station-style weighted randomized policy or ADR-approved alternative.",
+        "Validate self exclusion, locality and eligibility independently from score.",
+        "Use seeded RNG tests and bounded attempt/reconnect budget."
+      ],
+      "acceptance": [
+        "Deterministic fixture selection and distribution/eligibility checks pass.",
+        "Not described as universal YT/Station strict hierarchy."
+      ],
+      "stop_if": [
+        "LAN subnet assumptions or10-second default appear without source/policy evidence."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P33",
+      "title": "Implement bounded gossip forwarding",
+      "depends_on": [
+        "P32"
+      ],
+      "requirements": [
+        "044"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "pcp/servent broadcast routing boundary.",
+      "steps": [
+        "Apply destination/group/origin eligibility.",
+        "Decrement TTL and increment hops with overflow protection.",
+        "Define bounded loop/storm suppression policy."
+      ],
+      "acceptance": [
+        "TTL0/1/2, local destination, unknown group, hop overflow and repeated input tested.",
+        "No forwarding back to excluded source."
+      ],
+      "stop_if": [
+        "TTL and hop semantics reversed or dedup map unbounded."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P34",
+      "title": "Implement controlled YP announcements",
+      "depends_on": [
+        "P33"
+      ],
+      "requirements": [
+        "035",
+        "062",
+        "063"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "YP client, local fake directory only initially.",
+      "steps": [
+        "Implement raw PCP profile, channel ownership/refcount and shutdown.",
+        "Use30-second reference update policy and error retry1000ms*3/2 capped 30000.",
+        "Stop on terminal banned/server-quit/cancel; document jitter if added."
+      ],
+      "acceptance": [
+        "Fake-clock update/backoff/terminal-state tests pass.",
+        "No announcement remains after final owner removal."
+      ],
+      "stop_if": [
+        "Test would announce to a public YP without authorized destination."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P35",
+      "title": "Implement directory listing contract",
+      "depends_on": [
+        "P34"
+      ],
+      "requirements": [
+        "063"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "bounded HTTP index.txt parser.",
+      "steps": [
+        "Obtain representative authorized fixtures and document encoding/columns/escaping.",
+        "Bound total bytes, rows and per-field lengths.",
+        "Separate listing from PCP announcement connection lifecycle."
+      ],
+      "acceptance": [
+        "Malformed rows/encoding/optional columns and response limits tested.",
+        "Parsed fixtures match independently checked expected metadata."
+      ],
+      "stop_if": [
+        "Column schema or character encoding guessed."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P36",
+      "title": "Prove IPv6 and mixed-family behavior",
+      "depends_on": [
+        "P35"
+      ],
+      "requirements": [
+        "024",
+        "034",
+        "036",
+        "071"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "IPv6 profiles and independent-peer matrix.",
+      "steps": [
+        "Test header1/100 consistency with channel and socket families.",
+        "Resolve probe behavior differences with both pinned peers.",
+        "Exercise IPv4-mapped addresses and invalid family combinations."
+      ],
+      "acceptance": [
+        "Both directions/peers,200/503/probe/reconnect rows have explicit results.",
+        "Unsupported configurations reported rather than silently falling back."
+      ],
+      "stop_if": [
+        "No usable IPv6 topology: retain blocked status; do not infer pass fromIPv4."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37",
+      "title": "Freeze full RPC/UI contract",
+      "depends_on": [
+        "P25"
+      ],
+      "requirements": [
+        "064"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "API inventory and UI call-site audit, no UI copying yet.",
+      "steps": [
+        "List actual UI method calls and schemas/access requirements.",
+        "Define error, batch, notification and auth behavior per selected compatibility profile.",
+        "Map supported/deferred methods to visible capabilities."
+      ],
+      "acceptance": [
+        "Each required UI action maps to a tested API contract or explicit unsupported state.",
+        "No success stubs."
+      ],
+      "stop_if": [
+        "Only method-name parity is available."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37A",
+      "title": "Map UI layer boundaries",
+      "depends_on": [
+        "P37"
+      ],
+      "requirements": [
+        "080",
+        "085"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "frontend dependency map and upstream UI coupling inventory only.",
+      "steps": [
+        "Locate existing frontend framework, assets, network calls, inline handlers and styles.",
+        "Assign modules to tokens, components, screens, controllers, API adapter and contracts.",
+        "Choose incremental extraction boundaries; preserve existing UI behavior."
+      ],
+      "acceptance": [
+        "Every existing API call has an owning adapter/controller path.",
+        "Allowed/forbidden imports and the first screen migration are documented."
+      ],
+      "stop_if": [
+        "A wholesale rewrite or framework replacement is proposed without demonstrated need."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37B",
+      "title": "Implement typed API adapter and view contracts",
+      "depends_on": [
+        "P37A"
+      ],
+      "requirements": [
+        "081",
+        "084"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "frontend API adapter, typed screen models/events and fake transport tests.",
+      "steps": [
+        "Centralize JSON-RPC schemas, IDs, auth, errors and cancellation.",
+        "Define view models and semantic events separate from backend wire objects.",
+        "Keep permission enforcement in backend; UI availability is informational."
+      ],
+      "acceptance": [
+        "Transport/schema/error/cancel tests run without a real daemon.",
+        "No component constructs RPC method names; uncertain mutations are not blindly retried."
+      ],
+      "stop_if": [
+        "Mock success is used to hide unsupported real API behavior."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37C",
+      "title": "Extract presentation controllers",
+      "depends_on": [
+        "P37B"
+      ],
+      "requirements": [
+        "081",
+        "084"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "screen state/use-case controllers, no visual redesign.",
+      "steps": [
+        "Model loading/empty/error/forbidden/disconnected/stale/pending states.",
+        "Handle stale reads and duplicate pending actions deterministically.",
+        "Bind user intent to adapter calls without parsing labels or DOM layout."
+      ],
+      "acceptance": [
+        "Fake-adapter tests cover read races, rejected mutations and uncertain responses.",
+        "Controller behavior tests do not require CSS/DOM positioning."
+      ],
+      "stop_if": [
+        "Business state derives from colors, labels or component placement."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37D",
+      "title": "Create themeable pure presentation",
+      "depends_on": [
+        "P37C"
+      ],
+      "requirements": [
+        "082",
+        "083"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "tokens, presentational components and fixture gallery.",
+      "steps": [
+        "Extract semantic design tokens and local structural styles.",
+        "Render representative screens/components from props and emit semantic events.",
+        "Add all required state fixtures plus keyboard/focus/responsive/reduced-motion checks."
+      ],
+      "acceptance": [
+        "Fixture UI renders with no daemon or network.",
+        "Production cannot silently use mock transport on real-backend failure.",
+        "Design changes do not edit controller or API modules."
+      ],
+      "stop_if": [
+        "Components import transport/domain implementation or accessibility is lost."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37E",
+      "title": "Enforce boundaries and prove redesign isolation",
+      "depends_on": [
+        "P37D"
+      ],
+      "requirements": [
+        "080",
+        "086"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "architectural checks and controlled theme/layout exercise.",
+      "steps": [
+        "Add forbidden-import checks matching actual module map.",
+        "Apply a second theme and one layout variation through presentation files only.",
+        "Run unchanged controller/API tests and identical semantic interaction tests; record backend/contract hashes."
+      ],
+      "acceptance": [
+        "Dependency check catches an intentionally forbidden import in its own negative fixture.",
+        "Backend/API contracts unchanged across exercise; behavior stays equivalent.",
+        "Visual differences reviewed intentionally, not blanket baseline replacement."
+      ],
+      "stop_if": [
+        "Functional failure is suppressed by updating visual snapshots or editing backend logic."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P37F",
+      "title": "Write minimal-context design handoff",
+      "depends_on": [
+        "P37E"
+      ],
+      "requirements": [
+        "087"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "design-change guide and evidence links.",
+      "steps": [
+        "Explain theme/icon/type/spacing/layout/copy edit locations and forbidden change scope.",
+        "Trace one read and one mutation from UI to domain.",
+        "Record actual validation commands and a small before/after example."
+      ],
+      "acceptance": [
+        "Guide points to existing files and runnable verified commands.",
+        "Theme/layout/new-behavior tiers are distinguishable without oral context."
+      ],
+      "stop_if": [
+        "Guide contains nonexistent paths or claims a test ran without evidence."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P38",
+      "title": "Implement secure management API",
+      "depends_on": [
+        "P37"
+      ],
+      "requirements": [
+        "064",
+        "065"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "rpc adapter and security controls.",
+      "steps": [
+        "Implement read-only methods before mutations.",
+        "Apply loopback default, explicit authenticated remote exposure and origin/CSRF checks.",
+        "Validate mutation input and redact sensitive logs."
+      ],
+      "acceptance": [
+        "Auth/access-category tests, malformed params, unknown methods and CSRF/origin tests pass.",
+        "Public relay listener does not expose administrative mutations."
+      ],
+      "stop_if": [
+        "Administrative interface exposed publicly by default or secrets logged."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P39",
+      "title": "Audit licenses and integrate embedded UI",
+      "depends_on": [
+        "P38",
+        "P37F"
+      ],
+      "requirements": [
+        "066"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "web assets/license manifest and UI integration.",
+      "steps": [
+        "Inventory copied source/assets/fonts/dependencies and applicable notices.",
+        "Resolve distribution obligations before packaging; seek qualified review if uncertain.",
+        "Embed only audited assets and test actual RPC-driven workflows."
+      ],
+      "acceptance": [
+        "Asset/license provenance complete; UI flows pass against implemented API.",
+        "No remote asset dependency silently breaks offline UI."
+      ],
+      "stop_if": [
+        "Reuse/license scope unresolved: do not redistribute assets as cleared."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P40",
+      "title": "Implement persistence and lifecycle controls",
+      "depends_on": [
+        "P38"
+      ],
+      "requirements": [
+        "014",
+        "067"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "configuration/CLI/app lifecycle.",
+      "steps": [
+        "Version configuration, validate before applying, write atomically and preserve migration backup.",
+        "Implement controlled bind/config/headless options and OS-specific shutdown.",
+        "Bound logs and track task/connection/memory metrics."
+      ],
+      "acceptance": [
+        "Interrupted write, invalid config, migration and shutdown during active traffic tested.",
+        "Windows andLinux behavior recorded separately."
+      ],
+      "stop_if": [
+        "Migration may overwrite user data without recovery or tasks survive shutdown."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P41",
+      "title": "Validate target packaging",
+      "depends_on": [
+        "P39",
+        "P40"
+      ],
+      "requirements": [
+        "066",
+        "067",
+        "070"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "build/package scripts and target evidence.",
+      "steps": [
+        "Build selected Windows/Linux artifacts using verified toolchains.",
+        "Record dynamic runtime requirements instead of assuming static linking.",
+        "Verify embedded UI, config location and clean-machine startup."
+      ],
+      "acceptance": [
+        "Each target has artifact hash and startup evidence.",
+        "License notices/source-offer requirements handled per completed audit."
+      ],
+      "stop_if": [
+        "Cross-compilation alone is offered as runtime verification."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P42",
+      "title": "Run parser fuzz and fault campaigns",
+      "depends_on": [
+        "P08",
+        "P20",
+        "P26",
+        "P27",
+        "P28",
+        "P29",
+        "P30",
+        "P35"
+      ],
+      "requirements": [
+        "025",
+        "027",
+        "056",
+        "070"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "controlled test harnesses and scoped defect fixes.",
+      "steps": [
+        "Fuzz supported parsers with bounded resource monitoring and saved seeds.",
+        "Inject partial reads/writes, disconnects, stalls and malformed nested structures.",
+        "Fix each defect with a regression; rerun affected gates."
+      ],
+      "acceptance": [
+        "Campaign duration/seeds/platform and crashes/hangs recorded.",
+        "No unbounded allocation/task growth for tested failures."
+      ],
+      "stop_if": [
+        "Fuzzer not run or only seed corpus loaded: not a pass."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P43",
+      "title": "Run bounded operational soak",
+      "depends_on": [
+        "P36",
+        "P41",
+        "P42"
+      ],
+      "requirements": [
+        "003",
+        "027",
+        "070",
+        "071"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "controlled soak and resource report.",
+      "steps": [
+        "Predeclare duration/load/memory-FD-task thresholds and recovery expectations.",
+        "Include slow peers, churn, source restart, YP loss and shutdown.",
+        "Measure retained memory and cleanup, not just absence of crash."
+      ],
+      "acceptance": [
+        "Measured run meets predeclared thresholds; logs identify exact tested build/profile.",
+        "Duration stated without translating it into365-day guarantee."
+      ],
+      "stop_if": [
+        "Thresholds changed after observing failure without a new explicit run."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "P44",
+      "title": "Publish evidence-based release assessment",
+      "depends_on": [
+        "P43"
+      ],
+      "requirements": [
+        "003",
+        "070",
+        "071",
+        "072"
+      ],
+      "status": "not_started",
+      "owner": null,
+      "scope": "status matrix and release assessment only.",
+      "steps": [
+        "Reconcile every requirement and test row with current build evidence.",
+        "List remaining unsupported formats/peers/platforms/security items.",
+        "Prepare small reviewable commits only for verified scoped changes, following repository/user permissions."
+      ],
+      "acceptance": [
+        "No required row silently skipped; failures/blockers visible.",
+        "No claim of full ecosystem compatibility or automatic main merge."
+      ],
+      "stop_if": [
+        "Required gates incomplete: release remains blocked even if implementation checklist is full."
+      ],
+      "evidence": []
+    }
+  ]
+}

@@ -1,0 +1,362 @@
+[
+  {
+    "id": "A01",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/Atom.cs",
+    "line": 41,
+    "locator": "public ID4(string name)",
+    "claim": "IDs are four raw bytes with NUL padding; pcp\\n constant, not pcnt.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/Atom.cs#L41"
+  },
+  {
+    "id": "A02",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/Atom.cs",
+    "line": 795,
+    "locator": "public void Write(Atom atom)",
+    "claim": "Atom lengths/counts and integer leaves are little-endian.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/Atom.cs#L795"
+  },
+  {
+    "id": "A03",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/StreamExtension.cs",
+    "line": 178,
+    "locator": "static public async Task<Atom> ReadAtomAsync",
+    "claim": "Async reader limits: 1024 direct children and 1 MiB leaf. Not 16 MB. Instance AtomReader.Read lacks equivalent guards; do not conflate entry points.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/StreamExtension.cs#L178"
+  },
+  {
+    "id": "A04",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/AtomCollectionExtensions.cs",
+    "line": 177,
+    "locator": "public static byte[] IDToByteArray",
+    "claim": "Protocol IDs use conversion distinct from Guid.ToByteArray hashing layout.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/AtomCollectionExtensions.cs#L177"
+  },
+  {
+    "id": "A05",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/Atom.cs",
+    "line": 714,
+    "locator": "public Atom(ID4 name, IPAddress value)",
+    "claim": "Address bytes reversed; UTF-8 string leaf constructor appends NUL.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/Atom.cs#L714"
+  },
+  {
+    "id": "A06",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/atom.h",
+    "line": 62,
+    "locator": "void writeAddress",
+    "claim": "IPv6 bytes reversed; raw bytes/strings and parent descriptor explicitly encoded.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/atom.h#L62"
+  },
+  {
+    "id": "A07",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/pcp.cpp",
+    "line": 318,
+    "locator": "if (d > ChanPacket::MAX_DATALEN)",
+    "claim": "Receiver rejects chan/pkt/data beyond ChanPacket MAX_DATALEN=16384. Not a generic Atom cap.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/pcp.cpp#L318"
+  },
+  {
+    "id": "A08",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs",
+    "line": 234,
+    "locator": "protected override async Task<StopReason> DoProcess",
+    "claim": "200/503 both undergo ProcessHandshake. Exact method lookup may be absent; inspect ProcessRelayRequest/ProcessHandshake call sites.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs#L234"
+  },
+  {
+    "id": "A09",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs",
+    "line": 331,
+    "locator": "private async Task<bool> PingHostAsync",
+    "claim": "Reverse probe uses pcp\\n, helo/oleh, matching SID and quit; helper writes version 1.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs#L331"
+  },
+  {
+    "id": "A10",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs",
+    "line": 385,
+    "locator": "private async Task OnHandshakePCPHelo",
+    "claim": "Probe precedes oleh in handler; inspect OnHandshakePCPHelo call and body.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs#L385"
+  },
+  {
+    "id": "A11",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs",
+    "line": 456,
+    "locator": "PCP_ERROR_QUIT + Atom.PCP_ERROR_READ",
+    "claim": "Quit mapping includes 4000; subset 1000..1011 is incomplete.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs#L456"
+  },
+  {
+    "id": "A12",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/pcp.h",
+    "line": 156,
+    "locator": "PCP_ERROR_QUIT",
+    "claim": "Multiple error bases: 1000/2000/3000/4000/5000; common reasons 1..11.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/pcp.h#L156"
+  },
+  {
+    "id": "A13",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPVersion.cs",
+    "line": 16,
+    "locator": "GetPCPVersionForNetworkType",
+    "claim": "Network profile maps IPv4->1, IPv6->100; not the same enum values used in ID hashing.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPVersion.cs#L16"
+  },
+  {
+    "id": "A14",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs",
+    "line": 938,
+    "locator": "channel.Network==NetworkType.IPv6",
+    "claim": "Server validates channel family, PCP header and socket family together.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs#L938"
+  },
+  {
+    "id": "A15",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/channel.cpp",
+    "line": 444,
+    "locator": "ipVersion == 4 ? 1 : 100",
+    "claim": "handshakeFetch chooses PCP header using connection family. Locate PCX_HS_PCP if spacing differs.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/channel.cpp#L444"
+  },
+  {
+    "id": "A16",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/BroadcastChannel.cs",
+    "line": 52,
+    "locator": "static public Guid CreateChannelID",
+    "claim": "Station SHA512/MD5 algorithm uses optional network prefix and BinaryWriter strings.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/BroadcastChannel.cs#L52"
+  },
+  {
+    "id": "A17",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/servhs.cpp",
+    "line": 2440,
+    "locator": "void Servent::setBroadcastIdChannelId",
+    "claim": "YT derives ID using broadcastID + encode(name,genre,bitrate), or random setting. Not Station algorithm.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/servhs.cpp#L2440"
+  },
+  {
+    "id": "A18",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/gnuid.cpp",
+    "line": 24,
+    "locator": "void GnuID::encode",
+    "claim": "XOR-based encode algorithm; inspect encode body, not a cryptographic identity guarantee.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/gnuid.cpp#L24"
+  },
+  {
+    "id": "A19",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/Content.cs",
+    "line": 123,
+    "locator": "PacketTimeLimit",
+    "claim": "3-second content retention; no 8 MiB byte cap established in this collection.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/Content.cs#L123"
+  },
+  {
+    "id": "A20",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs",
+    "line": 240,
+    "locator": "private void Enqueue(ChannelMessage msg)",
+    "claim": "5-second newest-minus-oldest timestamp queue guard; not universal socket timeout.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPOutputStream.cs#L240"
+  },
+  {
+    "id": "A21",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/Channel.cs",
+    "line": 58,
+    "locator": "private const int NodeLimit",
+    "claim": "180000 ms node freshness used in HostsView and AddNode/AddSourceNode. Filtering is not always physical removal.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/Channel.cs#L58"
+  },
+  {
+    "id": "A22",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs",
+    "line": 856,
+    "locator": "ignoredTime",
+    "claim": "Separate 180000 ms failed-source exclusion; not the only meaning of 180 seconds.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs#L856"
+  },
+  {
+    "id": "A23",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs",
+    "line": 921,
+    "locator": "SelectSourceHost",
+    "claim": "Station weighted/random source selection, not strict minimum-hop hierarchy.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs#L921"
+  },
+  {
+    "id": "A24",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/chanhit.cpp",
+    "line": 608,
+    "locator": "int ChanHitList::pickHits",
+    "claim": "Caller-conditioned matching and minimum hops. ChanHitSearch::init sets waitDelay=0.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/chanhit.cpp#L608"
+  },
+  {
+    "id": "A25",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs",
+    "line": 658,
+    "locator": "protected void OnPCPBcst",
+    "claim": "Forwarding decrements TTL, increments hops; checks destination/group/from and TTL>1.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPSourceStream.cs#L658"
+  },
+  {
+    "id": "A26",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.FLV/FLVContentBuffer.cs",
+    "line": 304,
+    "locator": "private void OnHeaderChanged",
+    "claim": "Writes 9-byte FLV header PLUS PreviousTagSize0 then metadata/audio/video configuration.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.FLV/FLVContentBuffer.cs#L304"
+  },
+  {
+    "id": "A27",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.TS/TSContentReader.cs",
+    "line": 49,
+    "locator": "public async Task ReadAsync",
+    "claim": "PAT/PMT header cache with stream reset when header changes. Not proof of codec random-access readiness.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.TS/TSContentReader.cs#L49"
+  },
+  {
+    "id": "A28",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.ASF/ASFContentReader.cs",
+    "line": 220,
+    "locator": "public static (ASFObject, ReadOnlyMemory<byte>) ReadFromMemory",
+    "claim": "ASF object prefix 24 bytes; top-level payload count/reserved six bytes. Reader also handles MMS framing.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.ASF/ASFContentReader.cs#L220"
+  },
+  {
+    "id": "A29",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/servent.cpp",
+    "line": 1805,
+    "locator": "bool         skipContinuation",
+    "claim": "Direct playback suppresses cont packets until first non-cont. Not universal H.264 parsing.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/servent.cpp#L1805"
+  },
+  {
+    "id": "A30",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/flv.cpp",
+    "line": 245,
+    "locator": "void FLVTagBuffer::sendImmediately",
+    "claim": "First fragment of keyframe may clear cont; later fragments set cont. Distinguish frame and packet boundary.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/flv.cpp#L245"
+  },
+  {
+    "id": "A31",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.HTTP/HTTPPushSourceStream.cs",
+    "line": 118,
+    "locator": "protected override async Task<SourceConnectionClient?> DoConnect",
+    "claim": "Dedicated URI-bound TCP listener; Handshake accepts POST. No shared /push/{id} route established here.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.HTTP/HTTPPushSourceStream.cs#L118"
+  },
+  {
+    "id": "A32",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.HTTP/HTTPOutputStream.cs",
+    "line": 339,
+    "locator": "Transfer-Encoding",
+    "claim": "Chunked normal playback branch differs from MMS-specific branch; /stream and /pls mappings present.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.HTTP/HTTPOutputStream.cs#L339"
+  },
+  {
+    "id": "A33",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.PCP/PCPYellowPageClient.cs",
+    "line": 670,
+    "locator": "private static readonly TimeSpan UpdateTimeSpan",
+    "claim": "30-second pool updates; CheckConnection error retry 1000 ms * 3/2 capped30000, terminal stop/banned/quit paths.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.PCP/PCPYellowPageClient.cs#L670"
+  },
+  {
+    "id": "A34",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.UI.HTTP/APIHost.cs",
+    "line": 169,
+    "locator": "RPCMethod(\"getVersionInfo\"",
+    "claim": "RPC method inventory exists; UI compatibility requires full parameter/result/access contract, not five names.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.UI.HTTP/APIHost.cs#L169"
+  },
+  {
+    "id": "A35",
+    "repo": "kumaryu/peercaststation",
+    "commit": "390c4e847289c90a77dbe40cc04b7bc1cfbddf17",
+    "path": "PeerCastStation/PeerCastStation.Core/Content.cs",
+    "line": 5,
+    "locator": "GNU General Public License",
+    "claim": "C# source header says GPL v3 or later. Repository LICENSE.txt also retrieved. Complete asset/dependency clearance not performed.",
+    "url": "https://github.com/kumaryu/peercaststation/blob/390c4e847289c90a77dbe40cc04b7bc1cfbddf17/PeerCastStation/PeerCastStation.Core/Content.cs#L5"
+  },
+  {
+    "id": "A36",
+    "repo": "plonk/peercast-yt",
+    "commit": "b60f176317406e79a5468ba80da8be1d83bb6126",
+    "path": "core/common/atom.h",
+    "line": 9,
+    "locator": "GNU General Public License",
+    "claim": "C++ source header says GPL v2 or later. core/LICENSE retrieved. No permission to discard notices inferred.",
+    "url": "https://github.com/plonk/peercast-yt/blob/b60f176317406e79a5468ba80da8be1d83bb6126/core/common/atom.h#L9"
+  }
+]

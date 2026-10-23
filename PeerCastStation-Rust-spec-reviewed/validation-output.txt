@@ -1,0 +1,2 @@
+353 checks passed; 58 requirement IDs; 36 pinned source entries; 50 task contracts.
+Scope: document integrity and review reference encodings only. No upstream runtime or Rust interoperability tests.
