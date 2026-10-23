@@ -16,6 +16,7 @@ pub mod subscriber;
 pub mod host_registry;
 pub mod parent_selection;
 pub mod gossip;
+pub mod index_txt;
 
 pub use id4::{ID4, Id4Error};
 pub use scalar::{Scalar, ScalarError};
@@ -51,4 +52,9 @@ pub use gossip::{
     select_forwarding_recipients, BroadcastGroup, GossipDedupCache, GossipDropReason,
     GossipForwardDecision, GossipForwarder, PeerBroadcastTarget, DEFAULT_MAX_DEDUP_ENTRIES,
     DEFAULT_MIN_FORWARDING_TTL, DEFAULT_STORM_SUPPRESSION_WINDOW,
+};
+pub use index_txt::{
+    html_decode, parse_index_txt, parse_uptime_str, DirectoryChannelEntry, IndexParseError,
+    IndexParserLimits, DEFAULT_MAX_FIELD_LEN, DEFAULT_MAX_INDEX_BYTES, DEFAULT_MAX_INDEX_LINES,
+    INDEX_DELIMITER,
 };

@@ -735,8 +735,48 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 7 comprehensive tests passing in `test_p34_yp_announcements.rs` covering Station-format Atom byte parity, public destination security guards, 3/2 integer backoff arithmetic, full loopback socket handshake and announcement, terminal banned, terminal server-quit, and refcount shutdown.
 
+### [2026-10-24] Task P35 Implementation: Bounded Directory Parsing (`index.txt`)
+- **Requirements Covered**: REQ-063, Global Rule 3
+- **Files Added / Changed**:
+  - `crates/peercast-core/src/index_txt.rs`
+  - `crates/peercast-core/src/lib.rs`
+  - `crates/peercast-core/tests/test_p35_directory_parser.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Directory listings are bounded and validated against resource exhaustion attacks (REQ-063, Global Rule 3). Unbounded reading of arbitrarily large index.txt feeds is strictly prohibited.
+  - 19-Column Schema Parity:
+    - Parsed according to PeerCastStation `PCPYellowPageClient.cs:1118-1177` and PeerCast-YT `public.cpp:115-136`, using `<>` as field delimiter:
+      - Field 0: Name (HTML entity decoded)
+      - Field 1: 32-character hexadecimal GUID (Channel ID)
+      - Field 2: Tracker IP and port (TIP)
+      - Field 3: Contact URL
+      - Field 4: Genre
+      - Field 5: Description
+      - Field 6: Direct listener count (supports `-1` representing hidden)
+      - Field 7: Relay count
+      - Field 8: Stream bitrate (kbps)
+      - Field 9: Content type / container format
+      - Field 10: Artist
+      - Field 11: Album
+      - Field 12: Track title
+      - Field 13: Track URL
+      - Field 14: Escaped / raw channel name
+      - Field 15: Uptime string (parsed into Duration supporting `HH:MM` and `HH:MM:SS`)
+      - Field 16: Click / stats count
+      - Field 17: Broadcaster comment
+      - Field 18: Direct connection permission flags
+  - Strict Bounded Resource Limits (`IndexParserLimits`):
+    - `max_total_bytes`: Default 2 MB; input feeds exceeding this are rejected immediately (`ResponseTooLarge`).
+    - `max_lines`: Default 10,000 channels; parsing halts cleanly once limit is reached to prevent unbounded allocations.
+    - `max_field_len`: Default 4,096 bytes; oversized individual tokens are rejected immediately (`FieldTooLong`).
+  - Full HTML Entity Decoding:
+    - Implemented compliant decoder converting standard HTML entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#39;`, `&apos;`) and numeric unicode code points (`&#nnn;` and `&#xhhh;`) back to raw UTF-8 characters.
+  - Partial & Tolerant Line Parsing:
+    - Feed lines with fewer than 19 columns (common in legacy YP outputs) are safely parsed without panic; missing trailing fields are assigned sensible defaults.
+  - Test Matrix Verified:
+    - 8 comprehensive tests passing in `test_p35_directory_parser.rs` covering standard 19-column parsing, HTML entity decoding, partial/legacy column handling, uptime parsing (`HH:MM`, `HH:MM:SS`, total minutes), UTF-8 Japanese characters, field length rejection, total response size rejection, and line count bounding.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P35 — Implement bounded directory parsing** (Prerequisites: P34; Requirements: REQ-063).
 - **P36 — Complete dual-stack IPv4/IPv6 interop** (Prerequisites: P21, P34; Requirements: REQ-026, REQ-027, REQ-071).
+- **P37 — Freeze full RPC/UI contract** (Prerequisites: P25, P26; Requirements: REQ-064).
