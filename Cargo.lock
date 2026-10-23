@@ -101,11 +101,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "peercast-format"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "peercast-core",
+ "thiserror",
+]
+
+[[package]]
 name = "peercast-pcp"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "peercast-core",
+ "sha2",
  "thiserror",
  "tokio",
 ]

@@ -13,3 +13,4 @@ tokio = { workspace = true, features = ["net", "sync", "time", "io-util"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "time"] }
+sha2 = { workspace = true }

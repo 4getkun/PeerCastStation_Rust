@@ -2,6 +2,7 @@
 members = [
     "crates/peercast-core",
     "crates/peercast-pcp",
+    "crates/peercast-format",
 ]
 resolver = "2"
 

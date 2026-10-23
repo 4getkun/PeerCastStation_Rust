@@ -1,0 +1,13 @@
+[package]
+name = "peercast-format"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+peercast-core = { path = "../peercast-core" }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
