@@ -1,0 +1,18 @@
+[package]
+name = "peercast-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+peercast-core = { path = "../peercast-core" }
+peercast-pcp = { path = "../peercast-pcp" }
+peercast-format = { path = "../peercast-format" }
+peercast-http = { path = "../peercast-http" }
+peercast-rpc = { path = "../peercast-rpc" }
+bytes.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "signal", "time", "net", "io-util"] }
+serde.workspace = true
+serde_json.workspace = true

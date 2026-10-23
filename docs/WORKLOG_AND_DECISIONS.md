@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.11.0 (Execution Phase: Tasks P01-P39 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P39 PASSED; Next: P40 — Implement persistence and lifecycle controls)  
+> **Document Version**: 2.12.0 (Execution Phase: Tasks P01-P40 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P40 PASSED; Next: P41 — Validate target packaging)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -1045,9 +1045,58 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 6 comprehensive tests passing in `test_p39_embedded_ui.rs`: embedded assets serving and MIME types, conditional GET 304 Not Modified, security headers and CSP, zero remote asset dependencies, static router integration with method constraints, and license audit completeness.
 
+### [2026-10-24] Task P40 Implementation: Persistence and Lifecycle Controls
+- **Requirements Covered**: REQ-014, REQ-067
+- **Files Added / Changed**:
+  - `Cargo.toml`
+  - `Cargo.lock`
+  - `.gitignore`
+  - `crates/peercast-app/Cargo.toml`
+  - `crates/peercast-app/src/lib.rs`
+  - `crates/peercast-app/src/main.rs`
+  - `crates/peercast-app/src/config.rs`
+  - `crates/peercast-app/src/persistence.rs`
+  - `crates/peercast-app/src/cli.rs`
+  - `crates/peercast-app/src/lifecycle.rs`
+  - `crates/peercast-app/src/shutdown.rs`
+  - `crates/peercast-app/src/logging.rs`
+  - `crates/peercast-app/src/metrics.rs`
+  - `crates/peercast-app/tests/test_p40_persistence_lifecycle.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Migration NEVER overwrites user data without a verified backup; tasks NEVER survive shutdown (REQ-014, REQ-067).
+  - Versioned Configuration & Schema Invariants:
+    - `AppConfig` specifies `schema_version = 2` covering server (`port`, `bind_address`, `allow_remote_admin`, `auth_token`, `max_relays`, `max_directs`, `max_upstream_rate`), logging, and lifecycle options.
+    - Validation checks enforce all port, bind, rate, capacity, and auth token security rules before applying or persisting.
+    - Seamless bidirectional sync with `peercast-rpc` via `to_servent_settings` and `apply_servent_settings`.
+  - Atomic Persistence via Temp File + Rename:
+    - `ConfigManager::save` writes to `<path>.tmp.<pid>_<counter>`, explicitly calls `flush()` and `sync_all()`, then renames atomically. Interrupted writes leave the original configuration intact and uncorrupted.
+  - Safe Migration with Backup Preservation:
+    - Detects older schemas (v1 / unversioned).
+    - Writes a timestamped backup `<path>.bak.<ts>_v<old_version>` and confirms disk presence and non-zero size before applying migration.
+    - Aborts migration if backup cannot be verified, preventing data loss.
+  - CLI Flags and Options Merging:
+    - `AppCliArgs` supports `--port` (`-p`), `--bind` (`-b`), `--config` (`-c`, `--settings`, `-s`), `--headless`, `--kill` (`-kill`), `--multi` (`-multi`), `--help` (`-h`), `--version` (`-v`).
+    - CLI flags override configuration file settings with strict precedence.
+  - Explicit State Machine & Re-entrancy Guard (Global Rule 2):
+    - `LifecyclePhase` (`Initializing`, `Running`, `ShuttingDown`, `Stopped`).
+    - `request_shutdown` early-returns `false` on duplicate calls, eliminating races and duplicate broadcasts.
+  - Graceful Shutdown & Task Drainage (REQ-014):
+    - `TaskTracker` spawns tasks with RAII `TaskGuard` handles.
+    - Active traffic drain awaits all active tasks up to `shutdown_timeout_secs`; verified that `active_tasks` drops strictly to 0.
+  - OS-Specific Signals (Windows and Linux Recorded Separately):
+    - Windows: `tokio::signal::windows::{ctrl_c, ctrl_break, ctrl_close}`.
+    - Unix: `tokio::signal::unix::signal` (`SIGINT`, `SIGTERM`).
+    - `PlatformSignalSupport` documents and tests platform-specific capabilities.
+  - Bounded Logging & Resource Metrics (Global Rule 3, REQ-065, REQ-067):
+    - `BoundedLogBuffer`: Sliding window FIFO ringbuffer with capacity cap and oldest-entry eviction.
+    - Integrates secret redaction (`redact_secrets`) before storing log entries.
+    - `AppMetrics` tracks real-time connections, tasks, channels, and network byte throughput with RAII guards.
+  - Test Matrix Verified:
+    - 10 comprehensive tests passing in `test_p40_persistence_lifecycle.rs`: config validation and invariants, atomic write resilience, safe migration and backup preservation, corrupt config rejection, CLI flags parsing and precedence, lifecycle state machine and re-entrancy guard, graceful shutdown during active traffic, bounded logging and secret redaction, operational metrics tracking, and OS-specific shutdown contracts.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P40 — Implement persistence and lifecycle controls** (Prerequisites: P38; Requirements: REQ-014, REQ-067).
 - **P41 — Validate target packaging** (Prerequisites: P39, P40; Requirements: REQ-066, REQ-067, REQ-070).
 - **P42 — Run parser fuzz and fault campaigns** (Prerequisites: P08, P20, P26..P30, P35; Requirements: REQ-025, REQ-027, REQ-056, REQ-070).
+- **P43 — Run bounded operational soak** (Prerequisites: P36, P41, P42; Requirements: REQ-003, REQ-027, REQ-070, REQ-071).
