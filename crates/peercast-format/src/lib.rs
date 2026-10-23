@@ -5,8 +5,14 @@
 //! - REQ-056: Bounded container sniffing for FLV, TS, MKV/WebM, ASF, and Ogg.
 //! - Global Rule 3: Bounded memory buffers and non-consuming replay guarantees.
 
+pub mod flv;
 pub mod sniffer;
 
+pub use flv::{
+    FlvDemuxOutput, FlvDemuxer, FlvFileHeader, FlvHeaderSnapshotBuilder, FlvMetadata,
+    FlvParseError, FlvParserEvent, FlvParserPhase, FlvStreamParser, FlvTag, FlvTagHeader,
+    FlvTagType, DEFAULT_MAX_FLV_TAG_SIZE, FLV_HEADER_PRELUDE_LEN,
+};
 pub use sniffer::{
     detect_container, ContainerInfo, ContainerType, SniffBuffer, SniffError, SniffResult,
 };
