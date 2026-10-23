@@ -558,8 +558,34 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Audio-only TS streams admit the first unfragmented packet immediately without waiting for RAI or video keyframes.
   - PID and PMT changes trigger epoch increments, resetting the safe-start state machine and requiring fresh PAT/PMT emission.
 
+### [2026-10-24] Task P28 Implementation: ASF and MMS/WMSP Framing Demuxer
+- **Requirements Covered**: REQ-054, REQ-056 (and REQ-051, REQ-060)
+- **Files Added / Changed**:
+  - `crates/peercast-format/src/asf.rs`
+  - `crates/peercast-format/src/lib.rs`
+  - `crates/peercast-format/tests/test_p28_asf_mms_parser.rs`
+- **Decisions & Parity Observations**:
+  - Parity and security stop/block guard strictly satisfied: ASF parsing follows standard COM GUID and u64 object sizes with a 24-byte generic object prefix and 6 additional top-level header prelude bytes (REQ-054). Guessing an unverified "50-byte minimum" is strictly prohibited and tested.
+  - Distinction between raw ASF and MMS-framed transport:
+    - Raw ASF objects are parsed directly using `ASF_TOP_LEVEL_HEADER_GUID`.
+    - MMS-over-HTTP transport utilizes Windows Media HTTP Streaming Protocol (WMSP) 4-byte frame headers (`$H`, `$D`, `$C`, `$E`, `$M`, `$P`) wrapping 8-byte MMS packet headers.
+    - Station parity contract verified: downstream subscribers receiving MMS-framed streams are sent complete WMSP header frames (`$H`, 5,271 bytes in upstream fixture) and complete data frames (`$D`), not stripped raw ASF objects.
+  - End-to-end integration verified against real upstream fixture `C:\Github\_upstream_peercaststation\PeerCastStation\TestASF\fixtures\test.asf` (~1.96 MB):
+    - Generates 5,271-byte `HeaderSnapshot` matching Station's exact byte count.
+    - Correctly extracts metadata: "WMV", `video/x-ms-wmv`, `.wmv`, and 438 kbps (from sum of stream bitrates 33,742 + 404,368 = 438,110 bps / 1000).
+    - Accurately emits all 361 content packets with contiguous byte positions matching upstream Station test expectations.
+  - Safe-start and audio-only classification:
+    - Streams containing video properties are classified as "WMV" (`video/x-ms-wmv`).
+    - Streams with audio only are classified as "WMA" (`audio/x-ms-wma`).
+    - Generic streams default to "ASF" (`video/x-ms-asf`).
+  - Header replacement and epoch tracking (REQ-051):
+    - Successive `$H` frames bump content epoch and rebuild the active `HeaderSnapshot`.
+  - Incremental streaming and robust framing:
+    - Stream feeds chunked at arbitrary byte boundaries (1-byte, 3-byte slices) yield identical framing without data corruption or memory leaks (Global Rule 3).
+    - Clean EOF and explicit End-of-Stream (`$E`) transitions transition demuxer into `Ended` state with early-return re-entrancy protection (Global Rule 2).
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P29 — Establish internal channel ownership model** (Prerequisites: P20, P25; Requirements: REQ-020, REQ-021).
-- **P30 — Port tracker collection/filtering core** (Prerequisites: P29; Requirements: REQ-040, REQ-041).
+- **P29 — Implement MKV support independently** (Prerequisites: P25; Requirements: REQ-051, REQ-055, REQ-056).
+- **P30 — Implement Ogg and decide audio-only scope** (Prerequisites: P25; Requirements: REQ-051, REQ-055, REQ-056).
