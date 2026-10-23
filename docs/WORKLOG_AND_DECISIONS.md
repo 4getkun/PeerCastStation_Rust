@@ -812,8 +812,33 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 7 comprehensive tests passing in `test_p36_dual_stack_interop.rs` covering consistency matrix, IPv4-mapped address handling, IPv6 loopback relay 200 handshake, dual-stack 503 candidate host distribution, Station vs YT probe differences, default IPv6 pending guard, and IPv6 cursor reconnection.
 
+### [2026-10-24] Task P37 Implementation: Freeze Full RPC/UI Contract
+- **Requirements Covered**: REQ-064, REQ-065
+- **Files Added / Changed**:
+  - `Cargo.toml`
+  - `crates/peercast-rpc/Cargo.toml`
+  - `crates/peercast-rpc/src/protocol.rs`
+  - `crates/peercast-rpc/src/server.rs`
+  - `crates/peercast-rpc/src/lib.rs`
+  - `crates/peercast-rpc/tests/test_p37_rpc_contract.rs`
+  - `docs/RPC_CONTRACT.md`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: JSON-RPC method names alone are not treated as parity (REQ-064). A complete inventory from `APIHost.cs` and actual UI call sites (`html/js/*.js`) has been audited and frozen into `docs/RPC_CONTRACT.md`.
+  - Zero Success Stubs Policy:
+    - Supported core methods: `getVersionInfo`, `getStatus`, `getChannels`, `getSettings`, `setSettings`, `getAuthToken`, `getPlugins`.
+    - All other 38 audited UI methods (e.g. `broadcastChannel`, `checkBandwidth`, `checkPorts`, `updateAndRestart`, `stopChannel`, etc.) return error code `-32004` (`UNSUPPORTED_METHOD`) with detailed capability metadata. No success stubs are used.
+  - Access Level Isolation (Station `OutputStreamType` Parity):
+    - `Playback`: public viewers and embedded players can access query methods (`getVersionInfo`, `getStatus`, `getChannels`, `getAuthToken`).
+    - `Admin`: administrative interface required for settings, mutations, and deferred controls. Unauthorized attempts return `-32001` (`UNAUTHORIZED`).
+  - Standard JSON-RPC 2.0 Framing & Semantics:
+    - Single requests, batch requests, and empty batch rejection (`INVALID_REQUEST` -32600).
+    - Notifications: requests omitting `id` execute properly and suppress output responses (yielding `None` / HTTP 204).
+    - Request limits: 64 KiB request body limit enforced (`DEFAULT_MAX_RPC_REQUEST_BYTES`).
+  - Test Matrix Verified:
+    - 8 comprehensive tests passing in `test_p37_rpc_contract.rs` covering core queries, settings read and mutation, access control enforcement, deferred method capability reporting, unknown method errors, batch processing, notification execution, and size limits / malformed JSON.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P37 — Freeze full RPC/UI contract** (Prerequisites: P25, P26; Requirements: REQ-064).
 - **P37A — Map UI layer boundaries** (Prerequisites: P37; Requirements: REQ-080, REQ-085).
+- **P37B — Implement typed API adapter and view contracts** (Prerequisites: P37A; Requirements: REQ-081, REQ-084).
