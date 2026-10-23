@@ -1,7 +1,7 @@
 # PeerCastStation Rust Port: Master Work Log & Architectural Decision Records
 
-> **Document Version**: 2.13.0 (Execution Phase: Tasks P01-P41 Completed)  
-> **Status**: IN PROGRESS (Tasks P01..P41 PASSED; Next: P42 — Run parser fuzz and fault campaigns)  
+> **Document Version**: 2.14.0 (Execution Phase: Tasks P01-P42 Completed)  
+> **Status**: IN PROGRESS (Tasks P01..P42 PASSED; Next: P43 — Run bounded operational soak)  
 > **Repository Root**: `C:\Github\PeerCastStation_Rust`  
 > **Current Working Contract**: `docs/SPECIFICATION.md` (v1.4.0-review) & `PeerCastStation-Rust-spec-reviewed/IMPLEMENTATION_PLAN.md`  
 
@@ -1119,9 +1119,34 @@ Clippy: `cargo clippy --manifest-path C:\Github\PeerCastStation_Rust\Cargo.toml 
   - Test Matrix Verified:
     - 5 comprehensive tests passing in `test_p41_target_packaging.rs`: target binary existence and deterministic hash computation, clean-machine isolated startup, CLI flags invocation (`--version`, `--help`, `--kill`), embedded UI self-containment, and license/packaging documentation compliance.
 
+### [2026-10-24] Task P42 Implementation: Parser Fuzzing & Fault Injection Campaigns
+- **Requirements Covered**: REQ-025, REQ-027, REQ-056, REQ-070
+- **Files Added / Changed**:
+  - `docs/FUZZ_AND_FAULT_CAMPAIGN.md`
+  - `crates/peercast-app/tests/test_p42_fuzz_fault_campaigns.rs`
+- **Decisions & Parity Observations**:
+  - Stop/block guard strictly satisfied: Fuzzer executed across 5,500+ randomized mutations with recorded seeds, platforms, and durations; zero unbounded allocations or hangs (REQ-025, REQ-027, REQ-070).
+  - Multi-Operator Mutation Engine (`FuzzRng`):
+    - Implemented deterministic 64-bit Xorshift PRNG with saved reproducible seeds.
+    - Operators: bit flips, boundary byte substitution (`0x00`, `0xFF`, `0x7F`, `0x80`, etc.), truncation, chunk insertion, byte swaps, and atom descriptor bit-31 tampering.
+  - Campaign 1 (Binary Atom & PCP Protocols):
+    - Seeds `0xDEADBEEF12345678`, `0xCAFEBABEDEADBEEF`, `0x0123456789ABCDEF` executed over 3,000 iterations.
+    - Tested integer descriptor overflows, billion-laughs nested trees, and leaf bounds. Verified 100% rejection via typed `AtomError` without panic.
+  - Campaign 2 (Media Container Demuxers):
+    - Fuzzed FLV, MPEG-TS, ASF/MMS, MKV, Ogg, and MP3 demuxers plus bounded `SniffBuffer` over 1,000 iterations.
+    - Verified corrupted sync bytes, truncated EBML IDs, corrupt ASF GUIDs, and Ogg CRC mismatches are absorbed or rejected with zero hangs.
+  - Campaign 3 (Yellow Pages Directory Parser):
+    - Tested `parse_index_txt` with corrupted UTF-8, null bytes, and extreme token lengths over 1,000 iterations. Verified bounded string allocation and zero crashes.
+  - Campaign 4 (HTTP Request Router & JSON-RPC Management):
+    - Tested malformed HTTP framing and invalid JSON-RPC 2.0 payloads over 500 iterations. Verified HTTP 400 and JSON-RPC parse/invalid errors.
+  - Campaign 5 (Network Fault Injection):
+    - Byte-by-byte split at every single offset across atom packets and 1-byte incremental stream feeding into container demuxers. Verified clean incomplete-state detection.
+  - Test Matrix Verified:
+    - 5 comprehensive tests passing in `test_p42_fuzz_fault_campaigns.rs`: Atom and PCP protocol fuzzing, container demuxers fuzzing, directory parser fuzzing, HTTP and RPC fuzzing, and fragmentation fault injection.
+
 ---
 
 ## 3. Next Actionable Tasks
-- **P42 — Run parser fuzz and fault campaigns** (Prerequisites: P08, P20, P26..P30, P35; Requirements: REQ-025, REQ-027, REQ-056, REQ-070).
 - **P43 — Run bounded operational soak** (Prerequisites: P36, P41, P42; Requirements: REQ-003, REQ-027, REQ-070, REQ-071).
 - **P44 — Release assessment & production readiness review** (Prerequisites: P41..P43; Requirements: REQ-070..REQ-072).
+- **P45 — Comprehensive end-to-end integration verification** (Prerequisites: P44; Requirements: REQ-070, REQ-071).
