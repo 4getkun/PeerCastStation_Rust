@@ -177,16 +177,113 @@ Please systematically evaluate the following checklist and report your findings:
 | **Memory & Safety** | - Are there any `unsafe` blocks? (Goal: 0 `unsafe` blocks across workspace).<br>- Are all allocations bounded by strict byte budgets?<br>- Are buffers protected against memory exhaustion from oversized HTTP bodies or PCP atoms? |
 | **Concurrency & Async** | - Are locks (`RwLock`, `Mutex`) held across `.await` points?<br>- Are there any possibilities of deadlocks between channel locks and peer locks?<br>- Are cancellation tokens and broadcast shutdown channels properly propagated? |
 | **Security & SSRF** | - Does reverse reachability probing validate target addresses to prevent SSRF against internal LANs?<br>- Is remote administration disabled by default and gated by minimum token length?<br>- Are all HTML/XML playlist outputs properly sanitized against header injection? |
+| **GUI & Frontend** | - Does the UI strictly obey Content Security Policy (`default-src 'self'`) without CDN leaks?<br>- Are UI mutations guarded against re-entrancy, stale response overwrites, and forced reflows?<br>- Is the pure presentation layer completely decoupled from backend network internals? |
 | **Error Handling** | - Do demuxers or network parsers ever panic on corrupt or fuzz inputs?<br>- Are all errors represented via typed `thiserror` enums? |
 
 ---
 
-## 4. Expected Audit Report Structure
+## 4. GUI & Frontend Architecture Guide (For Rewriting or Modifying the UI)
+
+If your audit or future enhancement involves rewriting, refactoring, or replacing the GUI layer (e.g. migrating to a React/Vue/Svelte SPA, modernizing CSS, or replacing components), this section provides the **exact map of files, dependency rules, and architectural invariants** you must follow.
+
+### 4.1 Architecture & Transition from C# WPF
+- **Upstream C# Baseline**: The original C# project contains two separate UI interfaces:
+  1. `PeerCastStation.WPF`: A Windows Presentation Foundation desktop application (`MainWindow.xaml`, `SettingsDialog.xaml`, `ChannelListControl.xaml`, `NotifyIconManager.cs`). It is strictly Windows-only and tightly coupled to .NET WPF runtime assemblies.
+  2. `PeerCastStation.UI.HTTP`: A browser-based web interface served via Katana/OWIN (`APIHost.cs`, `HTMLHost.cs`, `PeerCastStationJS.tt`).
+- **Rust Edition Strategy**:
+  - The heavy, Windows-only WPF desktop GUI was **superseded by an embedded, cross-platform Web UI** that is compiled directly into the binary at zero runtime cost.
+  - This allows the single executable `peercast-app.exe` to run identically on Windows desktop, Linux servers, headless Docker containers, and macOS, while serving the responsive Web UI on `http://127.0.0.1:7144/`.
+
+---
+
+### 4.2 Comprehensive UI Directory & File Map
+
+When modifying or inspecting the GUI, these are the exact files to review:
+
+| Subsystem | File Path | Purpose & Responsibilities |
+| :--- | :--- | :--- |
+| **Embedded Assets** | `crates/peercast-http/src/embedded_assets.rs` | Embeds all HTML/CSS/JS files into the binary at compile time via `include_str!` / `include_bytes!`. Calculates SHA-256 ETags and serves HTTP 304 Not Modified. |
+| **Main Views (Screens)** | `crates/peercast-http/src/embedded_assets.rs` (inline)<br>• `index.html`<br>• `channels.html`<br>• `settings.html`<br>• `gallery.html` | Layout grids, navigation headers, metric cards, channel tables, and configuration forms. Binds events to `PeerCastStation` JS API. |
+| **Component Fixture Gallery** | `gallery.html` (embedded in `embedded_assets.rs`) | **100% offline pure presentation testbed**. Renders all 8 distinct UI states without requiring a running daemon or network: (1) Loading, (2) Loaded, (3) Empty, (4) Connecting, (5) 403 Forbidden, (6) Disconnected, (7) Stale response ignored, (8) Failed mutation retry guard. |
+| **Design Tokens** | `css/tokens.css` (in `embedded_assets.rs`) | CSS custom properties for spacing (`--peca-space-*`), typography (`--peca-font-*`), semantic colors (`--peca-color-primary`, `--peca-surface-bg`), border radii, and transitions. |
+| **Themes** | `css/themes/nord.css` (in `embedded_assets.rs`) | Semantic theme definitions: Default Light, Dark Mode, Nord Arctic Blue, and High-Contrast (WCAG AAA compliant). |
+| **Component Styles** | `css/components/*.css` (in `embedded_assets.rs`) | Individual scoped styles: `status_card.css`, `channel_table.css`, `alert_banner.css`, `compact_layout.css`. |
+| **JavaScript Adapter** | `api/1/peercaststation.js` (in `embedded_assets.rs`) | Direct parity with upstream C# `PeerCastStationJS.tt`. Exposes `PeerCastStation.getStatus()`, `getChannels()`, `getSettings()`, `setSettings()`, etc. |
+| **RPC State Machines** | `crates/peercast-rpc/src/controller.rs` | Headless, testable UI controller logic: `IndexController`, `ChannelsController`, `SettingsController`. Manages `ScreenState` and `MutationState` transitions. |
+| **UI ViewModels** | `crates/peercast-rpc/src/client.rs` | Normalized presentation models (`StatusViewModel`, `ChannelViewModel`, `VersionInfoViewModel`) and safe/unsafe retry classifiers. |
+| **HTTP Routing & CSP** | `crates/peercast-http/src/router.rs`<br>`crates/peercast-app/src/server.rs` | Routes HTTP GET requests to embedded assets, injects strict Content Security Policy headers, and manages ETag negotiation. |
+
+---
+
+### 4.3 Inward-Pointing Dependency Graph & Strict Boundaries
+
+The UI layer is governed by strict boundary rules documented in `docs/UI_LAYER_BOUNDARIES.md`:
+
+```text
+[Screens / Views: index.html, channels.html, settings.html]
+                  │
+                  ▼
+   [Presentational Components & Tokens: tokens.css, nord.css, status_card.css]
+                  │
+                  ▼
+   [Presentation Controllers / ViewModels: controller.rs, client.rs]
+                  │
+                  ▼
+   [Typed API Adapter: /api/1/peercaststation.js]
+                  │
+                  ▼
+   [JSON-RPC 2.0 Management Server: /api/1 in server.rs]
+                  │
+                  ▼
+       [Servent Core Engine & Actors: peercast-core]
+```
+
+#### Strict Invariants (DO NOT VIOLATE):
+1. **Zero External CDN Dependencies (100% Offline Self-Containment)**:
+   - The UI MUST NOT load scripts, fonts, icons, or stylesheets from external CDNs (e.g. `fonts.googleapis.com`, `cdnjs`, `unpkg`).
+   - The HTTP response header enforces:
+     `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'`
+2. **Component Isolation**:
+   - Presentational components must accept data exclusively through props or view-models. Components must **never** make direct `fetch()` or `XMLHttpRequest` calls themselves; all network requests must go through the controller / `PeerCastStation` JS API adapter.
+3. **No Direct Core Dependencies**:
+   - The UI layer has **zero knowledge** of raw socket handles, PCP Atoms, or P2P actor messages. It communicates exclusively across the JSON-RPC `/api/1` boundary.
+4. **Explicit State Machines (No Multi-Boolean Flag Bugs)**:
+   - Controllers must never manage UI states with combinations of boolean flags (e.g. `isLoading && !isError && isConnecting`).
+   - All state transitions must use explicit enum phases (`ScreenState::Connecting`, `ScreenState::Loaded`, `ScreenState::Disconnected`, `ScreenState::Unauthorized`).
+5. **Re-entrancy Guards & Stale Response Protection**:
+   - Any mutation operation (e.g. saving settings or stopping a channel) must enter an explicit `MutationState::Submitting` phase and immediately reject double-clicks / repeated submissions.
+   - Every fetch request carries a monotonic sequence number (`seq_id`). Late-arriving responses with `seq_id < current_seq` must be silently dropped to prevent layout thrashing and out-of-order UI overwrites.
+
+---
+
+### 4.4 Step-by-Step Workflow for Modifying or Rewriting the GUI
+
+When executing changes to the GUI, follow this exact sequence:
+
+1. **Phase 1: Update Design Tokens & Themes**:
+   - If introducing new colors, margins, or fonts, define them in `css/tokens.css` first.
+   - Ensure high-contrast and dark theme variables are kept in parity.
+2. **Phase 2: Build / Preview Components in `gallery.html`**:
+   - Open `gallery.html` in any browser directly (no server needed).
+   - Verify that your components render cleanly in all 8 pre-defined fixture states (Empty, Loaded, Disconnected, 403, etc.).
+3. **Phase 3: Screen Template Updates**:
+   - Edit the relevant HTML template in `crates/peercast-http/src/embedded_assets.rs`.
+   - Ensure semantic HTML tags (`<main>`, `<header>`, `<nav>`, `<button>`) with proper ARIA attributes are maintained.
+4. **Phase 4: Controller & ViewModel Alignment**:
+   - If adding new fields, verify that `crates/peercast-rpc/src/client.rs` (ViewModels) and `crates/peercast-rpc/src/controller.rs` (Controllers) have corresponding fields and state transitions.
+5. **Phase 5: Automated Verification & ETag Check**:
+   - Run `cargo test -p peercast-rpc --test test_p37d_presentation` (verifies token completeness and fixture parity).
+   - Run `cargo test -p peercast-rpc --test test_p37e_boundary_enforcement` (verifies zero boundary leaks and CSP conformance).
+   - Run `cargo test -p peercast-http` (verifies SHA-256 ETag generation and 304 Not Modified).
+
+---
+
+## 5. Expected Audit Report Structure
 
 Please organize your output using the following format:
 
 1. **Executive Summary**: Brief verdict on codebase quality, equivalence status, and critical findings.
 2. **High-Severity Findings (Critical / High)**: Detailed description of any bugs, security vulnerabilities, or protocol divergences, including file, line numbers, proof of concept, and suggested fix.
 3. **Medium & Low-Severity Findings**: Subtle edge cases, potential performance bottlenecks, or missing spec nuances.
-4. **Subsystem Verification Scores**: Tabular rating (0-100%) for each crate's functional equivalence to the C# upstream.
+4. **Subsystem Verification Scores**: Tabular rating (0-100%) for each crate's functional equivalence to the C# upstream (including GUI and Protocol layers).
 5. **Concrete Action Items & Proposed Patches**: Clear diffs or code recommendations to achieve 100% equivalence and bulletproof safety.
