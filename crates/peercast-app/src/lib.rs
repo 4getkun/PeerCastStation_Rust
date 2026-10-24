@@ -7,6 +7,7 @@ pub mod lifecycle;
 pub mod logging;
 pub mod metrics;
 pub mod persistence;
+pub mod server;
 pub mod shutdown;
 
 pub use cli::AppCliArgs;
@@ -20,4 +21,5 @@ pub use lifecycle::{
 pub use logging::{BoundedLogBuffer, LogEntry, LogLevel};
 pub use metrics::{AppMetrics, ConnectionGuard, MetricsSnapshot};
 pub use persistence::{ConfigManager, ConfigPersistenceError};
+pub use server::HttpServer;
 pub use shutdown::{wait_for_os_shutdown_signal, PlatformSignalSupport};

@@ -1,9 +1,10 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use peercast_app::{
     wait_for_os_shutdown_signal, AppCliArgs, AppConfig, AppLifecycleManager, AppMetrics,
-    BoundedLogBuffer, ConfigManager, LogLevel, ShutdownReason,
+    BoundedLogBuffer, ConfigManager, HttpServer, LogLevel, ShutdownReason,
 };
 
 #[tokio::main]
@@ -64,8 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let log_buffer = BoundedLogBuffer::new(1000);
-    let metrics = AppMetrics::new();
+    let log_buffer = Arc::new(BoundedLogBuffer::new(1000));
+    let metrics = Arc::new(AppMetrics::new());
     let lifecycle = AppLifecycleManager::new();
 
     log_buffer.log(
@@ -85,6 +86,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     lifecycle.mark_running().await;
 
+    // Initialize RPC state with server configuration
+    let mut rpc_state = peercast_rpc::server::RpcState::default();
+    rpc_state.status.local_relay_end_point =
+        Some((config.server.bind_address.clone(), config.server.port));
+    rpc_state.status.local_direct_end_point =
+        Some((config.server.bind_address.clone(), config.server.port));
+
+    let server = match HttpServer::new(
+        &config,
+        rpc_state,
+        Arc::clone(&metrics),
+        Arc::clone(&log_buffer),
+        lifecycle.task_tracker().clone(),
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "Failed to initialize HTTP server on {}:{}: {}",
+                config.server.bind_address, config.server.port, e
+            );
+            std::process::exit(1);
+        }
+    };
+
+    println!("PeerCastStation (Rust Edition) v{} started", env!("CARGO_PKG_VERSION"));
+    println!("Web UI listening on http://{}:{}/", config.server.bind_address, config.server.port);
+    println!("Press Ctrl+C to stop.");
+
+    let server_shutdown_rx = lifecycle.subscribe_shutdown();
+    let server_handle = tokio::spawn(async move {
+        if let Err(e) = server.run(server_shutdown_rx).await {
+            eprintln!("HTTP server encountered an error: {}", e);
+        }
+    });
+
     // Monitor for shutdown signals (Windows Ctrl+C/Break/Close, Unix SIGINT/SIGTERM)
     let mut shutdown_rx = lifecycle.subscribe_shutdown();
     tokio::select! {
@@ -101,6 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Gracefully complete shutdown
     let timeout = Duration::from_secs(config.lifecycle.shutdown_timeout_secs);
+    let _ = server_handle.await;
     if let Err(surviving_tasks) = lifecycle.complete_shutdown(timeout).await {
         log_buffer.log(
             LogLevel::Warn,
