@@ -1,4 +1,6 @@
 /target
+/distribution-site/node_modules/
+/distribution-site/dist/
 **/*.rs.bk
 *.pdb
 peercast.json
