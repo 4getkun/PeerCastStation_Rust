@@ -4,6 +4,7 @@ const sharp = require("C:/Users/onem4/.cache/codex-runtimes/codex-primary-runtim
 
 const iconsRoot = path.resolve(__dirname, "..");
 const logoPath = path.resolve(__dirname, "../../frontend/assets/peer-loop.png");
+const tauriConfig = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../tauri.conf.json"), "utf8"));
 
 function encodeBmp24(width, height, rgb) {
   const rowSize = Math.ceil((width * 3) / 4) * 4;
@@ -34,6 +35,7 @@ function encodeBmp24(width, height, rgb) {
 
 async function drawBmp({ width, height, svg, logoRect, filename }) {
   const logo = await sharp(logoPath)
+    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .resize(logoRect.width, logoRect.height, {
       fit: "contain",
       background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -65,12 +67,12 @@ async function main() {
     width: 150,
     height: 57,
     filename: "installer-header.bmp",
-    logoRect: { left: 14, top: 13, width: 30, height: 30 },
+    logoRect: { left: 12, top: 17, width: 34, height: 18 },
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
-      <rect width="150" height="57" fill="#fbfaff"/>
-      <rect x="0" y="0" width="4" height="57" fill="#493478"/>
-      <path d="M5 54.5H150" stroke="#ded5f5"/>
-      <text x="54" y="35" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#30204f">Peercast RT</text>
+      <rect width="150" height="57" fill="#ffffff"/>
+      <path d="M0 55.5H150" stroke="#ddd7ea"/>
+      <text x="52" y="27" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="13" font-weight="700" fill="#241c35">PeerCast RT</text>
+      <text x="52" y="41" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="8" fill="#7d7688">セットアップ</text>
     </svg>`,
   });
 
@@ -78,21 +80,44 @@ async function main() {
     width: 164,
     height: 314,
     filename: "installer-sidebar.bmp",
-    logoRect: { left: 10, top: 10, width: 30, height: 30 },
+    logoRect: { left: 24, top: 22, width: 116, height: 58 },
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
-      <rect width="164" height="314" fill="#f8f6fd"/>
-      <rect width="50" height="314" fill="#352457"/>
-      <rect x="0" y="0" width="50" height="3" fill="#8d7ae2"/>
-      <circle cx="25" cy="74" r="3" fill="#e5defb"/>
-      <circle cx="25" cy="92" r="3" fill="#7662b4"/>
-      <circle cx="25" cy="110" r="3" fill="#7662b4"/>
-      <rect x="50" y="0" width="114" height="62" fill="#fff"/>
-      <path d="M50 61.5H164" stroke="#e7e1f2"/>
-      <text x="61" y="29" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#30204f">Peercast RT</text>
-      <text x="62" y="44" font-family="Segoe UI,Arial,sans-serif" font-size="7" font-weight="600" letter-spacing="1" fill="#8778a6">DESKTOP</text>
-      <path d="M64 86h72M64 108h61M64 130h69" stroke="#ded8ec" stroke-width="5" stroke-linecap="round"/>
-      <path d="M64 178h54M64 200h74M64 222h62" stroke="#e8e3f1" stroke-width="5" stroke-linecap="round"/>
-      <circle cx="137" cy="278" r="34" fill="#eee9fb"/>
+      <defs><linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3effc"/><stop offset="1" stop-color="#ebe5f8"/></linearGradient></defs>
+      <rect width="164" height="314" fill="url(#panel)"/>
+      <rect width="4" height="314" fill="#735bd3"/>
+      <text x="24" y="104" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="15" font-weight="700" fill="#241c35">PeerCast RT</text>
+      <text x="24" y="126" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="9" fill="#665f73">配信と視聴を、</text>
+      <text x="24" y="141" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="9" fill="#665f73">ひとつのアプリで。</text>
+      <rect x="20" y="169" width="124" height="42" rx="6" fill="#ffffff" fill-opacity="0.78"/>
+      <rect x="20" y="169" width="3" height="42" rx="1.5" fill="#7b63dc"/>
+      <circle cx="38" cy="190" r="4" fill="#7b63dc"/>
+      <text x="51" y="194" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="10" font-weight="600" fill="#3d344e">ようこそ</text>
+      <text x="24" y="276" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="9" fill="#746d80">Windows x64</text>
+      <text x="24" y="292" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="8" fill="#958da1">Version ${tauriConfig.version}</text>
+    </svg>`,
+  });
+
+  // The custom wide installer uses a 239x588 physical-pixel brand rail on
+  // the target 150% DPI layout. Rendering at the final size avoids NSIS's
+  // low-quality non-uniform stretch of the stock 164x314 sidebar bitmap.
+  await drawBmp({
+    width: 239,
+    height: 588,
+    filename: "installer-brand-rail.bmp",
+    logoRect: { left: 39, top: 46, width: 162, height: 81 },
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="239" height="588" viewBox="0 0 239 588">
+      <defs><linearGradient id="rail" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f0fd"/><stop offset="1" stop-color="#ebe5f8"/></linearGradient></defs>
+      <rect width="239" height="588" fill="url(#rail)"/>
+      <rect width="6" height="588" fill="#735bd3"/>
+      <text x="39" y="169" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="24" font-weight="700" fill="#241c35">PeerCast RT</text>
+      <text x="39" y="210" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="14" fill="#665f73">配信と視聴を、</text>
+      <text x="39" y="234" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="14" fill="#665f73">ひとつのアプリで。</text>
+      <rect x="34" y="308" width="185" height="72" rx="8" fill="#ffffff" fill-opacity="0.82"/>
+      <rect x="34" y="308" width="5" height="72" rx="2.5" fill="#7b63dc"/>
+      <circle cx="63" cy="344" r="7" fill="#7b63dc"/>
+      <text x="84" y="350" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="15" font-weight="600" fill="#3d344e">ようこそ</text>
+      <text x="39" y="535" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="13" fill="#746d80">Windows x64</text>
+      <text x="39" y="563" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="12" fill="#958da1">Version ${tauriConfig.version}</text>
     </svg>`,
   });
 }

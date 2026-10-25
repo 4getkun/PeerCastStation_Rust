@@ -215,18 +215,18 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.1 <span>/</span> インストーラー</p>
-                <p className="download-note">GitHub Releasesからインストーラーを直接ダウンロードできます。ライセンス文書を含むZIP版も用意しています。</p>
-                <p className="download-checksum">インストーラー SHA-256: <code>5EF15D6D63ADD1FD1CD96C3E514A10939C74DE8F518A215F55664E43A78DDDCE</code> · <a href="https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeercastRT_1.0.1_x64-setup.exe.sha256">チェックサム</a></p>
-                <p className="download-checksum">ZIP版 SHA-256: <code>0BEE0644941D18EBF1F89BEC0C23896C45D4275284675E116FD265E169528F90</code> · <a href="https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeerCastRT-1.0.1-windows-x64-installer.zip.sha256">チェックサム</a></p>
-                <p className="download-note">ZIP版にはライセンス文書を同梱しています。インストーラーとZIP版はいずれもコード署名されていません。</p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.2 <span>/</span> インストーラー</p>
+                <p className="download-note">専用の配布ホストからインストーラーを直接ダウンロードできます。ライセンス文書を含むZIP版も用意しています。</p>
+                <p className="download-checksum">インストーラー SHA-256: <code>B6E4C194A7952F472AADE4204EB5FDA01B239262AA4EB13E9847AF0C87656A3F</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeercastRT_1.0.2_x64-setup.exe.sha256">チェックサム</a></p>
+                <p className="download-checksum">ZIP版 SHA-256: <code>E70DB2D68383005BF1F1F2C170C40F62CFBA4E55C0CCF6A616EC639A3DE74FFF</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeerCastRT-1.0.2-windows-x64-installer.zip.sha256">チェックサム</a></p>
+                <p className="download-note">ZIP版にはライセンス文書を同梱しています。更新ファイルはアプリ内検証用に署名済みですが、インストーラーにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeercastRT_1.0.1_x64-setup.exe">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeercastRT_1.0.2_x64-setup.exe">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
                 インストーラーをダウンロード
               </a>
-              <a className="download-alternative" href="https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeerCastRT-1.0.1-windows-x64-installer.zip">ライセンス同梱ZIP版をダウンロード</a>
+              <a className="download-alternative" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeerCastRT-1.0.2-windows-x64-installer.zip">ライセンス同梱ZIP版をダウンロード</a>
               </div>
             </div>
           </div>

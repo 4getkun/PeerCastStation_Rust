@@ -48,10 +48,10 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 installer is available directly, with a ZIP archive containing the license documents as an alternative:
 
-- [PeerCast RT 1.0.1 installer](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeercastRT_1.0.1_x64-setup.exe)
-- [Installer SHA-256 checksum](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeercastRT_1.0.1_x64-setup.exe.sha256) (`5ef15d6d63add1fd1cd96c3e514a10939c74de8f518a215f55664e43a78dddce`)
-- [License-included installer ZIP](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeerCastRT-1.0.1-windows-x64-installer.zip)
-- [ZIP SHA-256 checksum](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeerCastRT-1.0.1-windows-x64-installer.zip.sha256) (`0bee0644941d18ebf1f89bec0c23896c45d4275284675e116fd265e169528f90`)
+- [PeerCast RT 1.0.2 installer](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeercastRT_1.0.2_x64-setup.exe)
+- [Installer SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeercastRT_1.0.2_x64-setup.exe.sha256) (`b6e4c194a7952f472aade4204eb5fda01b239262aa4eb13e9847af0c87656a3f`)
+- [License-included installer ZIP](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeerCastRT-1.0.2-windows-x64-installer.zip)
+- [ZIP SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeerCastRT-1.0.2-windows-x64-installer.zip.sha256) (`e70db2d68383005bf1f1f2c170c40f62cfba4e55c0ccf6a616ec639a3de74fff`)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
-Run `PeercastRT_1.0.1_x64-setup.exe` to install the application. The current installer is not code-signed; verify the SHA-256 checksum before running it.
+Run `PeercastRT_1.0.2_x64-setup.exe` to install the application. Update artifacts are signed for PeerCast RT's built-in updater, but the installer does not have an Authenticode publisher signature; verify the SHA-256 checksum before running it.

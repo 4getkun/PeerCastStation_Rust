@@ -11,8 +11,8 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::{watch, Mutex as AsyncMutex};
 
 pub const UPDATE_ENDPOINT: &str =
-    "https://downloads.misaka.fourgetkun.com/peercast-rt/updates/stable/windows-x64/latest.json";
-const UPDATE_HOST: &str = "downloads.misaka.fourgetkun.com";
+    "https://peercast-rt-downloads.fourgetkun.com/updates/stable/windows-x64/latest.json";
+const UPDATE_HOST: &str = "peercast-rt-downloads.fourgetkun.com";
 const MAX_MANIFEST: usize = 256 * 1024;
 const MAX_PACKAGE: usize = 256 * 1024 * 1024;
 
@@ -108,7 +108,7 @@ pub fn allowed_artifact(url: &Url) -> bool {
         && url.username().is_empty()
         && url.password().is_none()
         && url.fragment().is_none()
-        && url.path().starts_with("/peercast-rt/releases/")
+        && url.path().starts_with("/releases/")
         && url.path().ends_with(".exe")
 }
 
@@ -370,19 +370,19 @@ mod tests {
     #[test]
     fn artifact_scope_excludes_other_apps_and_transport_escapes() {
         for url in [
-            "https://downloads.misaka.fourgetkun.com/peercast-rt/releases/1.0.1/Peercast-RT.exe",
-            "https://downloads.misaka.fourgetkun.com/peercast-rt/releases/1.0.2/app.exe?download=1",
+            "https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/Peercast-RT.exe",
+            "https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/app.exe?download=1",
         ] {
             assert!(allowed_artifact(&Url::parse(url).unwrap()));
         }
         for url in [
-            "http://downloads.misaka.fourgetkun.com/peercast-rt/releases/app.exe",
+            "http://peercast-rt-downloads.fourgetkun.com/releases/app.exe",
             "https://evil.test/peercast-rt/releases/app.exe",
-            "https://downloads.misaka.fourgetkun.com/updates/app.exe",
-            "https://user:pass@downloads.misaka.fourgetkun.com/peercast-rt/releases/app.exe",
-            "https://downloads.misaka.fourgetkun.com:444/peercast-rt/releases/app.exe",
-            "https://downloads.misaka.fourgetkun.com/peercast-rt/releases/app.exe#x",
-            "https://downloads.misaka.fourgetkun.com/peercast-rt/releases/../../updates/app.exe",
+            "https://peercast-rt-downloads.fourgetkun.com/updates/app.exe",
+            "https://user:pass@peercast-rt-downloads.fourgetkun.com/releases/app.exe",
+            "https://peercast-rt-downloads.fourgetkun.com:444/releases/app.exe",
+            "https://peercast-rt-downloads.fourgetkun.com/releases/app.exe#x",
+            "https://peercast-rt-downloads.fourgetkun.com/releases/../../updates/app.exe",
         ] {
             assert!(!allowed_artifact(&Url::parse(url).unwrap()), "{url}");
         }

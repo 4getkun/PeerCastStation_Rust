@@ -1,12 +1,13 @@
 param(
     [Parameter(Mandatory = $true)][string]$PlayerArchive,
-    [string]$Version = '1.0.1',
+    [string]$Version = '1.0.2',
     [string]$CliVersion = '2.12.4',
     [string]$WorkDirectory = '',
     [switch]$SkipPackageBuild
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'release-updater-artifacts.ps1')
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $archivePath = (Resolve-Path -LiteralPath $PlayerArchive).Path
 $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
@@ -44,6 +45,7 @@ $resources = [ordered]@{
 $config = [ordered]@{
     bundle = [ordered]@{
         active = $true
+        createUpdaterArtifacts = $true
         targets = @('nsis')
         useLocalToolsDir = $true
         publisher = '4getkun'
@@ -59,9 +61,11 @@ $config = [ordered]@{
                 installMode = 'currentUser'
                 languages = @('Japanese', 'English')
                 displayLanguageSelector = $false
+                template = (Join-Path $repoRoot 'crates\peercast-desktop\nsis\installer.nsi')
                 installerIcon = (Join-Path $repoRoot 'crates\peercast-desktop\icons\icon.ico')
                 headerImage = (Join-Path $repoRoot 'crates\peercast-desktop\icons\installer-header.bmp')
                 sidebarImage = (Join-Path $repoRoot 'crates\peercast-desktop\icons\installer-sidebar.bmp')
+                installerHooks = (Join-Path $repoRoot 'crates\peercast-desktop\icons\installer-assets.nsh')
                 startMenuFolder = 'PeerCast RT'
             }
         }
@@ -72,8 +76,11 @@ $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configPath -Encodi
 Push-Location (Join-Path $repoRoot 'crates\peercast-desktop')
 try {
     $env:CARGO_BUILD_JOBS = '2'
-    & npx.cmd --yes "@tauri-apps/cli@$CliVersion" build --bundles nsis --ci --no-sign --config $configPath
-    if ($LASTEXITCODE -ne 0) { throw 'Tauri NSIS build failed.' }
+    $tauri = Get-Content -LiteralPath (Join-Path $repoRoot 'crates\peercast-desktop\tauri.conf.json') -Raw | ConvertFrom-Json
+    Invoke-PeerCastTauriBuild -ConfiguredPublicKey ([string]$tauri.plugins.updater.pubkey) -BuildAction {
+        & npx.cmd --yes "@tauri-apps/cli@$CliVersion" build --bundles nsis --ci --config $configPath
+        if ($LASTEXITCODE -ne 0) { throw 'Tauri NSIS build failed.' }
+    }
 }
 finally {
     Pop-Location

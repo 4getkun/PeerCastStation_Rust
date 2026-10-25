@@ -9,6 +9,9 @@
   };
   const byId = (id) => document.getElementById(id);
   const YP_REFRESH_COOLDOWN_MS = 30_000;
+  const UPDATE_INITIAL_CHECK_DELAY_MS = 30_000;
+  const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  const UPDATE_LAST_CHECK_KEY = "peercast-rt.update.last-successful-check";
   const state = {
     snapshot: null,
     busy: false,
@@ -79,6 +82,31 @@
 
   function errorText(error) {
     return String(error && error.message ? error.message : error);
+  }
+
+  async function checkForApplicationUpdate() {
+    try {
+      const status = await invoke("check_update");
+      try { localStorage.setItem(UPDATE_LAST_CHECK_KEY, String(Date.now())); } catch { /* Updating still works without WebView storage. */ }
+      if (status?.phase === "available") {
+        setNotice(`バージョン ${status.version || "最新版"} を利用できます。設定の「バージョン情報」から更新できます。`);
+      }
+    } catch {
+      // Startup checks are best-effort. Manual checks in Settings show actionable errors.
+    }
+  }
+
+  function scheduleApplicationUpdateChecks() {
+    let lastSuccessfulCheck = 0;
+    try { lastSuccessfulCheck = Number(localStorage.getItem(UPDATE_LAST_CHECK_KEY) || 0); } catch { /* Ignore unavailable storage. */ }
+    const elapsed = Number.isFinite(lastSuccessfulCheck) ? Date.now() - lastSuccessfulCheck : UPDATE_CHECK_INTERVAL_MS;
+    const delay = lastSuccessfulCheck > 0 && elapsed < UPDATE_CHECK_INTERVAL_MS
+      ? UPDATE_CHECK_INTERVAL_MS - elapsed
+      : UPDATE_INITIAL_CHECK_DELAY_MS;
+    window.setTimeout(() => {
+      void checkForApplicationUpdate();
+      window.setInterval(() => { void checkForApplicationUpdate(); }, UPDATE_CHECK_INTERVAL_MS);
+    }, delay);
   }
 
   function setBusy(busy) {
@@ -1853,5 +1881,6 @@
   bind("log-wrap", "change", renderLogs);
 
   refresh();
+  scheduleApplicationUpdateChecks();
   window.setInterval(() => refresh(false), 1000);
 })();
