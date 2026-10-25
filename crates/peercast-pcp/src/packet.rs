@@ -145,12 +145,6 @@ impl ChannelPacket {
                     }
                     ID4::PKT_DATA => {
                         if let Some(b) = child.leaf_bytes() {
-                            if b.len() > MAX_PACKET_DATALEN {
-                                return Err(PacketError::PacketDataTooLarge {
-                                    actual: b.len(),
-                                    max: MAX_PACKET_DATALEN,
-                                });
-                            }
                             body_data = Some(b.clone());
                         }
                     }
@@ -167,6 +161,12 @@ impl ChannelPacket {
             PacketPayload::Header(h)
         } else {
             let d = body_data.or(head_data).ok_or(PacketError::MissingPayload)?;
+            if d.len() > MAX_PACKET_DATALEN {
+                return Err(PacketError::PacketDataTooLarge {
+                    actual: d.len(),
+                    max: MAX_PACKET_DATALEN,
+                });
+            }
             PacketPayload::Data(d)
         };
 
@@ -244,7 +244,10 @@ impl ChannelPacket {
                         };
 
                         let mut pkt_children = vec![
-                            Atom::new_leaf(ID4::PKT_TYPE, Bytes::copy_from_slice(&stream_type_tag.0)),
+                            Atom::new_leaf(
+                                ID4::PKT_TYPE,
+                                Bytes::copy_from_slice(&stream_type_tag.0),
+                            ),
                             Atom::new_u32_le(ID4::PKT_POS, sub_pos),
                         ];
                         if sub_cont != ContinuationFlags::NONE {

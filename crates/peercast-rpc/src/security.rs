@@ -105,7 +105,11 @@ pub struct HttpRequestContext {
 }
 
 impl HttpRequestContext {
-    pub fn new(remote_addr: SocketAddr, method: impl Into<String>, path: impl Into<String>) -> Self {
+    pub fn new(
+        remote_addr: SocketAddr,
+        method: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self {
             remote_addr,
             method: method.into(),
@@ -117,7 +121,8 @@ impl HttpRequestContext {
     }
 
     pub fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.headers.insert(key.into().to_ascii_lowercase(), value.into());
+        self.headers
+            .insert(key.into().to_ascii_lowercase(), value.into());
         self
     }
 
@@ -135,7 +140,9 @@ impl HttpRequestContext {
     }
 
     pub fn get_header(&self, key: &str) -> Option<&str> {
-        self.headers.get(&key.to_ascii_lowercase()).map(|s| s.as_str())
+        self.headers
+            .get(&key.to_ascii_lowercase())
+            .map(|s| s.as_str())
     }
 }
 
@@ -209,7 +216,10 @@ impl SecureRpcHandler {
     }
 
     /// Evaluates access level for an incoming request context.
-    pub fn evaluate_access_level(&self, ctx: &HttpRequestContext) -> Result<AccessLevel, SecurityError> {
+    pub fn evaluate_access_level(
+        &self,
+        ctx: &HttpRequestContext,
+    ) -> Result<AccessLevel, SecurityError> {
         let is_loopback = ctx.remote_addr.ip().is_loopback();
 
         // Extract credentials: from query param, X-PeerCast-Auth-Token header, or Authorization header
@@ -262,11 +272,10 @@ impl SecureRpcHandler {
             let cl_str = ctx
                 .get_header("content-length")
                 .ok_or(SecurityError::LengthRequired)?;
-            let cl: usize = cl_str
-                .parse()
-                .map_err(|_| SecurityError::LengthRequired)?;
+            let cl: usize = cl_str.parse().map_err(|_| SecurityError::LengthRequired)?;
 
-            if cl > self.policy.max_request_bytes || ctx.body.len() > self.policy.max_request_bytes {
+            if cl > self.policy.max_request_bytes || ctx.body.len() > self.policy.max_request_bytes
+            {
                 return Err(SecurityError::PayloadTooLarge {
                     limit: self.policy.max_request_bytes,
                     actual: cl.max(ctx.body.len()),
@@ -303,9 +312,9 @@ impl SecureRpcHandler {
             return match err {
                 SecurityError::LengthRequired => HttpRpcResponse::length_required(),
                 SecurityError::PayloadTooLarge { .. } => HttpRpcResponse::payload_too_large(),
-                SecurityError::CsrfMissingHeader => {
-                    HttpRpcResponse::bad_request("X-Requested-With header is required for CSRF protection")
-                }
+                SecurityError::CsrfMissingHeader => HttpRpcResponse::bad_request(
+                    "X-Requested-With header is required for CSRF protection",
+                ),
                 SecurityError::CsrfInvalidOrigin { origin } => {
                     HttpRpcResponse::forbidden(&format!("Disallowed origin '{}'", origin))
                 }

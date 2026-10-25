@@ -15,6 +15,9 @@ pub const PAT_PID: u16 = 0x0000;
 /// Well-known PID for Null / Padding packets.
 pub const NULL_PID: u16 = 0x1FFF;
 
+const PCR_EXT_MULTIPLIER: u64 = 300;
+const MPEG2_SYSTEM_CLOCK_HZ: f64 = 27_000_000.0;
+
 /// Declared supported MPEG-2 TS elementary stream codec subset (REQ-053).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TsStreamType {
@@ -141,7 +144,9 @@ impl TsPacketHeader {
                         | ((packet[9] as u64) << 1)
                         | (((packet[10] as u64) & 0x80) >> 7);
                     let pcr_ext = (((packet[10] as u64) & 0x01) << 8) | (packet[11] as u64);
-                    pcr = Some((pcr_base * 300 + pcr_ext) as f64 / 27_000_000.0);
+                    pcr = Some(
+                        (pcr_base * PCR_EXT_MULTIPLIER + pcr_ext) as f64 / MPEG2_SYSTEM_CLOCK_HZ,
+                    );
                 }
             }
         }
@@ -179,31 +184,43 @@ impl PatTable {
     /// Parses a PAT payload from a TS packet with PID 0.
     pub fn parse(packet: &[u8], payload_offset: usize) -> Result<Self, TsParseError> {
         if payload_offset >= packet.len() {
-            return Err(TsParseError::MalformedPsiSection("Payload offset out of bounds".to_string()));
+            return Err(TsParseError::MalformedPsiSection(
+                "Payload offset out of bounds".to_string(),
+            ));
         }
 
         let pointer_field = packet[payload_offset] as usize;
         let sec_start = payload_offset + 1 + pointer_field;
         if sec_start + 8 >= packet.len() {
-            return Err(TsParseError::MalformedPsiSection("PAT section truncated".to_string()));
+            return Err(TsParseError::MalformedPsiSection(
+                "PAT section truncated".to_string(),
+            ));
         }
 
         let table_id = packet[sec_start];
         if table_id != 0x00 {
-            return Err(TsParseError::MalformedPsiSection(format!("Expected PAT table_id 0x00, got 0x{table_id:02x}")));
+            return Err(TsParseError::MalformedPsiSection(format!(
+                "Expected PAT table_id 0x00, got 0x{table_id:02x}"
+            )));
         }
 
-        let section_len = (((packet[sec_start + 1] & 0x0F) as usize) << 8) | (packet[sec_start + 2] as usize);
+        let section_len =
+            (((packet[sec_start + 1] & 0x0F) as usize) << 8) | (packet[sec_start + 2] as usize);
         if section_len < 9 {
-            return Err(TsParseError::MalformedPsiSection("PAT section_length too small".to_string()));
+            return Err(TsParseError::MalformedPsiSection(
+                "PAT section_length too small".to_string(),
+            ));
         }
 
-        let transport_stream_id = u16::from_be_bytes([packet[sec_start + 3], packet[sec_start + 4]]);
+        let transport_stream_id =
+            u16::from_be_bytes([packet[sec_start + 3], packet[sec_start + 4]]);
         let version = (packet[sec_start + 5] & 0x3E) >> 1;
 
         let entries_start = sec_start + 8;
         // 4 bytes CRC32 at the end
-        let entries_end = (sec_start + 3 + section_len).min(packet.len()).saturating_sub(4);
+        let entries_end = (sec_start + 3 + section_len)
+            .min(packet.len())
+            .saturating_sub(4);
 
         let mut programs = Vec::new();
         let mut cur = entries_start;
@@ -244,35 +261,47 @@ impl PmtTable {
     /// Parses a PMT payload from a TS packet.
     pub fn parse(packet: &[u8], payload_offset: usize) -> Result<Self, TsParseError> {
         if payload_offset >= packet.len() {
-            return Err(TsParseError::MalformedPsiSection("PMT payload offset out of bounds".to_string()));
+            return Err(TsParseError::MalformedPsiSection(
+                "PMT payload offset out of bounds".to_string(),
+            ));
         }
 
         let pointer_field = packet[payload_offset] as usize;
         let sec_start = payload_offset + 1 + pointer_field;
         if sec_start + 12 >= packet.len() {
-            return Err(TsParseError::MalformedPsiSection("PMT section truncated".to_string()));
+            return Err(TsParseError::MalformedPsiSection(
+                "PMT section truncated".to_string(),
+            ));
         }
 
         let table_id = packet[sec_start];
         if table_id != 0x02 {
-            return Err(TsParseError::MalformedPsiSection(format!("Expected PMT table_id 0x02, got 0x{table_id:02x}")));
+            return Err(TsParseError::MalformedPsiSection(format!(
+                "Expected PMT table_id 0x02, got 0x{table_id:02x}"
+            )));
         }
 
-        let section_len = (((packet[sec_start + 1] & 0x0F) as usize) << 8) | (packet[sec_start + 2] as usize);
+        let section_len =
+            (((packet[sec_start + 1] & 0x0F) as usize) << 8) | (packet[sec_start + 2] as usize);
         let program_number = u16::from_be_bytes([packet[sec_start + 3], packet[sec_start + 4]]);
         let version = (packet[sec_start + 5] & 0x3E) >> 1;
-        let pcr_pid = (((packet[sec_start + 8] & 0x1F) as u16) << 8) | (packet[sec_start + 9] as u16);
+        let pcr_pid =
+            (((packet[sec_start + 8] & 0x1F) as u16) << 8) | (packet[sec_start + 9] as u16);
 
-        let prog_info_len = (((packet[sec_start + 10] & 0x0F) as usize) << 8) | (packet[sec_start + 11] as usize);
+        let prog_info_len =
+            (((packet[sec_start + 10] & 0x0F) as usize) << 8) | (packet[sec_start + 11] as usize);
         let entries_start = sec_start + 12 + prog_info_len;
-        let entries_end = (sec_start + 3 + section_len).min(packet.len()).saturating_sub(4);
+        let entries_end = (sec_start + 3 + section_len)
+            .min(packet.len())
+            .saturating_sub(4);
 
         let mut streams = Vec::new();
         let mut cur = entries_start;
         while cur + 5 <= entries_end {
             let st_raw = packet[cur];
             let elem_pid = (((packet[cur + 1] & 0x1F) as u16) << 8) | (packet[cur + 2] as u16);
-            let es_info_len = (((packet[cur + 3] & 0x0F) as usize) << 8) | (packet[cur + 4] as usize);
+            let es_info_len =
+                (((packet[cur + 3] & 0x0F) as usize) << 8) | (packet[cur + 4] as usize);
 
             streams.push(TsStreamInfo {
                 stream_type: TsStreamType::from_u8(st_raw),
@@ -414,7 +443,8 @@ impl TsDemuxer {
 
             // Track continuity counter per PID (REQ-053)
             if header.has_payload && header.pid != NULL_PID {
-                self.continuity_counters.insert(header.pid, header.continuity_counter);
+                self.continuity_counters
+                    .insert(header.pid, header.continuity_counter);
             }
 
             // 1. PAT processing (PID 0)

@@ -36,6 +36,35 @@ fn test_p26_authorized_and_unauthorized_post() {
     let raw_get = b"GET / HTTP/1.1\r\n\r\n";
     let res5 = parse_ingest_handshake(raw_get, None);
     assert_eq!(res5, Err(IngestError::MethodNotAllowed("GET".to_string())));
+
+    let raw_content_length = b"POST / HTTP/1.1\r\nContent-Length: 4\r\n\r\n";
+    assert!(
+        !parse_ingest_handshake(raw_content_length, None)
+            .unwrap()
+            .is_chunked
+    );
+    let raw_unsupported = b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n";
+    assert_eq!(
+        parse_ingest_handshake(raw_unsupported, None),
+        Err(IngestError::UnsupportedTransferEncoding)
+    );
+    let raw_unsupported_chain =
+        b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip, gzip, chunked\r\n\r\n";
+    assert_eq!(
+        parse_ingest_handshake(raw_unsupported_chain, None),
+        Err(IngestError::UnsupportedTransferEncoding)
+    );
+    for malformed in [
+        &b"POST / HTTP/1.1\r\nTransfer-Encoding:\r\n\r\n"[..],
+        &b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked, chunked\r\n\r\n"[..],
+        &b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n\r\n"[..],
+        &b"POST / HTTP/1.1\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n"[..],
+    ] {
+        assert!(matches!(
+            parse_ingest_handshake(malformed, None),
+            Err(IngestError::MalformedRequest(_))
+        ));
+    }
 }
 
 #[tokio::test]
@@ -51,6 +80,129 @@ async fn test_p26_conflicting_bind_error() {
         matches!(res2, Err(IngestError::BindError(_))),
         "Conflicting port bind must return BindError"
     );
+}
+
+#[tokio::test]
+async fn test_p26_configured_header_limit_is_enforced_during_read() {
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let mut listener =
+        HttpPushIngestListener::new(HttpPushConfig::new(addr).with_max_header_size(20));
+    let bound_addr = listener.bind().await.unwrap();
+
+    let server_task = tokio::spawn(async move { listener.accept_connection().await });
+    let mut client = TcpStream::connect(bound_addr).await.unwrap();
+    let oversized_request = b"POST / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    client.write_all(&oversized_request[..20]).await.unwrap();
+
+    let result = server_task.await.unwrap();
+    assert_eq!(
+        result.unwrap_err(),
+        IngestError::HeaderTooLarge {
+            actual: 20,
+            max: 20
+        }
+    );
+    let mut response = Vec::new();
+    client.read_to_end(&mut response).await.unwrap();
+    assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 431"));
+}
+
+#[tokio::test]
+async fn test_p26_transfer_encoding_errors_have_status_and_listener_recovers() {
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let mut listener = HttpPushIngestListener::new(HttpPushConfig::new(addr));
+    let bound_addr = listener.bind().await.unwrap();
+    let (errors_tx, mut errors_rx) = mpsc::channel(2);
+
+    let server_task = tokio::spawn(async move {
+        for _ in 0..2 {
+            let error = listener.accept_connection().await.unwrap_err();
+            errors_tx.send(error).await.unwrap();
+        }
+        let (_, handshake, _) = listener.accept_connection().await.unwrap();
+        assert!(handshake.is_chunked);
+    });
+
+    for (request, expected_status, expected_error) in [
+        (
+            &b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n"[..],
+            "HTTP/1.1 501 Not Implemented",
+            IngestError::UnsupportedTransferEncoding,
+        ),
+        (
+            &b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n\r\n"
+                [..],
+            "HTTP/1.1 400 Bad Request",
+            IngestError::MalformedRequest("Multiple Transfer-Encoding fields"),
+        ),
+    ] {
+        let mut client = TcpStream::connect(bound_addr).await.unwrap();
+        client.write_all(request).await.unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).await.unwrap();
+        assert!(String::from_utf8_lossy(&response).starts_with(expected_status));
+        assert_eq!(errors_rx.recv().await.unwrap(), expected_error);
+    }
+
+    let mut valid_client = TcpStream::connect(bound_addr).await.unwrap();
+    valid_client
+        .write_all(b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = [0u8; 128];
+    let n = valid_client.read(&mut response).await.unwrap();
+    assert!(String::from_utf8_lossy(&response[..n]).starts_with("HTTP/1.1 200 OK"));
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_p26_header_timeout_is_total_and_listener_accepts_next_request() {
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let mut listener = HttpPushIngestListener::new(
+        HttpPushConfig::new(addr).with_header_timeout(Duration::from_millis(180)),
+    );
+    let bound_addr = listener.bind().await.unwrap();
+    let (timed_out_tx, timed_out_rx) = tokio::sync::oneshot::channel();
+
+    let server_task = tokio::spawn(async move {
+        let first = listener.accept_connection().await;
+        timed_out_tx
+            .send(first.as_ref().unwrap_err().clone())
+            .unwrap();
+        let (_, handshake, _) = listener.accept_connection().await.unwrap();
+        assert!(handshake.is_chunked);
+    });
+
+    let mut slow_client = TcpStream::connect(bound_addr).await.unwrap();
+    slow_client.write_all(b"P").await.unwrap();
+    let trickle_task = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            if slow_client.write_all(b"x").await.is_err() {
+                break;
+            }
+        }
+    });
+
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), timed_out_rx)
+            .await
+            .expect("header deadline should release the connection")
+            .unwrap(),
+        IngestError::HeaderTimedOut
+    );
+    trickle_task.abort();
+    let _ = trickle_task.await;
+
+    let mut next_client = TcpStream::connect(bound_addr).await.unwrap();
+    next_client
+        .write_all(b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = [0u8; 128];
+    let n = next_client.read(&mut response).await.unwrap();
+    assert!(String::from_utf8_lossy(&response[..n]).starts_with("HTTP/1.1 200 OK"));
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -83,9 +235,112 @@ async fn test_p26_chunked_stream_dechunking_and_malformed_rejection() {
     let mut oversized = &b"1000\r\n"[..]; // declares 4096 bytes with budget of 1024
     let res3 = read_chunked_stream(&mut oversized, Bytes::new(), tx3, 1024).await;
     assert!(
-        matches!(res3, Err(IngestError::ChunkTooLarge { actual: 4096, max: 1024 })),
+        matches!(
+            res3,
+            Err(IngestError::ChunkTooLarge {
+                actual: 4096,
+                max: 1024
+            })
+        ),
         "Oversized chunk must be rejected"
     );
+}
+
+#[tokio::test]
+async fn test_p26_chunked_stream_validates_data_terminator_and_trailers() {
+    let (mut writer, mut reader) = tokio::io::duplex(8);
+    let (tx, mut rx) = mpsc::channel(4);
+    let writer_task = tokio::spawn(async move {
+        for piece in [
+            &b"\nab"[..],
+            &b"\r"[..],
+            &b"\n0\r\nX-Test: yes\r\n\r"[..],
+            &b"\n"[..],
+        ] {
+            writer.write_all(piece).await.unwrap();
+            tokio::task::yield_now().await;
+        }
+    });
+    read_chunked_stream(&mut reader, Bytes::from_static(b"2\r"), tx, 1024)
+        .await
+        .unwrap();
+    writer_task.await.unwrap();
+    assert_eq!(rx.recv().await.unwrap().as_ref(), b"ab");
+    assert!(rx.recv().await.is_none());
+}
+
+#[tokio::test]
+async fn test_p26_chunked_stream_rejects_incomplete_or_invalid_framing() {
+    let (tx, mut rx) = mpsc::channel(4);
+    let mut bad_data_terminator = &b"2\r\nabXX0\r\n\r\n"[..];
+    assert!(matches!(
+        read_chunked_stream(&mut bad_data_terminator, Bytes::new(), tx, 1024).await,
+        Err(IngestError::MalformedChunking(
+            "Missing chunk data terminator"
+        ))
+    ));
+    assert!(rx.try_recv().is_err(), "invalid chunk must not be emitted");
+
+    let (tx, _rx) = mpsc::channel(4);
+    let mut incomplete_body = &b"5\r\nab"[..];
+    assert_eq!(
+        read_chunked_stream(&mut incomplete_body, Bytes::new(), tx, 1024).await,
+        Err(IngestError::ConnectionClosed)
+    );
+
+    let (tx, _rx) = mpsc::channel(4);
+    let mut incomplete_zero_chunk = &b"0\r\n"[..];
+    assert_eq!(
+        read_chunked_stream(&mut incomplete_zero_chunk, Bytes::new(), tx, 1024).await,
+        Err(IngestError::ConnectionClosed)
+    );
+
+    let (tx, _rx) = mpsc::channel(4);
+    let mut invalid_trailer = &b"0\r\nBad Field: value\r\n\r\n"[..];
+    assert!(matches!(
+        read_chunked_stream(&mut invalid_trailer, Bytes::new(), tx, 1024).await,
+        Err(IngestError::MalformedChunking("Invalid trailer field name"))
+    ));
+
+    let mut oversized_trailer = b"0\r\nX: ".to_vec();
+    oversized_trailer.extend(std::iter::repeat_n(b'x', 8192));
+    oversized_trailer.extend_from_slice(b"\r\n\r\n");
+    let (tx, _rx) = mpsc::channel(4);
+    assert!(matches!(
+        read_chunked_stream(&mut oversized_trailer.as_slice(), Bytes::new(), tx, 1024).await,
+        Err(IngestError::MalformedChunking(
+            "Chunk line or trailers too large"
+        ))
+    ));
+
+    let (tx, _rx) = mpsc::channel(4);
+    let mut signed_hex = &b"-1\r\n"[..];
+    assert!(matches!(
+        read_chunked_stream(&mut signed_hex, Bytes::new(), tx, 1024).await,
+        Err(IngestError::MalformedChunking("Invalid chunk size hex"))
+    ));
+
+    let (tx, _rx) = mpsc::channel(4);
+    let mut plus_hex = &b"+1\r\na\r\n0\r\n\r\n"[..];
+    assert!(matches!(
+        read_chunked_stream(&mut plus_hex, Bytes::new(), tx, 1024).await,
+        Err(IngestError::MalformedChunking("Invalid chunk size hex"))
+    ));
+
+    for control_trailer in [
+        &b"0\r\nX-Test: a\0b\r\n\r\n"[..],
+        &b"0\r\nX-Test: a\nb\r\n\r\n"[..],
+        &b"0\r\nX-Test: a\x7fb\r\n\r\n"[..],
+    ] {
+        let (tx, _rx) = mpsc::channel(4);
+        let mut control_in_trailer = control_trailer;
+        assert!(matches!(
+            read_chunked_stream(&mut control_in_trailer, Bytes::new(), tx, 1024).await,
+            Err(IngestError::MalformedChunking(
+                "Invalid trailer field value"
+            ))
+        ));
+    }
 }
 
 #[tokio::test]
@@ -99,9 +354,10 @@ async fn test_p26_client_cancellation_during_ingest() {
         assert!(handshake.is_chunked);
 
         let (tx, mut rx) = mpsc::channel(16);
-        let ingest_task = tokio::spawn(async move {
-            read_chunked_stream(&mut socket, prefix, tx, 1024 * 1024).await
-        });
+        let ingest_task =
+            tokio::spawn(
+                async move { read_chunked_stream(&mut socket, prefix, tx, 1024 * 1024).await },
+            );
 
         // Read one chunk from client
         let first = rx.recv().await;
@@ -138,7 +394,8 @@ async fn test_p26_client_cancellation_during_ingest() {
 #[tokio::test]
 async fn test_p26_real_ffmpeg_flv_ingest_pipeline() {
     let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let mut listener = HttpPushIngestListener::new(HttpPushConfig::new(addr).with_auth("obs_token"));
+    let mut listener =
+        HttpPushIngestListener::new(HttpPushConfig::new(addr).with_auth("obs_token"));
     let bound_addr = listener.bind().await.unwrap();
 
     let (tx_demux, mut rx_demux) = mpsc::channel(16);
@@ -186,7 +443,10 @@ async fn test_p26_real_ffmpeg_flv_ingest_pipeline() {
     flv_prelude.put_u32(0); // PreviousTagSize0
 
     // Metadata tag
-    let meta_body = vec![2, 0, 10, b'o', b'n', b'M', b'e', b't', b'a', b'D', b'a', b't', b'a', 8, 0, 0, 0, 0, 0, 0, 9];
+    let meta_body = vec![
+        2, 0, 10, b'o', b'n', b'M', b'e', b't', b'a', b'D', b'a', b't', b'a', 8, 0, 0, 0, 0, 0, 0,
+        9,
+    ];
     flv_prelude.put_u8(18); // ScriptData
     flv_prelude.put_u8(0);
     flv_prelude.put_u8(0);
@@ -241,7 +501,9 @@ async fn test_p26_real_ffmpeg_flv_ingest_pipeline() {
 
     let ev2 = rx_demux.recv().await.unwrap();
     match ev2 {
-        FlvDemuxOutput::ContentTag { tag, is_keyframe, .. } => {
+        FlvDemuxOutput::ContentTag {
+            tag, is_keyframe, ..
+        } => {
             assert_eq!(tag.header.tag_type, FlvTagType::Video);
             assert!(is_keyframe);
         }

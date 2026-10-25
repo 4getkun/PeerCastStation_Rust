@@ -15,7 +15,7 @@ fn make_pat_packet(cc: u8, pmt_pid: u16) -> [u8; TS_PACKET_SIZE] {
     pkt[4] = 0x00;
     let sec = 5;
     pkt[sec] = 0x00; // table_id = 0 (PAT)
-    // section_syntax_indicator = 1, '0', reserved, section_length = 13 (9 + 4)
+                     // section_syntax_indicator = 1, '0', reserved, section_length = 13 (9 + 4)
     pkt[sec + 1] = 0xB0;
     pkt[sec + 2] = 13;
     pkt[sec + 3] = 0x00; // transport_stream_id = 1
@@ -119,7 +119,7 @@ fn make_media_packet(
         pkt[3] = 0x30 | (cc & 0x0F);
         pkt[4] = 7; // adaptation_field_length = 7
         pkt[5] = 0x50; // RAI (0x40) + PCR flag (0x10)
-        // 6 bytes PCR
+                       // 6 bytes PCR
         pkt[6] = 0x00;
         pkt[7] = 0x00;
         pkt[8] = 0x00;
@@ -230,9 +230,21 @@ fn test_p27_continuity_counter_and_adaptation_field() {
 
     match (out1, out2, out3) {
         (
-            TsDemuxOutput::MediaPacket { header: h1, is_keyframe: k1, .. },
-            TsDemuxOutput::MediaPacket { header: h2, is_keyframe: k2, .. },
-            TsDemuxOutput::MediaPacket { header: h3, is_keyframe: k3, .. },
+            TsDemuxOutput::MediaPacket {
+                header: h1,
+                is_keyframe: k1,
+                ..
+            },
+            TsDemuxOutput::MediaPacket {
+                header: h2,
+                is_keyframe: k2,
+                ..
+            },
+            TsDemuxOutput::MediaPacket {
+                header: h3,
+                is_keyframe: k3,
+                ..
+            },
         ) => {
             assert_eq!(h1.continuity_counter, 1);
             assert!(!k1);
@@ -263,7 +275,9 @@ fn test_p27_audio_only_ts_demuxing() {
 
     let ev2 = demuxer.next_output().unwrap().unwrap();
     match ev2 {
-        TsDemuxOutput::MediaPacket { pid, is_keyframe, .. } => {
+        TsDemuxOutput::MediaPacket {
+            pid, is_keyframe, ..
+        } => {
             assert_eq!(pid, 300);
             assert!(!is_keyframe);
         }
@@ -305,7 +319,10 @@ fn test_p27_changed_pmt_pid_epoch_invalidation() {
     let ev3 = demuxer.next_output().unwrap().unwrap();
     let updated_epoch = match ev3 {
         TsDemuxOutput::HeaderChanged(s) => {
-            assert!(s.epoch > initial_epoch, "Epoch must increment on PID change (REQ-051)");
+            assert!(
+                s.epoch > initial_epoch,
+                "Epoch must increment on PID change (REQ-051)"
+            );
             s.epoch
         }
         _ => panic!("Expected HeaderChanged on PID change"),

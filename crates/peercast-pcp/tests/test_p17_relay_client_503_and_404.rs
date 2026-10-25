@@ -7,8 +7,7 @@ use peercast_core::errors::QuitReason;
 use peercast_core::host::{Host, HostFlags1};
 use peercast_core::id4::ID4;
 use peercast_pcp::relay_client::{
-    MAX_CANDIDATE_HOSTS, RelayClientPhase, RelayClientStateMachine, RelayError, RelayEvent,
-    RelayNetworkProfile,
+    RelayClientPhase, RelayClientStateMachine, RelayError, RelayEvent, RelayNetworkProfile,
 };
 
 fn sample_channel_id() -> ChannelId {
@@ -46,7 +45,10 @@ fn test_p17_503_full_transcript_ordered() {
     let oleh = Atom::new_parent(
         ID4::PCP_OLEH,
         vec![
-            Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::copy_from_slice(server_sid.as_bytes())),
+            Atom::new_leaf(
+                ID4::HELO_SESSIONID,
+                Bytes::copy_from_slice(server_sid.as_bytes()),
+            ),
             Atom::new_u16_le(ID4::HELO_PORT, 7144),
         ],
     );
@@ -61,17 +63,26 @@ fn test_p17_503_full_transcript_ordered() {
     // 5. Server sends 3 candidate host atoms
     let cand1_sid = ChannelId::from_hex("22222222222222222222222222222222").unwrap();
     let mut host1 = Host::new(cand1_sid, cid);
-    host1.global_endpoint = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 7144));
+    host1.global_endpoint = Some(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)),
+        7144,
+    ));
     host1.flags = HostFlags1::RELAY;
 
     let cand2_sid = ChannelId::from_hex("33333333333333333333333333333333").unwrap();
     let mut host2 = Host::new(cand2_sid, cid);
-    host2.global_endpoint = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)), 7145));
+    host2.global_endpoint = Some(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)),
+        7145,
+    ));
     host2.flags = HostFlags1::RELAY;
 
     let cand3_sid = ChannelId::from_hex("44444444444444444444444444444444").unwrap();
     let mut host3 = Host::new(cand3_sid, cid);
-    host3.global_endpoint = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 3)), 7146));
+    host3.global_endpoint = Some(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 3)),
+        7146,
+    ));
     host3.flags = HostFlags1::RELAY;
 
     let mut stream_buf = Vec::new();
@@ -100,7 +111,10 @@ fn test_p17_503_full_transcript_ordered() {
     // Consume quit
     let ev_q = sm.feed_bytes(&mut buf).unwrap().expect("Quit");
     assert_eq!(ev_q, RelayEvent::Quit(QuitReason::UNAVAILABLE));
-    assert_eq!(sm.phase(), RelayClientPhase::Terminal(QuitReason::UNAVAILABLE));
+    assert_eq!(
+        sm.phase(),
+        RelayClientPhase::Terminal(QuitReason::UNAVAILABLE)
+    );
     assert!(buf.is_empty(), "All bytes consumed");
 
     // Verify collected candidates
@@ -131,7 +145,10 @@ fn test_p17_503_empty_candidates_terminates_cleanly() {
     let mut buf_quit = quit.to_bytes().unwrap();
     let ev = sm.feed_bytes(&mut buf_quit).unwrap().expect("Quit event");
     assert_eq!(ev, RelayEvent::Quit(QuitReason::UNAVAILABLE));
-    assert_eq!(sm.phase(), RelayClientPhase::Terminal(QuitReason::UNAVAILABLE));
+    assert_eq!(
+        sm.phase(),
+        RelayClientPhase::Terminal(QuitReason::UNAVAILABLE)
+    );
 
     // Candidates list is clean and empty
     assert!(sm.candidate_hosts().is_empty());
@@ -152,8 +169,14 @@ fn test_p17_503_filters_invalid_candidates() {
     let mut stream_buf = Vec::new();
 
     // 1. Valid host
-    let mut valid_host1 = Host::new(ChannelId::from_hex("11111111111111111111111111111111").unwrap(), cid);
-    valid_host1.global_endpoint = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 7144));
+    let mut valid_host1 = Host::new(
+        ChannelId::from_hex("11111111111111111111111111111111").unwrap(),
+        cid,
+    );
+    valid_host1.global_endpoint = Some(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)),
+        7144,
+    ));
     valid_host1.to_atom().encode(&mut stream_buf).unwrap();
 
     // 2. Invalid port (port 0)
@@ -180,12 +203,21 @@ fn test_p17_503_filters_invalid_candidates() {
 
     // 4. Self session ID (matching client's sid -> loop prevention)
     let mut self_host = Host::new(sid, cid);
-    self_host.global_endpoint = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 4)), 7144));
+    self_host.global_endpoint = Some(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 4)),
+        7144,
+    ));
     self_host.to_atom().encode(&mut stream_buf).unwrap();
 
     // 5. Valid host 2
-    let mut valid_host2 = Host::new(ChannelId::from_hex("55555555555555555555555555555555").unwrap(), cid);
-    valid_host2.global_endpoint = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 50)), 7144));
+    let mut valid_host2 = Host::new(
+        ChannelId::from_hex("55555555555555555555555555555555").unwrap(),
+        cid,
+    );
+    valid_host2.global_endpoint = Some(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(203, 0, 113, 50)),
+        7144,
+    ));
     valid_host2.to_atom().encode(&mut stream_buf).unwrap();
 
     // 6. Terminate with quit(1003)
@@ -248,14 +280,18 @@ fn test_p17_404_and_malformed_statuses() {
     let mut buf_500 = Bytes::from_static(b"HTTP/1.0 500 Internal Server Error\r\n\r\n");
     let res2 = sm2.feed_bytes(&mut buf_500);
     assert!(matches!(res2, Err(RelayError::Http(_))));
-    assert_eq!(sm2.phase(), RelayClientPhase::Terminal(QuitReason::BAD_RESPONSE));
+    assert_eq!(
+        sm2.phase(),
+        RelayClientPhase::Terminal(QuitReason::BAD_RESPONSE)
+    );
 }
 
 #[test]
 fn test_p17_candidate_capacity_bound() {
     let cid = sample_channel_id();
     let sid = sample_session_id();
-    let mut sm = RelayClientStateMachine::new(cid, sid, RelayNetworkProfile::IPv4, 0);
+    let mut sm = RelayClientStateMachine::new(cid, sid, RelayNetworkProfile::IPv4, 0)
+        .with_max_candidate_hosts(7);
 
     let mut buf_prelude = Bytes::from_static(b"HTTP/1.0 503 Service Unavailable\r\n\r\n");
     sm.feed_bytes(&mut buf_prelude).unwrap();
@@ -263,7 +299,7 @@ fn test_p17_candidate_capacity_bound() {
     let mut buf_oleh = oleh.to_bytes().unwrap();
     sm.feed_bytes(&mut buf_oleh).unwrap();
 
-    // Send 100 candidate hosts (exceeding MAX_CANDIDATE_HOSTS = 64)
+    // Send more candidates than the configured cap.
     let mut stream_buf = Vec::new();
     for i in 1..=100u32 {
         let mut h = Host::new(ChannelId::from_bytes([i as u8; 16]), cid);
@@ -283,10 +319,5 @@ fn test_p17_candidate_capacity_bound() {
         }
     }
 
-    // Must be bounded strictly at MAX_CANDIDATE_HOSTS
-    assert_eq!(
-        sm.candidate_hosts().len(),
-        MAX_CANDIDATE_HOSTS,
-        "Candidate vector must be capped at MAX_CANDIDATE_HOSTS (64)"
-    );
+    assert_eq!(sm.candidate_hosts().len(), 7);
 }

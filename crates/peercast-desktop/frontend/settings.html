@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>設定 | Peercast RT</title>
+  <link rel="stylesheet" href="settings.css">
+  <script src="settings.js" defer></script>
+</head>
+<body>
+  <div class="settings-window">
+    <aside class="rail" aria-label="設定カテゴリ">
+      <a class="brand" href="#" aria-label="Peercast RT 設定">
+        <img src="assets/peer-loop.png" alt="" class="brand-logo">
+        <span class="brand-name">Peercast RT</span>
+      </a>
+      <div class="rail-heading"><span class="icon icon-settings" aria-hidden="true"></span><strong>設定</strong></div>
+      <nav class="rail-nav" role="tablist" aria-label="設定カテゴリ" aria-orientation="horizontal">
+        <button class="nav-item" type="button" role="tab" id="tab-general" aria-controls="panel-general" aria-selected="false" tabindex="-1" data-page="general"><span class="icon icon-adjustments-horizontal" aria-hidden="true"></span><span>全般</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-connection" aria-controls="panel-connection" aria-selected="false" tabindex="-1" data-page="connection"><span class="icon icon-antenna" aria-hidden="true"></span><span>接続</span></button>
+        <button class="nav-item active" type="button" role="tab" id="tab-yellow-pages" aria-controls="panel-yellow-pages" aria-selected="true" tabindex="0" data-page="yellow-pages"><span class="icon icon-file-text" aria-hidden="true"></span><span>イエローページ</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-player" aria-controls="panel-player" aria-selected="false" tabindex="-1" data-page="player"><span class="icon icon-player-play" aria-hidden="true"></span><span>プレイヤー</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-channel-rules" aria-controls="panel-channel-rules" aria-selected="false" tabindex="-1" data-page="channel-rules"><span class="icon icon-eye-off" aria-hidden="true"></span><span>NG・お気に入り</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-recording" aria-controls="panel-recording" aria-selected="false" tabindex="-1" data-page="recording"><span class="icon icon-download" aria-hidden="true"></span><span>録画</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-appearance" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-page="appearance"><span class="icon icon-device-desktop" aria-hidden="true"></span><span>外観</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-version" aria-controls="panel-version" aria-selected="false" tabindex="-1" data-page="version"><span class="icon icon-info-circle" aria-hidden="true"></span><span>バージョン情報</span></button>
+      </nav>
+      <div class="rail-foot">Peercast RT</div>
+    </aside>
+
+    <main class="main-pane">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">PEERCASTSTATION RUST</p>
+          <h1 id="page-title">イエローページ</h1>
+          <p id="page-description" class="page-description">チャンネル一覧の取得先を管理します。<br>SPへの掲載は、配信画面で掲載を選んだ場合に行われます。</p>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <section class="page-content" id="panel-general" role="tabpanel" aria-labelledby="tab-general" hidden>
+        <div class="content-column">
+          <div class="section-title"><div><h2>現在の状態</h2><p>読み取り専用</p></div></div>
+          <dl class="summary-list">
+            <div><dt>バックエンド</dt><dd id="backend-status">読み込み中</dd></div>
+            <div><dt>待ち受け</dt><dd id="backend-endpoint">—</dd></div>
+            <div><dt>稼働時間</dt><dd id="backend-uptime">—</dd></div>
+            <div><dt>アクティブタスク</dt><dd id="backend-tasks">—</dd></div>
+            <div><dt>設定ファイル</dt><dd id="config-path" class="path-value">—</dd></div>
+            <div><dt>既定のプレイヤー</dt><dd id="player-status" class="path-value">読み込み中</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="page-content connection-content" id="panel-connection" role="tabpanel" aria-labelledby="tab-connection" hidden>
+        <div class="content-column connection-column">
+          <div class="section-title"><div><h2>接続上限</h2><p>保存すると設定をバックエンドへ反映します。</p></div></div>
+          <div class="form-grid">
+            <label for="max-directs">直接接続の上限<span>同時に受け入れる直接接続数</span><input id="max-directs" type="number" min="1" max="256" step="1" inputmode="numeric" disabled></label>
+            <label for="max-relays">リレー接続の上限<span>同時に中継する接続数</span><input id="max-relays" type="number" min="1" max="256" step="1" inputmode="numeric" disabled></label>
+            <label for="max-upstream-rate">上り帯域の上限 (kbps)<span>サーバー全体の送信帯域</span><input id="max-upstream-rate" type="number" min="1" max="10000000" step="1" inputmode="numeric" disabled></label>
+          </div>
+          <p id="connection-backend-note" class="muted-note" hidden></p>
+          <p class="muted-note">チャンネル別の上限と自動切断は、この版では設定できません。</p>
+        </div>
+      </section>
+
+      <section class="page-content yp-content" id="panel-yellow-pages" role="tabpanel" aria-labelledby="tab-yellow-pages">
+        <div class="list-pane">
+          <div class="section-title list-title"><div><h2>登録済みのイエローページ</h2><p id="yp-count">読み込み中</p></div><button id="add-page" class="add-button" type="button" disabled><span class="icon icon-plus" aria-hidden="true"></span>追加</button></div>
+          <div class="yp-list-wrap"><ul id="yp-list" class="yp-list" aria-label="登録済みイエローページ"></ul><div id="yp-empty" class="empty-state" hidden>登録済みのイエローページはありません。</div></div>
+        </div>
+        <div class="editor-pane">
+          <div class="section-title editor-title"><div><h2 id="editor-heading">選択したイエローページの設定</h2><p id="editor-subtitle">チャンネル一覧の取得先を編集</p></div><button id="delete-page" class="delete-button" type="button" disabled><span class="icon icon-trash" aria-hidden="true"></span>削除</button></div>
+          <form id="yp-form" class="yp-form" autocomplete="off">
+            <label for="page-name">名前<input id="page-name" name="name" type="text" maxlength="80" required disabled></label>
+            <label for="page-url">チャンネル一覧URL<input id="page-url" name="channelsUrl" type="url" maxlength="2048" required disabled></label>
+          </form>
+          <p class="field-hint">末尾が / のURLは <code>index.txt</code> を補完します。</p>
+          <p class="muted-note">このURLはチャンネル一覧の取得に使います。SPへの掲載は、配信画面で掲載を選んだ場合に行われます。</p>
+          <p class="error-message" id="form-error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <section class="page-content player-content" id="panel-player" role="tabpanel" aria-labelledby="tab-player" hidden>
+        <div class="content-column player-column">
+          <div class="section-title"><div><h2>起動するプレイヤー</h2><p>掲載チャンネルを開くときに使う実行ファイルと引数</p></div></div>
+          <label class="check-row" for="use-bundled-player"><input id="use-bundled-player" type="checkbox" checked><span>同梱プレイヤーを使う</span></label>
+          <div class="field-group">
+            <label for="player-executable">実行ファイルのパス</label>
+            <div class="input-action-row"><input id="player-executable" type="text" autocomplete="off" disabled><button id="choose-player" class="button button-secondary" type="button" disabled>参照…</button></div>
+            <p id="player-editor-status" class="field-hint">同梱プレイヤーを使用します。</p>
+          </div>
+          <div class="field-group">
+            <label for="player-arguments">引数テンプレート</label>
+            <textarea id="player-arguments" rows="3" spellcheck="false" disabled></textarea>
+            <div class="tag-buttons" aria-label="テンプレートタグを挿入">
+              <button type="button" data-player-tag="&lt;stream/&gt;" disabled>&lt;stream/&gt;</button><button type="button" data-player-tag="&lt;directstream/&gt;" disabled>&lt;directstream/&gt;</button><button type="button" data-player-tag="&lt;channelname/&gt;" disabled>&lt;channelname/&gt;</button><button type="button" data-player-tag="&lt;contact/&gt;" disabled>&lt;contact/&gt;</button><button type="button" data-player-tag="&lt;description/&gt;" disabled>&lt;description/&gt;</button><button type="button" data-player-tag="&lt;comment/&gt;" disabled>&lt;comment/&gt;</button><button type="button" data-player-tag="&lt;genre/&gt;" disabled>&lt;genre/&gt;</button><button type="button" data-player-tag="&lt;id/&gt;" disabled>&lt;id/&gt;</button><button type="button" data-player-tag="&lt;type/&gt;" disabled>&lt;type/&gt;</button><button type="button" data-player-tag="&lt;bitrate/&gt;" disabled>&lt;bitrate/&gt;</button><button type="button" data-player-tag="&lt;listener/&gt;" disabled>&lt;listener/&gt;</button><button type="button" data-player-tag="&lt;ypname/&gt;" disabled>&lt;ypname/&gt;</button><button type="button" data-player-tag="&lt;direct/&gt;" disabled>&lt;direct/&gt;</button>
+            </div>
+            <p class="muted-note">各ボタンでタグをカーソル位置へ挿入できます。&lt;stream/&gt; はローカルの再生リスト、&lt;directstream/&gt; は直接配信URL、&lt;channelname/&gt;・&lt;contact/&gt;・&lt;description/&gt;・&lt;comment/&gt;・&lt;genre/&gt;・&lt;id/&gt;・&lt;type/&gt;・&lt;bitrate/&gt;・&lt;listener/&gt;・&lt;ypname/&gt; は各チャンネル情報、&lt;direct/&gt; は 0 です。空白を含む固定引数は二重引用符で囲みます。PCRPlayerの初期設定は <code>&quot;&lt;stream/&gt;&quot; &quot;&lt;channelname/&gt;&quot; &quot;&lt;contact/&gt;&quot;</code> です。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-content rules-content" id="panel-channel-rules" role="tabpanel" aria-labelledby="tab-channel-rules" hidden>
+        <div class="rules-list-pane">
+          <div class="section-title"><div><h2>チャンネル条件</h2><p id="rules-count">読み込み中</p></div><button id="add-rule" class="add-button" type="button" disabled><span class="icon icon-plus" aria-hidden="true"></span>追加</button></div>
+          <label class="rules-search" for="rules-search"><span class="icon icon-search" aria-hidden="true"></span><input id="rules-search" type="search" placeholder="名前・条件で検索" aria-label="ルールを検索"></label>
+          <ul id="rules-list" class="rules-list" aria-label="チャンネル条件一覧"></ul><div id="rules-empty" class="empty-state" hidden>条件はありません。</div>
+          <p class="field-hint">一覧の下にある条件ほど優先されます。検索中は順序を変更できません。</p>
+        </div>
+        <div class="rules-editor-pane">
+          <div class="section-title editor-title"><div><h2 id="rules-editor-heading">条件を選択</h2><p>保存前の変更はこの画面内だけに反映されます。</p></div><div class="rule-order-actions"><button id="move-rule-up" class="button button-secondary" type="button" disabled>上へ</button><button id="move-rule-down" class="button button-secondary" type="button" disabled>下へ</button><button id="delete-rule" class="delete-button" type="button" disabled><span class="icon icon-trash" aria-hidden="true"></span>削除</button></div></div>
+          <div class="rules-form">
+            <label for="rule-name">ルール名<input id="rule-name" type="text" maxlength="80" disabled></label>
+            <label for="rule-pattern">検索文字列<input id="rule-pattern" type="text" maxlength="2048" disabled></label>
+            <label class="check-row" for="rule-enabled"><input id="rule-enabled" type="checkbox" disabled><span>このルールを有効にする</span></label>
+            <fieldset class="rule-options"><legend>検索対象</legend><div class="check-grid">
+              <label for="rule-field-name"><input id="rule-field-name" type="checkbox" value="name" disabled><span>名前</span></label><label for="rule-field-details"><input id="rule-field-details" type="checkbox" value="details" disabled><span>詳細</span></label><label for="rule-field-comment"><input id="rule-field-comment" type="checkbox" value="comment" disabled><span>コメント</span></label><label for="rule-field-contactUrl"><input id="rule-field-contactUrl" type="checkbox" value="contactUrl" disabled><span>コンタクトURL</span></label><label for="rule-field-yellowPage"><input id="rule-field-yellowPage" type="checkbox" value="yellowPage" disabled><span>Yellow Page名</span></label><label for="rule-field-streamUrl"><input id="rule-field-streamUrl" type="checkbox" value="streamUrl" disabled><span>配信URL</span></label><label for="rule-field-contentType"><input id="rule-field-contentType" type="checkbox" value="contentType" disabled><span>形式</span></label><label for="rule-field-listeners"><input id="rule-field-listeners" type="checkbox" value="listeners" disabled><span>視聴者数</span></label><label for="rule-field-bitrate"><input id="rule-field-bitrate" type="checkbox" value="bitrate" disabled><span>ビットレート</span></label>
+            </div></fieldset>
+            <fieldset class="rule-options"><legend>照合方法</legend><div class="check-grid"><label for="rule-regex"><input id="rule-regex" type="checkbox" disabled><span>正規表現</span></label><label for="rule-normalize-width"><input id="rule-normalize-width" type="checkbox" disabled><span>全角・半角を同一視</span></label><label for="rule-match-case"><input id="rule-match-case" type="checkbox" disabled><span>大文字・小文字を区別</span></label></div></fieldset>
+            <fieldset class="rule-options"><legend>適用内容</legend><div class="check-grid"><label for="rule-favorite"><input id="rule-favorite" type="checkbox" disabled><span>お気に入りに含める</span></label><label for="rule-hidden"><input id="rule-hidden" type="checkbox" disabled><span>YP一覧に表示しない（NG）</span></label><label for="rule-mute"><input id="rule-mute" type="checkbox" disabled><span>新着通知をしない</span></label></div></fieldset>
+            <div class="color-rule-row"><label class="check-row" for="rule-text-color-enabled"><input id="rule-text-color-enabled" type="checkbox" disabled><span>文字色</span></label><input id="rule-text-color" type="color" value="#17143e" aria-label="ルールの文字色" disabled><label class="check-row" for="rule-background-color-enabled"><input id="rule-background-color-enabled" type="checkbox" disabled><span>背景色</span></label><input id="rule-background-color" type="color" value="#ffffff" aria-label="ルールの背景色" disabled></div>
+            <div class="field-group"><label for="rule-sound-path">通知音ファイル（WAV、任意）</label><div class="input-action-row"><input id="rule-sound-path" type="text" autocomplete="off" disabled><button id="choose-rule-sound" class="button button-secondary" type="button" disabled>参照…</button><button id="preview-rule-sound" class="button button-secondary" type="button" disabled>試聴</button></div></div>
+          </div>
+          <div class="rules-preview-area"><button id="preview-rules" class="button button-outline" type="button" disabled>現在のチャンネルでプレビュー</button><div id="rules-preview" class="rules-preview" role="status" aria-live="polite">未プレビュー</div><p id="rules-error" class="error-message" role="alert" hidden></p></div>
+        </div>
+      </section>
+
+      <section class="page-content recording-content" id="panel-recording" role="tabpanel" aria-labelledby="tab-recording" hidden>
+        <div class="recording-settings-pane">
+          <div class="section-title"><div><h2>録画の保存と監視</h2><p>保存すると録画設定がバックエンドへ反映されます。</p></div></div>
+          <div class="recording-form">
+            <label class="check-row" for="recording-enabled"><input id="recording-enabled" type="checkbox" disabled><span>新着チャンネルを監視して自動録画</span></label>
+            <div class="field-group"><label for="recording-directory">保存先フォルダー</label><div class="input-action-row"><input id="recording-directory" type="text" autocomplete="off" disabled><button id="choose-recording-directory" class="button button-secondary" type="button" disabled>参照…</button></div></div>
+            <label class="check-row" for="recording-subfolders"><input id="recording-subfolders" type="checkbox" disabled><span>チャンネルごとのサブフォルダーに保存</span></label>
+            <div class="recording-field-grid">
+              <label class="check-row" for="recording-limit-concurrent"><input id="recording-limit-concurrent" type="checkbox" disabled><span>同時録画数を制限</span></label>
+              <label for="recording-max-concurrent">同時録画数<input id="recording-max-concurrent" type="number" min="1" max="32" step="1" disabled></label>
+              <label for="recording-retry-count">再試行回数<input id="recording-retry-count" type="number" min="0" max="1000" step="1" disabled></label>
+              <label for="recording-retry-interval">再試行間隔（秒）<input id="recording-retry-interval" type="number" min="1" max="3600" step="1" disabled></label>
+              <label class="check-row" for="recording-disconnect-every-enabled"><input id="recording-disconnect-every-enabled" type="checkbox" disabled><span>指定回数ごとに接続し直す</span></label>
+              <label for="recording-disconnect-every">接続し直す回数<input id="recording-disconnect-every" type="number" min="1" max="1000" step="1" disabled></label>
+              <label class="check-row" for="recording-disconnect-on-end"><input id="recording-disconnect-on-end" type="checkbox" disabled><span>再試行終了時に切断する</span></label>
+              <label class="check-row" for="recording-split-minutes-enabled"><input id="recording-split-minutes-enabled" type="checkbox" disabled><span>時間でファイルを分割</span></label>
+              <label for="recording-split-minutes">分割する時間（分）<input id="recording-split-minutes" type="number" min="1" max="10080" step="1" disabled></label>
+              <label class="check-row" for="recording-split-size-enabled"><input id="recording-split-size-enabled" type="checkbox" disabled><span>容量でファイルを分割</span></label>
+              <label for="recording-split-size">分割する容量（MB）<input id="recording-split-size" type="number" min="1" max="1000000" step="1" disabled></label>
+            </div>
+            <div class="recording-monitor-box">
+              <div class="section-title"><div><h3>監視時間</h3><p>オフ時間になっても開始済みの録画は続きます。</p></div></div>
+              <label class="check-row" for="recording-all-day"><input id="recording-all-day" type="checkbox" disabled><span>終日監視する</span></label>
+              <div class="recording-field-grid"><label for="recording-watch-start">開始<input id="recording-watch-start" type="time" disabled></label><label for="recording-watch-end">終了<input id="recording-watch-end" type="time" disabled></label><label for="recording-monitor-interval">監視間隔（秒）<input id="recording-monitor-interval" type="number" min="10" max="3600" step="1" disabled></label></div>
+              <p class="muted-note">日付をまたぐ時間帯にも対応します。監視オフ時も録画中の配信は停止しません。</p>
+            </div>
+            <div class="recording-info"><strong>ファイル名の例</strong><code id="recording-filename-example">チャンネル名_20261025_213005_配信内容.flv</code><p>最初は連番なし。再接続・分割で作る2本目から _002、_003 と付けます。日時と配信内容は録画開始時の値を保ちます。受信したストリームを変換せず保存します。録画一覧から停止・削除しても、保存済みファイルは残ります。</p></div>
+            <p id="recording-form-error" class="error-message" role="alert" hidden></p>
+          </div>
+        </div>
+        <div class="recording-rules-pane">
+          <div class="section-title"><div><h2>録画するチャンネルの条件</h2><p id="recording-rules-count">0 件</p></div><button id="add-recording-rule" class="add-button" type="button" disabled>追加</button></div>
+          <label class="rules-search" for="recording-rules-search"><span class="icon icon-search" aria-hidden="true"></span><input id="recording-rules-search" type="search" placeholder="名前・条件で検索" aria-label="録画条件を検索"></label>
+          <ul id="recording-rules-list" class="rules-list" aria-label="録画条件一覧"></ul><div id="recording-rules-empty" class="empty-state" hidden>録画条件はありません。</div>
+          <p class="field-hint">配列の下にある条件ほど優先されます。検索中は順序を変更できません。</p>
+          <div class="recording-rule-editor">
+            <div class="section-title"><div><h3 id="recording-rule-heading">条件を選択</h3><p>NG・お気に入り設定とは独立しています。</p></div><div class="rule-order-actions"><button id="duplicate-recording-rule" class="button button-secondary" type="button" disabled>複製</button><button id="recording-rule-up" class="button button-secondary" type="button" disabled>上へ</button><button id="recording-rule-down" class="button button-secondary" type="button" disabled>下へ</button><button id="delete-recording-rule" class="delete-button" type="button" disabled>削除</button></div></div>
+            <div class="rules-form">
+              <label for="recording-rule-name">条件名<input id="recording-rule-name" type="text" maxlength="80" disabled></label><label for="recording-rule-pattern">検索文字列<input id="recording-rule-pattern" type="text" maxlength="2048" disabled></label><label class="check-row" for="recording-rule-enabled"><input id="recording-rule-enabled" type="checkbox" disabled><span>この条件を有効にする</span></label>
+              <fieldset class="rule-options"><legend>検索対象</legend><div class="check-grid"><label><input id="recording-rule-field-name" type="checkbox" value="name" disabled><span>名前</span></label><label><input id="recording-rule-field-details" type="checkbox" value="details" disabled><span>詳細</span></label><label><input id="recording-rule-field-comment" type="checkbox" value="comment" disabled><span>コメント</span></label><label><input id="recording-rule-field-contactUrl" type="checkbox" value="contactUrl" disabled><span>コンタクトURL</span></label><label><input id="recording-rule-field-yellowPage" type="checkbox" value="yellowPage" disabled><span>Yellow Page名</span></label><label><input id="recording-rule-field-streamUrl" type="checkbox" value="streamUrl" disabled><span>配信URL</span></label><label><input id="recording-rule-field-contentType" type="checkbox" value="contentType" disabled><span>形式</span></label><label><input id="recording-rule-field-listeners" type="checkbox" value="listeners" disabled><span>視聴者数</span></label><label><input id="recording-rule-field-bitrate" type="checkbox" value="bitrate" disabled><span>ビットレート</span></label></div></fieldset>
+              <fieldset class="rule-options"><legend>照合方法</legend><div class="check-grid"><label><input id="recording-rule-regex" type="checkbox" disabled><span>正規表現</span></label><label><input id="recording-rule-normalize-width" type="checkbox" disabled><span>全角・半角を同一視</span></label><label><input id="recording-rule-match-case" type="checkbox" disabled><span>大文字・小文字を区別</span></label></div></fieldset>
+            </div>
+            <div class="rules-preview-area"><button id="preview-recording-rules" class="button button-outline" type="button" disabled>現在のチャンネルでプレビュー</button><div id="recording-rules-preview" class="rules-preview" role="status" aria-live="polite">未プレビュー</div><p id="recording-rules-error" class="error-message" role="alert" hidden></p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-content" id="panel-appearance" role="tabpanel" aria-labelledby="tab-appearance" hidden>
+        <div class="content-column window-settings-column">
+          <div class="section-title"><div><h2>ウィンドウ</h2><p>起動時と最小化時の動作を設定します。</p></div></div>
+          <div class="field-group window-size-group">
+            <label for="window-preset">サイズプリセット</label>
+            <input id="window-preset" type="text" list="window-presets" value="1600x900" aria-label="ウィンドウサイズプリセット">
+            <datalist id="window-presets"><option value="1280x720"><option value="1366x768"><option value="1600x900"><option value="1920x1080"><option value="2560x1440"></datalist>
+            <div class="window-dimensions">
+              <label class="window-dimension" for="window-width"><span>幅（px）</span><input id="window-width" type="number" min="1280" max="2560" step="1" value="1600"></label>
+              <label class="window-dimension" for="window-height"><span>高さ（px）</span><input id="window-height" type="number" min="720" max="1440" step="1" value="900"></label>
+            </div>
+          </div>
+          <div class="field-group window-behavior-group">
+            <label class="check-row" for="window-minimize-to-tray"><input id="window-minimize-to-tray" type="checkbox"><span>最小化時に通知領域へ格納</span></label>
+            <label class="check-row" for="window-launch-at-startup"><input id="window-launch-at-startup" type="checkbox"><span>Windows起動時にPeercast RTを起動</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-content" id="panel-version" role="tabpanel" aria-labelledby="tab-version" hidden>
+        <div class="content-column">
+          <div class="section-title"><div><h2>バージョン情報</h2><p>このアプリについて</p></div></div>
+          <div class="about-card"><img src="assets/peer-loop.png" alt="" class="about-logo"><div><h3>Peercast RT</h3><p>バージョン 1.0.0</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーション</p><p>日本語フォント: Noto Sans JP</p><details class="license-details"><summary>フォントのライセンス</summary><pre class="license-text">Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+&quot;Font Software&quot; refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+&quot;Reserved Font Name&quot; refers to any names specified as such after the
+copyright statement(s).
+
+&quot;Original Version&quot; refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+&quot;Modified Version&quot; refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+&quot;Author&quot; refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION &amp; CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.</pre></details>
+<details class="license-details"><summary>アイコンのライセンス</summary><pre class="license-text">MIT License
+
+Copyright (c) 2020-2026 Paweł Kuna
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the &quot;Software&quot;), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre></details></div></div>
+        </div>
+        <div class="content-column update-column">
+          <section class="update-card" aria-labelledby="update-card-title">
+            <div class="update-card-heading"><span class="icon icon-refresh" aria-hidden="true"></span><div><h3 id="update-card-title">ソフトウェア更新</h3><p id="update-current-version">現在のバージョンを確認しています</p></div><span id="update-loading" class="update-spinner" aria-label="読み込み中" hidden></span></div>
+            <p id="update-status" class="update-status" role="status" aria-live="polite">更新状態を確認します。</p>
+            <div id="update-notes" class="update-notes">更新内容はありません。</div>
+            <progress id="update-progress" class="update-progress" max="100" value="0" hidden></progress>
+            <p id="update-progress-label" class="update-progress-label" aria-live="polite"></p>
+            <p id="update-ready-note" class="update-ready-note" hidden></p>
+            <div class="update-actions">
+              <button id="update-check" class="button update-button-primary" type="button" disabled>更新を確認</button>
+              <button id="update-download" class="button update-button-primary" type="button" hidden>ダウンロード</button>
+              <button id="update-cancel" class="button button-secondary" type="button" hidden>ダウンロードを中止</button>
+              <button id="update-install" class="button update-button-primary" type="button" hidden>再起動して更新</button>
+              <button id="update-later" class="button button-secondary" type="button" hidden>後で適用</button>
+            </div>
+            <p id="update-warning" class="update-warning" hidden>更新を適用するとアプリが再起動し、現在の録画・配信は終了します。</p>
+          </section>
+        </div>
+      </section>
+
+      <footer class="bottom-bar">
+        <span id="save-status" class="save-status" role="status" aria-live="polite">設定を読み込んでいます</span>
+        <div class="footer-actions"><button id="cancel-button" class="button button-secondary" type="button">キャンセル</button><button id="save-button" class="button button-save" type="button" disabled>変更を保存</button></div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog id="discard-dialog" class="discard-dialog" aria-labelledby="discard-title">
+    <form method="dialog"><h2 id="discard-title">変更を破棄しますか？</h2><p>保存していない変更があります。</p><div class="dialog-actions"><button id="continue-editing" class="button button-secondary" value="continue">編集を続ける</button><button id="discard-and-close" class="button button-save" value="discard">変更を破棄</button></div></form>
+  </dialog>
+</body>
+</html>

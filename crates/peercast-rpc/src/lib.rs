@@ -14,14 +14,13 @@ pub use controller::{
     ChannelsController, ControllerError, IndexController, IndexScreenData, MutationState,
     ScreenState, SettingsController,
 };
-pub use protocol::{
-    rpc_code, RpcErrorObject, RpcId, RpcRequest, RpcResponse,
-};
+pub use protocol::{rpc_code, RpcErrorObject, RpcId, RpcRequest, RpcResponse};
 pub use security::{
     redact_secrets, validate_relay_destination, HttpRequestContext, HttpRpcResponse, ListenerKind,
     SecureRpcHandler, SecurityError, SecurityPolicy,
 };
 pub use server::{
     AccessLevel, ChannelSummary, MethodAccessRequired, PluginAssemblyInfo, PluginSummary,
-    RpcDispatcher, RpcState, ServentSettings, StatusSnapshot, DEFAULT_MAX_RPC_REQUEST_BYTES,
+    RpcDispatcher, RpcState, ServentSettings, StatusSnapshot, YellowPageDirectory,
+    DEFAULT_MAX_RPC_REQUEST_BYTES,
 };

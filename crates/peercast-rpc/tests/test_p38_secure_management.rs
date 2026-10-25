@@ -1,11 +1,10 @@
+use serde_json::json;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use serde_json::json;
 
 use peercast_rpc::{
-    redact_secrets, validate_relay_destination, HttpRequestContext,
-    RpcDispatcher, RpcState, SecureRpcHandler, SecurityError,
-    SecurityPolicy, ServentSettings,
+    redact_secrets, validate_relay_destination, HttpRequestContext, RpcDispatcher, RpcState,
+    SecureRpcHandler, SecurityError, SecurityPolicy, ServentSettings,
 };
 
 fn loopback_client() -> SocketAddr {
@@ -107,7 +106,10 @@ async fn test_p38_public_relay_listener_blocks_admin_mutations() {
     assert_eq!(resp.status_code, 200);
     let body = resp.body.unwrap();
     assert!(body.contains("\"error\""));
-    assert!(body.contains("-32001"), "Must return UNAUTHORIZED (-32001) error code");
+    assert!(
+        body.contains("-32001"),
+        "Must return UNAUTHORIZED (-32001) error code"
+    );
     assert!(body.contains("requires administrative authorization"));
 }
 

@@ -15,7 +15,13 @@ fn test_missing_and_oversized_header_rejection() {
     );
 
     // 1. Pushing body without an active header must fail with MissingHeader
-    let chunk = Content::new(1, Duration::from_secs(0), 0, vec![0u8; 100], ContinuationFlags::NONE);
+    let chunk = Content::new(
+        1,
+        Duration::from_secs(0),
+        0,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
     assert_eq!(cache.push_body(chunk, None), Err(CacheError::MissingHeader));
 
     // 2. Setting an oversized header must fail with HeaderTooLarge and never truncate silently
@@ -43,7 +49,13 @@ fn test_no_old_epoch_body_follows_new_header() {
     assert_eq!(cache.current_epoch(), Some(1));
 
     // Push epoch 1 body chunks
-    let c1 = Content::new(1, Duration::from_secs(0), 100, vec![0u8; 500], ContinuationFlags::NONE);
+    let c1 = Content::new(
+        1,
+        Duration::from_secs(0),
+        100,
+        vec![0u8; 500],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c1, None).unwrap();
     assert_eq!(cache.body_len(), 1);
 
@@ -57,15 +69,30 @@ fn test_no_old_epoch_body_follows_new_header() {
     assert_eq!(cache.total_body_bytes(), 0);
 
     // Attempting to push a stale epoch 1 chunk must be rejected
-    let c_stale = Content::new(1, Duration::from_secs(1), 600, vec![0u8; 500], ContinuationFlags::NONE);
+    let c_stale = Content::new(
+        1,
+        Duration::from_secs(1),
+        600,
+        vec![0u8; 500],
+        ContinuationFlags::NONE,
+    );
     assert!(matches!(
         cache.push_body(c_stale, None),
-        Err(CacheError::StaleEpoch { chunk_epoch: 1, current_epoch: 2 })
+        Err(CacheError::StaleEpoch {
+            chunk_epoch: 1,
+            current_epoch: 2
+        })
     ));
     assert_eq!(cache.body_len(), 0);
 
     // Pushing a valid epoch 2 chunk succeeds
-    let c2 = Content::new(2, Duration::from_secs(0), 100, vec![0u8; 500], ContinuationFlags::NONE);
+    let c2 = Content::new(
+        2,
+        Duration::from_secs(0),
+        100,
+        vec![0u8; 500],
+        ContinuationFlags::NONE,
+    );
     assert!(cache.push_body(c2, None).is_ok());
     assert_eq!(cache.body_len(), 1);
 }
@@ -74,7 +101,7 @@ fn test_no_old_epoch_body_follows_new_header() {
 fn test_time_only_eviction_with_fake_clock() {
     let fake_clock = FakeClock::new(1000); // start at t = 1.0s
     let mut cache = BoundedContentCache::with_clock(
-        10 * 1024 * 1024, // huge byte budget
+        10 * 1024 * 1024,       // huge byte budget
         Duration::from_secs(3), // 3s time budget
         1024 * 1024,
         fake_clock.clone(),
@@ -84,19 +111,37 @@ fn test_time_only_eviction_with_fake_clock() {
     cache.set_header(h).unwrap();
 
     // t = 1.0s: push c1 (pos 0, 100 bytes)
-    let c1 = Content::new(1, Duration::from_secs(1), 0, vec![0u8; 100], ContinuationFlags::NONE);
+    let c1 = Content::new(
+        1,
+        Duration::from_secs(1),
+        0,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c1, None).unwrap();
     assert_eq!(cache.body_len(), 1);
 
     // Advance clock to t = 2.5s: push c2 (pos 100, 100 bytes)
     fake_clock.advance(Duration::from_millis(1500));
-    let c2 = Content::new(1, Duration::from_secs(2), 100, vec![0u8; 100], ContinuationFlags::NONE);
+    let c2 = Content::new(
+        1,
+        Duration::from_secs(2),
+        100,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c2, None).unwrap();
     assert_eq!(cache.body_len(), 2);
 
     // Advance clock to t = 4.5s (c1 age = 3.5s > 3.0s window, c2 age = 2.0s <= 3.0s)
     fake_clock.advance(Duration::from_millis(2000));
-    let c3 = Content::new(1, Duration::from_secs(4), 200, vec![0u8; 100], ContinuationFlags::NONE);
+    let c3 = Content::new(
+        1,
+        Duration::from_secs(4),
+        200,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c3, None).unwrap();
 
     // c1 must be evicted due to time expiration; c2 and c3 remain
@@ -109,7 +154,7 @@ fn test_time_only_eviction_with_fake_clock() {
 fn test_byte_only_eviction_with_fake_clock() {
     let fake_clock = FakeClock::new(0);
     let mut cache = BoundedContentCache::with_clock(
-        1000, // 1000 bytes budget
+        1000,                    // 1000 bytes budget
         Duration::from_secs(60), // huge time window
         1024 * 1024,
         fake_clock,
@@ -119,17 +164,35 @@ fn test_byte_only_eviction_with_fake_clock() {
     cache.set_header(h).unwrap();
 
     // Push 400 bytes
-    let c1 = Content::new(1, Duration::from_secs(0), 0, vec![0u8; 400], ContinuationFlags::NONE);
+    let c1 = Content::new(
+        1,
+        Duration::from_secs(0),
+        0,
+        vec![0u8; 400],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c1, None).unwrap();
 
     // Push 400 bytes (total: 800 <= 1000)
-    let c2 = Content::new(1, Duration::from_secs(1), 400, vec![0u8; 400], ContinuationFlags::NONE);
+    let c2 = Content::new(
+        1,
+        Duration::from_secs(1),
+        400,
+        vec![0u8; 400],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c2, None).unwrap();
     assert_eq!(cache.body_len(), 2);
     assert_eq!(cache.total_body_bytes(), 800);
 
     // Push 400 bytes (total would be 1200 > 1000 -> c1 evicted, total becomes 800)
-    let c3 = Content::new(1, Duration::from_secs(2), 800, vec![0u8; 400], ContinuationFlags::NONE);
+    let c3 = Content::new(
+        1,
+        Duration::from_secs(2),
+        800,
+        vec![0u8; 400],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c3, None).unwrap();
     assert_eq!(cache.body_len(), 2);
     assert_eq!(cache.total_body_bytes(), 800);
@@ -141,7 +204,7 @@ fn test_byte_only_eviction_with_fake_clock() {
 fn test_simultaneous_eviction_and_retained_allocation_accounting() {
     let fake_clock = FakeClock::new(0);
     let mut cache = BoundedContentCache::with_clock(
-        2000, // 2000 bytes budget
+        2000,                   // 2000 bytes budget
         Duration::from_secs(3), // 3s time budget
         1024 * 1024,
         fake_clock.clone(),
@@ -151,17 +214,35 @@ fn test_simultaneous_eviction_and_retained_allocation_accounting() {
     cache.set_header(h).unwrap();
 
     // Push c1: 200 byte slice, but retains 1200 bytes of backing buffer (REQ-027)
-    let c1 = Content::new(1, Duration::from_secs(0), 0, vec![0u8; 200], ContinuationFlags::NONE);
+    let c1 = Content::new(
+        1,
+        Duration::from_secs(0),
+        0,
+        vec![0u8; 200],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c1, Some(1200)).unwrap();
     assert_eq!(cache.total_body_bytes(), 1200);
 
     // Push c2: 200 byte slice, retains 500 bytes (total: 1700 <= 2000)
-    let c2 = Content::new(1, Duration::from_secs(1), 200, vec![0u8; 200], ContinuationFlags::NONE);
+    let c2 = Content::new(
+        1,
+        Duration::from_secs(1),
+        200,
+        vec![0u8; 200],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c2, Some(500)).unwrap();
     assert_eq!(cache.total_body_bytes(), 1700);
 
     // Push c3: 200 byte slice, retains 500 bytes (total would be 2200 > 2000 -> c1 evicted!)
-    let c3 = Content::new(1, Duration::from_secs(2), 400, vec![0u8; 200], ContinuationFlags::NONE);
+    let c3 = Content::new(
+        1,
+        Duration::from_secs(2),
+        400,
+        vec![0u8; 200],
+        ContinuationFlags::NONE,
+    );
     cache.push_body(c3, Some(500)).unwrap();
     assert_eq!(cache.total_body_bytes(), 1000); // 500 + 500
     assert_eq!(cache.body_len(), 2);
@@ -181,11 +262,26 @@ fn test_continuity_gap_and_overlap_detection() {
     cache.set_header(h).unwrap();
 
     // 1. First chunk at pos 0, length 100: contiguous
-    let c1 = Content::new(1, Duration::from_secs(0), 0, vec![0u8; 100], ContinuationFlags::NONE);
-    assert_eq!(cache.push_body(c1, None).unwrap(), PositionContinuity::Contiguous);
+    let c1 = Content::new(
+        1,
+        Duration::from_secs(0),
+        0,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
+    assert_eq!(
+        cache.push_body(c1, None).unwrap(),
+        PositionContinuity::Contiguous
+    );
 
     // 2. Second chunk expected at pos 100, but arrives at pos 150 (Gap of 50 bytes)
-    let c2_gap = Content::new(1, Duration::from_secs(1), 150, vec![0u8; 100], ContinuationFlags::NONE);
+    let c2_gap = Content::new(
+        1,
+        Duration::from_secs(1),
+        150,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
     assert_eq!(
         cache.push_body(c2_gap, None).unwrap(),
         PositionContinuity::Gap {
@@ -195,7 +291,13 @@ fn test_continuity_gap_and_overlap_detection() {
     );
 
     // 3. Third chunk expected at pos 250, but arrives at pos 200 (Overlap / retransmission of 50 bytes)
-    let c3_overlap = Content::new(1, Duration::from_secs(2), 200, vec![0u8; 100], ContinuationFlags::NONE);
+    let c3_overlap = Content::new(
+        1,
+        Duration::from_secs(2),
+        200,
+        vec![0u8; 100],
+        ContinuationFlags::NONE,
+    );
     assert_eq!(
         cache.push_body(c3_overlap, None).unwrap(),
         PositionContinuity::Overlap {

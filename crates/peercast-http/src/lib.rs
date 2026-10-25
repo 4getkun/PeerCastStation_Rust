@@ -7,6 +7,8 @@
 //!   blindly to HTTP/1.0 or MMS streams.
 //! - Global Rule 3: bounded queue buffers and prompt subscriber resource release upon disconnect.
 
+pub(crate) const HTTP_SERVER_HEADER: &str = "Server: PeerCastStation-Rust\r\n";
+
 pub mod embedded_assets;
 pub mod ingest;
 pub mod playlist;
@@ -24,9 +26,7 @@ pub use ingest::{
 pub use playlist::{
     escape_xml, sanitize_single_line, PlaylistBuilder, PlaylistEntry, PlaylistError, PlaylistFormat,
 };
-pub use router::{
-    HttpMethod, HttpRequest, HttpVersion, RouteTarget, RoutingError,
-};
+pub use router::{HttpMethod, HttpRequest, HttpVersion, RouteTarget, RoutingError};
 pub use streamer::{
     build_http_200_headers, build_http_error, encode_chunked, encode_chunked_terminator,
     resolve_framing, resolve_mime_type, stream_media_to_client, HttpFraming, StreamerError,

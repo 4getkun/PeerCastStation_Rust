@@ -2,21 +2,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use peercast_core::cache::FakeClock;
 use peercast_core::channel_id::ChannelId;
 use peercast_core::host::{Host, HostFlags1};
 use peercast_core::host_registry::{
-    is_candidate_eligible, EndpointCooldownTable, EndpointIdentity, HostRegistry,
-    UpsertAction, DEFAULT_COOLDOWN_DURATION, DEFAULT_FRESHNESS_THRESHOLD,
+    is_candidate_eligible, EndpointCooldownTable, EndpointIdentity, HostRegistry, UpsertAction,
+    DEFAULT_COOLDOWN_DURATION, DEFAULT_FRESHNESS_THRESHOLD,
 };
-use peercast_core::cache::FakeClock;
 
-fn make_host(
-    cid_byte: u8,
-    sid_byte: u8,
-    addr: SocketAddr,
-    relay_count: u32,
-    hops: u32,
-) -> Host {
+fn make_host(cid_byte: u8, sid_byte: u8, addr: SocketAddr, relay_count: u32, hops: u32) -> Host {
     let mut cid_bytes = [0u8; 16];
     cid_bytes[0] = cid_byte;
     let channel_id = ChannelId::from_bytes(cid_bytes);
@@ -60,11 +54,7 @@ fn test_p31_freshness_does_not_clear_cooldown() {
     assert!(registry.is_fresh(&channel_id, &host_a.session_id));
     assert!(!cooldown.is_cooled_down(&EndpointIdentity::for_channel(channel_id, addr)));
     assert!(is_candidate_eligible(
-        &host_a,
-        &registry,
-        &cooldown,
-        &self_sid,
-        None
+        &host_a, &registry, &cooldown, &self_sid, None
     ));
 
     // t = 20s: Connection fails to Host A. Place Host A in failure cooldown.
@@ -76,18 +66,17 @@ fn test_p31_freshness_does_not_clear_cooldown() {
     assert!(cooldown.is_cooled_down(&EndpointIdentity::for_channel(channel_id, addr)));
     // Ineligible because in cooldown
     assert!(!is_candidate_eligible(
-        &host_a,
-        &registry,
-        &cooldown,
-        &self_sid,
-        None
+        &host_a, &registry, &cooldown, &self_sid, None
     ));
 
     // t = 30s: A gossip packet announces Host A is alive (e.g. updated hops or uptime).
     clock.advance(Duration::from_secs(10));
     let mut updated_host_a = host_a.clone();
     updated_host_a.hops = 2;
-    assert_eq!(registry.upsert(updated_host_a.clone()), UpsertAction::Updated);
+    assert_eq!(
+        registry.upsert(updated_host_a.clone()),
+        UpsertAction::Updated
+    );
 
     // CRITICAL REQ-042 INVARIANT:
     // Freshness update MUST NOT clear active failure cooldown!
@@ -154,7 +143,8 @@ fn test_p31_freshness_does_not_clear_cooldown() {
 fn test_p31_failure_does_not_modify_host_freshness() {
     let clock = Arc::new(FakeClock::new(0));
     let mut registry = HostRegistry::with_clock(Duration::from_secs(180), 512, clock.clone());
-    let mut cooldown = EndpointCooldownTable::with_clock(Duration::from_secs(180), 512, clock.clone());
+    let mut cooldown =
+        EndpointCooldownTable::with_clock(Duration::from_secs(180), 512, clock.clone());
 
     let addr: SocketAddr = "10.0.0.1:7144".parse().unwrap();
     let host_b = make_host(2, 20, addr, 1, 1);
@@ -167,7 +157,10 @@ fn test_p31_failure_does_not_modify_host_freshness() {
     // t = 70s: Host B age is 60s
     clock.set(Duration::from_secs(70));
     let raw_entry = registry.get_raw(&channel_id, &host_b.session_id).unwrap();
-    assert_eq!(raw_entry.age_at(Duration::from_secs(70)), Duration::from_secs(60));
+    assert_eq!(
+        raw_entry.age_at(Duration::from_secs(70)),
+        Duration::from_secs(60)
+    );
 
     // Record failure in cooldown table at t = 70s
     cooldown.record_failure(
@@ -192,7 +185,8 @@ fn test_p31_independent_threshold_configuration() {
     let clock = Arc::new(FakeClock::new(0));
     // Host freshness = 60s, cooldown = 300s
     let mut registry = HostRegistry::with_clock(Duration::from_secs(60), 512, clock.clone());
-    let mut cooldown = EndpointCooldownTable::with_clock(Duration::from_secs(300), 512, clock.clone());
+    let mut cooldown =
+        EndpointCooldownTable::with_clock(Duration::from_secs(300), 512, clock.clone());
 
     let addr: SocketAddr = "10.1.1.1:7144".parse().unwrap();
     let host = make_host(3, 30, addr, 0, 1);
@@ -211,7 +205,8 @@ fn test_p31_independent_threshold_configuration() {
 
     // Reverse configuration: Host freshness = 300s, cooldown = 60s
     let mut registry2 = HostRegistry::with_clock(Duration::from_secs(300), 512, clock.clone());
-    let mut cooldown2 = EndpointCooldownTable::with_clock(Duration::from_secs(60), 512, clock.clone());
+    let mut cooldown2 =
+        EndpointCooldownTable::with_clock(Duration::from_secs(60), 512, clock.clone());
 
     clock.set(Duration::from_secs(0));
     registry2.upsert(host.clone());
@@ -255,7 +250,10 @@ fn test_p31_session_and_endpoint_deduplication() {
     let sid_2 = host_v3.session_id;
     assert_ne!(sid_1, sid_2);
 
-    assert_eq!(registry.upsert(host_v3.clone()), UpsertAction::ReplacedEndpoint);
+    assert_eq!(
+        registry.upsert(host_v3.clone()),
+        UpsertAction::ReplacedEndpoint
+    );
     // Old session_1 is replaced, count remains 1
     assert_eq!(registry.len(), 1);
     assert!(registry.get_fresh(&cid, &sid_1).is_none());
@@ -338,11 +336,8 @@ fn test_p31_physical_cleanup_and_bounded_capacity() {
 #[test]
 fn test_p31_global_vs_channel_cooldown() {
     let clock = Arc::new(FakeClock::new(0));
-    let mut cooldown = EndpointCooldownTable::with_clock(
-        Duration::from_secs(180),
-        512,
-        clock.clone(),
-    );
+    let mut cooldown =
+        EndpointCooldownTable::with_clock(Duration::from_secs(180), 512, clock.clone());
 
     let addr: SocketAddr = "192.168.0.50:7144".parse().unwrap();
     let cid_1 = ChannelId::from_bytes([0x01; 16]);
@@ -376,7 +371,8 @@ fn test_p31_global_vs_channel_cooldown() {
 fn test_p31_candidate_eligibility_matrix() {
     let clock = Arc::new(FakeClock::new(0));
     let mut registry = HostRegistry::with_clock(DEFAULT_FRESHNESS_THRESHOLD, 512, clock.clone());
-    let mut cooldown = EndpointCooldownTable::with_clock(DEFAULT_COOLDOWN_DURATION, 512, clock.clone());
+    let mut cooldown =
+        EndpointCooldownTable::with_clock(DEFAULT_COOLDOWN_DURATION, 512, clock.clone());
 
     let self_sid = ChannelId::from_bytes([0xAA; 16]);
     let self_addr: SocketAddr = "10.0.0.99:7144".parse().unwrap();

@@ -5,8 +5,8 @@ use peercast_core::channel_id::ChannelId;
 use peercast_core::gossip::BroadcastGroup;
 use peercast_core::id4::ID4;
 use peercast_pcp::yellow_page::{
-    create_station_yp_bcst_atom, MockYellowPageServer, PCPYellowPageClient,
-    YpAnnouncementChannel, YpBackoffTracker, YpClientConfig, YpConnectionStatus, YpError,
+    create_station_yp_bcst_atom, MockYellowPageServer, PCPYellowPageClient, YpAnnouncementChannel,
+    YpBackoffTracker, YpClientConfig, YpConnectionStatus, YpError,
 };
 
 fn sample_channel() -> YpAnnouncementChannel {
@@ -15,6 +15,7 @@ fn sample_channel() -> YpAnnouncementChannel {
     let mut ch = YpAnnouncementChannel::new(cid, bcid, "Test Radio".to_string());
     ch.genre = "J-Pop".to_string();
     ch.desc = "Streaming 24/7".to_string();
+    ch.comment = "Live from test fixture".to_string();
     ch.url = "http://example.com/stream".to_string();
     ch.bitrate_kbps = 128;
     ch.format = "FLV".to_string();
@@ -44,54 +45,169 @@ fn test_p34_station_yp_bcst_atom_parity_and_req035() {
     let children = bcst.children().expect("bcst must have children");
 
     // 1. Verify bcst header attributes
-    let ttl = children.iter().find(|c| c.name() == ID4::BCST_TTL).unwrap().get_u8().unwrap();
+    let ttl = children
+        .iter()
+        .find(|c| c.name() == ID4::BCST_TTL)
+        .unwrap()
+        .get_u8()
+        .unwrap();
     assert_eq!(ttl, 1, "REQ-035: bcst ttl must be 1");
 
-    let hops = children.iter().find(|c| c.name() == ID4::BCST_HOPS).unwrap().get_u8().unwrap();
+    let hops = children
+        .iter()
+        .find(|c| c.name() == ID4::BCST_HOPS)
+        .unwrap()
+        .get_u8()
+        .unwrap();
     assert_eq!(hops, 0, "REQ-035: bcst hops must be 0");
 
-    let group = children.iter().find(|c| c.name() == ID4::BCST_GRP).unwrap().get_u8().unwrap();
-    assert_eq!(group, BroadcastGroup::ROOT.raw(), "REQ-035: bcst group must be ROOT (1)");
+    let group = children
+        .iter()
+        .find(|c| c.name() == ID4::BCST_GRP)
+        .unwrap()
+        .get_u8()
+        .unwrap();
+    assert_eq!(
+        group,
+        BroadcastGroup::ROOT.raw(),
+        "REQ-035: bcst group must be ROOT (1)"
+    );
 
-    let from_bytes = children.iter().find(|c| c.name() == ID4::BCST_FROM).unwrap().leaf_bytes().unwrap();
-    assert_eq!(&from_bytes[..], session_id.as_bytes(), "REQ-035: from must equal session_id");
+    let from_bytes = children
+        .iter()
+        .find(|c| c.name() == ID4::BCST_FROM)
+        .unwrap()
+        .leaf_bytes()
+        .unwrap();
+    assert_eq!(
+        &from_bytes[..],
+        session_id.as_bytes(),
+        "REQ-035: from must equal session_id"
+    );
 
-    let cid_bytes = children.iter().find(|c| c.name() == ID4::BCST_CID).unwrap().leaf_bytes().unwrap();
-    assert_eq!(&cid_bytes[..], ch.channel_id.as_bytes(), "REQ-035: cid must equal channel_id (no C++ hashing)");
+    let cid_bytes = children
+        .iter()
+        .find(|c| c.name() == ID4::BCST_CID)
+        .unwrap()
+        .leaf_bytes()
+        .unwrap();
+    assert_eq!(
+        &cid_bytes[..],
+        ch.channel_id.as_bytes(),
+        "REQ-035: cid must equal channel_id (no C++ hashing)"
+    );
 
     // 2. Verify chan atom child
-    let chan = children.iter().find(|c| c.name() == ID4::PCP_CHAN).expect("must contain chan atom");
+    let chan = children
+        .iter()
+        .find(|c| c.name() == ID4::PCP_CHAN)
+        .expect("must contain chan atom");
     let chan_children = chan.children().expect("chan must have children");
-    let chan_id = chan_children.iter().find(|c| c.name() == ID4::CHAN_ID).unwrap().leaf_bytes().unwrap();
+    let chan_id = chan_children
+        .iter()
+        .find(|c| c.name() == ID4::CHAN_ID)
+        .unwrap()
+        .leaf_bytes()
+        .unwrap();
     assert_eq!(&chan_id[..], ch.channel_id.as_bytes());
 
-    let chan_bcid = chan_children.iter().find(|c| c.name() == ID4::CHAN_BCID).unwrap().leaf_bytes().unwrap();
+    let chan_bcid = chan_children
+        .iter()
+        .find(|c| c.name() == ID4::CHAN_BCID)
+        .unwrap()
+        .leaf_bytes()
+        .unwrap();
     assert_eq!(&chan_bcid[..], ch.broadcast_id.as_bytes());
 
-    let chan_info = chan_children.iter().find(|c| c.name() == ID4::CHAN_INFO).unwrap();
+    let chan_info = chan_children
+        .iter()
+        .find(|c| c.name() == ID4::CHAN_INFO)
+        .unwrap();
     let info_children = chan_info.children().unwrap();
-    let name_str = info_children.iter().find(|c| c.name() == ID4::INFO_NAME).unwrap().get_string().unwrap();
+    let name_str = info_children
+        .iter()
+        .find(|c| c.name() == ID4::INFO_NAME)
+        .unwrap()
+        .get_string()
+        .unwrap();
     assert_eq!(name_str, "Test Radio");
 
-    let genre_str = info_children.iter().find(|c| c.name() == ID4::INFO_GENRE).unwrap().get_string().unwrap();
+    let genre_str = info_children
+        .iter()
+        .find(|c| c.name() == ID4::INFO_GENRE)
+        .unwrap()
+        .get_string()
+        .unwrap();
     assert_eq!(genre_str, "J-Pop");
+    for (id, expected) in [
+        (ID4::INFO_DESC, "Streaming 24/7"),
+        (ID4::INFO_COMMENT, "Live from test fixture"),
+        (ID4::INFO_URL, "http://example.com/stream"),
+    ] {
+        assert_eq!(
+            info_children
+                .iter()
+                .find(|child| child.name() == id)
+                .unwrap()
+                .get_string()
+                .unwrap(),
+            expected
+        );
+    }
+    assert_eq!(
+        info_children
+            .iter()
+            .find(|child| child.name() == ID4::INFO_BITR)
+            .unwrap()
+            .get_u32_le()
+            .unwrap(),
+        128
+    );
 
     // 3. Verify host atom child
-    let host = children.iter().find(|c| c.name() == ID4::PCP_HOST).expect("must contain host atom");
+    let host = children
+        .iter()
+        .find(|c| c.name() == ID4::PCP_HOST)
+        .expect("must contain host atom");
     let host_children = host.children().expect("host must have children");
-    let host_cid = host_children.iter().find(|c| c.name() == ID4::HOST_CHANID).unwrap().leaf_bytes().unwrap();
+    let host_cid = host_children
+        .iter()
+        .find(|c| c.name() == ID4::HOST_CHANID)
+        .unwrap()
+        .leaf_bytes()
+        .unwrap();
     assert_eq!(&host_cid[..], ch.channel_id.as_bytes());
 
-    let host_sid = host_children.iter().find(|c| c.name() == ID4::HOST_ID).unwrap().leaf_bytes().unwrap();
+    let host_sid = host_children
+        .iter()
+        .find(|c| c.name() == ID4::HOST_ID)
+        .unwrap()
+        .leaf_bytes()
+        .unwrap();
     assert_eq!(&host_sid[..], session_id.as_bytes());
 
-    let numl = host_children.iter().find(|c| c.name() == ID4::HOST_NUML).unwrap().get_u32_le().unwrap();
+    let numl = host_children
+        .iter()
+        .find(|c| c.name() == ID4::HOST_NUML)
+        .unwrap()
+        .get_u32_le()
+        .unwrap();
     assert_eq!(numl, 5);
 
-    let numr = host_children.iter().find(|c| c.name() == ID4::HOST_NUMR).unwrap().get_u32_le().unwrap();
+    let numr = host_children
+        .iter()
+        .find(|c| c.name() == ID4::HOST_NUMR)
+        .unwrap()
+        .get_u32_le()
+        .unwrap();
     assert_eq!(numr, 2);
 
-    let uptm = host_children.iter().find(|c| c.name() == ID4::HOST_UPTIME).unwrap().get_u32_le().unwrap();
+    let uptm = host_children
+        .iter()
+        .find(|c| c.name() == ID4::HOST_UPTIME)
+        .unwrap()
+        .get_u32_le()
+        .unwrap();
     assert_eq!(uptm, 3600);
 }
 
@@ -180,6 +296,14 @@ async fn test_p34_loopback_announcement_and_status() {
     let channel = sample_channel();
     client.add_channel(channel.clone()).await;
     assert_eq!(client.ref_count(), 1);
+    let mut replacement = channel.clone();
+    replacement.name = "Updated Radio Name".to_string();
+    client.add_channel(replacement).await;
+    assert_eq!(
+        client.ref_count(),
+        1,
+        "re-adding a channel must not inflate ownership"
+    );
 
     // Spawn mock server in background
     let received_bcsts = mock_server.received_bcsts();
@@ -212,12 +336,95 @@ async fn test_p34_loopback_announcement_and_status() {
     // Verify mock server received the bcst announcement
     tokio::time::sleep(Duration::from_millis(100)).await;
     let list = received_bcsts.lock().await;
-    assert!(!list.is_empty(), "Mock YP must receive the announcement bcst");
+    assert!(
+        !list.is_empty(),
+        "Mock YP must receive the announcement bcst"
+    );
     let received = &list[0];
     assert_eq!(received.name(), ID4::PCP_BCST);
 
     // Clean shutdown
     client_handle.shutdown();
+}
+
+#[tokio::test]
+async fn test_p34_custom_retry_delay_and_shutdown_during_reconnect() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        for _ in 0..2 {
+            let _ = listener.accept().await.unwrap();
+        }
+        let _ = accepted_tx.send(());
+    });
+
+    let client = Arc::new(
+        PCPYellowPageClient::new(
+            ChannelId::from_bytes([0x33; 16]),
+            ChannelId::from_bytes([0x44; 16]),
+            YpClientConfig::for_loopback(port),
+        )
+        .unwrap()
+        .with_retry_delays(Duration::from_millis(10), Duration::from_millis(20))
+        .with_io_timeout(Duration::from_secs(2)),
+    );
+    client.add_channel(sample_channel()).await;
+    let worker = {
+        let client = client.clone();
+        tokio::spawn(async move { client.run_loop().await })
+    };
+
+    tokio::time::timeout(Duration::from_millis(500), accepted_rx)
+        .await
+        .expect("custom short retry should reconnect promptly")
+        .unwrap();
+    client.shutdown();
+    tokio::time::timeout(Duration::from_millis(500), worker)
+        .await
+        .expect("shutdown should interrupt reconnect waiting")
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_p34_shutdown_cancels_waiting_for_handshake() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let _ = accepted_tx.send(());
+        let _socket = socket;
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    });
+
+    let client = Arc::new(
+        PCPYellowPageClient::new(
+            ChannelId::from_bytes([0x33; 16]),
+            ChannelId::from_bytes([0x44; 16]),
+            YpClientConfig::for_loopback(port),
+        )
+        .unwrap()
+        .with_io_timeout(Duration::from_secs(5)),
+    );
+    client.add_channel(sample_channel()).await;
+    let worker = {
+        let client = client.clone();
+        tokio::spawn(async move { client.run_loop().await })
+    };
+
+    tokio::time::timeout(Duration::from_secs(1), accepted_rx)
+        .await
+        .expect("client should establish the loopback TCP connection")
+        .unwrap();
+    client.shutdown();
+    tokio::time::timeout(Duration::from_millis(500), worker)
+        .await
+        .expect("shutdown should cancel the pending OLEH handshake")
+        .unwrap()
+        .unwrap();
+    server.abort();
 }
 
 /// Acceptance criterion 5:

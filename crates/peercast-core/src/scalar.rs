@@ -20,7 +20,10 @@ impl Scalar {
     #[inline]
     pub fn read_u8(bytes: &[u8]) -> Result<u8, ScalarError> {
         if bytes.len() != 1 {
-            return Err(ScalarError::WidthMismatch { expected: 1, actual: bytes.len() });
+            return Err(ScalarError::WidthMismatch {
+                expected: 1,
+                actual: bytes.len(),
+            });
         }
         Ok(bytes[0])
     }
@@ -33,7 +36,10 @@ impl Scalar {
     #[inline]
     pub fn read_u16_le(bytes: &[u8]) -> Result<u16, ScalarError> {
         if bytes.len() != 2 {
-            return Err(ScalarError::WidthMismatch { expected: 2, actual: bytes.len() });
+            return Err(ScalarError::WidthMismatch {
+                expected: 2,
+                actual: bytes.len(),
+            });
         }
         Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
     }
@@ -46,7 +52,10 @@ impl Scalar {
     #[inline]
     pub fn read_u32_le(bytes: &[u8]) -> Result<u32, ScalarError> {
         if bytes.len() != 4 {
-            return Err(ScalarError::WidthMismatch { expected: 4, actual: bytes.len() });
+            return Err(ScalarError::WidthMismatch {
+                expected: 4,
+                actual: bytes.len(),
+            });
         }
         Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
@@ -59,11 +68,13 @@ impl Scalar {
     #[inline]
     pub fn read_u64_le(bytes: &[u8]) -> Result<u64, ScalarError> {
         if bytes.len() != 8 {
-            return Err(ScalarError::WidthMismatch { expected: 8, actual: bytes.len() });
+            return Err(ScalarError::WidthMismatch {
+                expected: 8,
+                actual: bytes.len(),
+            });
         }
         Ok(u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
     }
 

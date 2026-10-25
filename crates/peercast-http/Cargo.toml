@@ -11,7 +11,8 @@ peercast-format = { path = "../peercast-format" }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "sync", "time", "io-util", "rt"] }
+sha2 = { workspace = true }
+memchr = "=2.8.3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "time"] }
-sha2 = { workspace = true }

@@ -112,7 +112,8 @@ fn test_p35_response_size_limit_rejection() {
         max_field_len: 100,
     };
 
-    let large_feed = "This is a response that definitely exceeds the configured maximum limit of fifty bytes.\n";
+    let large_feed =
+        "This is a response that definitely exceeds the configured maximum limit of fifty bytes.\n";
     let res = parse_index_txt(large_feed, &limits);
 
     match res {
@@ -138,7 +139,12 @@ fn test_p35_field_length_limit_rejection() {
     let res = parse_index_txt(feed_with_long_field, &limits);
 
     match res {
-        Err(IndexParseError::FieldTooLong { line, field, len, limit }) => {
+        Err(IndexParseError::FieldTooLong {
+            line,
+            field,
+            len,
+            limit,
+        }) => {
             assert_eq!(line, 1);
             // Field 1 is 32 bytes hex GUID which exceeds 10 bytes
             assert!(len > 10);

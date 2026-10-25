@@ -20,7 +20,7 @@ async fn test_p37b_mock_transport_offline_queries() {
     mock.register_success(
         "getVersionInfo",
         json!({
-            "agentName": "PeerCastStation/1.0",
+            "agentName": concat!("PeerCastStation/", env!("CARGO_PKG_VERSION")),
             "apiVersion": "1.0.0",
             "jsonrpc": "2.0"
         }),
@@ -42,7 +42,10 @@ async fn test_p37b_mock_transport_offline_queries() {
 
     // 1. Version Info
     let ver = client.get_version_info().await.unwrap();
-    assert_eq!(ver.agent_name, "PeerCastStation/1.0");
+    assert_eq!(
+        ver.agent_name,
+        concat!("PeerCastStation/", env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(ver.api_version, "1.0.0");
 
     // 2. Status Snapshot to ViewModel transformation (REQ-081)
@@ -51,7 +54,10 @@ async fn test_p37b_mock_transport_offline_queries() {
     assert_eq!(status.uptime_formatted, "02:02:05");
     assert_eq!(status.port_status_label, "ポート開放中 (Open)");
     assert_eq!(status.local_endpoint, Some("127.0.0.1:7144".to_string()));
-    assert_eq!(status.global_endpoint, Some("203.0.113.10:7144".to_string()));
+    assert_eq!(
+        status.global_endpoint,
+        Some("203.0.113.10:7144".to_string())
+    );
 
     // Verify call log recorded
     let calls = mock.calls().await;
@@ -67,17 +73,11 @@ async fn test_p37b_channel_viewmodel_conversion() {
     let mock = MockRpcTransport::new();
     let cid = sample_cid();
 
-    let channel_summary = ChannelSummary::new(
-        cid,
-        "StreamOne",
-        "Receiving",
-        1500,
-        "video/x-flv",
-        10,
-        25,
-    );
+    let channel_summary =
+        ChannelSummary::new(cid, "StreamOne", "Receiving", 1500, "video/x-flv", 10, 25);
 
-    mock.register_success("getChannels", json!([channel_summary])).await;
+    mock.register_success("getChannels", json!([channel_summary]))
+        .await;
 
     let client = PeerCastRpcClient::new(mock);
     let channels = client.get_channels().await.unwrap();
@@ -125,14 +125,20 @@ async fn test_p37b_deferred_method_reports_unsupported_capability() {
     .await;
 
     let client = PeerCastRpcClient::new(mock);
-    let err = client.broadcast_channel(json!({"name": "Test"})).await.unwrap_err();
+    let err = client
+        .broadcast_channel(json!({"name": "Test"}))
+        .await
+        .unwrap_err();
 
     match err {
         ClientRpcError::UnsupportedMethod { method, capability } => {
             assert_eq!(method, "broadcastChannel");
             assert_eq!(capability, "broadcast_ingest");
         }
-        other => panic!("Expected ClientRpcError::UnsupportedMethod, got {:?}", other),
+        other => panic!(
+            "Expected ClientRpcError::UnsupportedMethod, got {:?}",
+            other
+        ),
     }
 }
 
@@ -141,20 +147,44 @@ async fn test_p37b_deferred_method_reports_unsupported_capability() {
 #[test]
 fn test_p37b_mutation_retry_classification() {
     // Queries are safe / idempotent
-    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("getVersionInfo"));
-    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("getStatus"));
-    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("getChannels"));
-    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("getSettings"));
+    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "getVersionInfo"
+    ));
+    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "getStatus"
+    ));
+    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "getChannels"
+    ));
+    assert!(!PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "getSettings"
+    ));
 
     // Mutations are non-idempotent or state-altering; must never be blindly retried on uncertain drop
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("setSettings"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("stopChannel"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("bumpChannel"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("setChannelInfo"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("addYellowPage"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("removeYellowPage"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("addListener"));
-    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method("broadcastChannel"));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "setSettings"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "stopChannel"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "bumpChannel"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "setChannelInfo"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "addYellowPage"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "removeYellowPage"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "addListener"
+    ));
+    assert!(PeerCastRpcClient::<MockRpcTransport>::is_mutating_method(
+        "broadcastChannel"
+    ));
 }
 
 /// Direct in-memory transport bridging PeerCastRpcClient directly to RpcDispatcher.
@@ -192,7 +222,9 @@ impl RpcTransport for InprocessDispatcherTransport {
         } else if let Some(res) = res_val.get("result") {
             Ok(res.clone())
         } else {
-            Err(ClientRpcError::Deserialization("Invalid response envelope".into()))
+            Err(ClientRpcError::Deserialization(
+                "Invalid response envelope".into(),
+            ))
         }
     }
 }

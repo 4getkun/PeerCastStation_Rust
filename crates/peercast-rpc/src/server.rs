@@ -1,14 +1,28 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use peercast_core::channel_id::ChannelId;
 use crate::protocol::{RpcErrorObject, RpcId, RpcRequest, RpcResponse};
+use peercast_core::channel_id::ChannelId;
 
 /// Maximum allowed JSON-RPC HTTP request body size (REQ-064, Station parity 64 KiB).
 pub const DEFAULT_MAX_RPC_REQUEST_BYTES: usize = 64 * 1024;
+
+// Station RPC compatibility identifiers are independent of the Rust package version.
+const DEFAULT_AGENT_NAME: &str = concat!("PeerCastStation/", env!("CARGO_PKG_VERSION"));
+const API_VERSION: &str = "1.0.0";
+
+/// Provides cached or refreshed Yellow Page directory channels to RPC callers.
+pub trait YellowPageDirectory: std::fmt::Debug + Send + Sync {
+    fn channels(
+        &self,
+        refresh: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<Value, String>> + Send + '_>>;
+}
 
 /// Client access level for authorization enforcement (Station `OutputStreamType` parity).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,8 +169,8 @@ pub struct RpcState {
 impl Default for RpcState {
     fn default() -> Self {
         Self {
-            agent_name: "PeerCastStation/1.0".to_string(),
-            api_version: "1.0.0".to_string(),
+            agent_name: DEFAULT_AGENT_NAME.to_string(),
+            api_version: API_VERSION.to_string(),
             auth_token: None,
             settings: ServentSettings::default(),
             status: StatusSnapshot::default(),
@@ -166,7 +180,7 @@ impl Default for RpcState {
                 is_usable: true,
                 assembly: PluginAssemblyInfo {
                     name: "peercast-core".to_string(),
-                    version: "0.1.0".to_string(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
                     copyright: "GPL-3.0-or-later".to_string(),
                 },
             }],
@@ -180,6 +194,16 @@ impl Default for RpcState {
 pub struct RpcDispatcher {
     state: Arc<RwLock<RpcState>>,
     max_request_bytes: usize,
+    yellow_page_directory: Option<Arc<dyn YellowPageDirectory>>,
+    logging: Option<Arc<dyn LogProvider>>,
+}
+
+/// Application-owned logging backend; authorization remains in the dispatcher.
+pub trait LogProvider: std::fmt::Debug + Send + Sync {
+    fn settings(&self) -> Value;
+    fn read(&self, from: usize, max_lines: usize) -> Value;
+    fn set_level(&self, level: u64) -> Result<(), String>;
+    fn clear(&self);
 }
 
 impl Default for RpcDispatcher {
@@ -193,12 +217,33 @@ impl RpcDispatcher {
         Self {
             state: Arc::new(RwLock::new(state)),
             max_request_bytes: DEFAULT_MAX_RPC_REQUEST_BYTES,
+            yellow_page_directory: None,
+            logging: None,
         }
     }
 
     pub fn with_max_request_bytes(mut self, max: usize) -> Self {
         self.max_request_bytes = max;
         self
+    }
+
+    pub fn with_yellow_page_directory(mut self, provider: Arc<dyn YellowPageDirectory>) -> Self {
+        self.yellow_page_directory = Some(provider);
+        self
+    }
+
+    pub fn with_logging(mut self, provider: Arc<dyn LogProvider>) -> Self {
+        self.logging = Some(provider);
+        self
+    }
+
+    pub async fn version_info(&self) -> Value {
+        let st = self.state.read().await;
+        json!({
+            "agentName": st.agent_name,
+            "apiVersion": st.api_version,
+            "jsonrpc": "2.0"
+        })
     }
 
     pub fn state(&self) -> &Arc<RwLock<RpcState>> {
@@ -210,11 +255,7 @@ impl RpcDispatcher {
     /// Returns:
     /// - `Some(response_json)`: Serialized JSON-RPC response object or batch array.
     /// - `None`: If the request consisted solely of notifications (HTTP 204 No Content).
-    pub async fn handle_request_str(
-        &self,
-        raw_body: &str,
-        access: AccessLevel,
-    ) -> Option<String> {
+    pub async fn handle_request_str(&self, raw_body: &str, access: AccessLevel) -> Option<String> {
         // Enforce request size limit
         if raw_body.len() > self.max_request_bytes {
             let resp = RpcResponse::error(
@@ -276,18 +317,16 @@ impl RpcDispatcher {
             _ => {
                 let resp = RpcResponse::error(
                     None,
-                    RpcErrorObject::invalid_request("Top-level JSON value must be an object or array"),
+                    RpcErrorObject::invalid_request(
+                        "Top-level JSON value must be an object or array",
+                    ),
                 );
                 serde_json::to_string(&resp).ok()
             }
         }
     }
 
-    async fn process_single_value(
-        &self,
-        val: Value,
-        access: AccessLevel,
-    ) -> Option<RpcResponse> {
+    async fn process_single_value(&self, val: Value, access: AccessLevel) -> Option<RpcResponse> {
         let req: RpcRequest = match serde_json::from_value(val) {
             Ok(r) => r,
             Err(e) => {
@@ -306,7 +345,9 @@ impl RpcDispatcher {
         }
 
         let is_notification = req.is_notification();
-        let resp = self.dispatch_method(&req.method, req.params, req.id.clone(), access).await;
+        let resp = self
+            .dispatch_method(&req.method, req.params, req.id.clone(), access)
+            .await;
 
         if is_notification {
             None
@@ -337,17 +378,7 @@ impl RpcDispatcher {
 
         match method {
             // --- Core Supported Methods (REQ-064) ---
-            "getVersionInfo" => {
-                let st = self.state.read().await;
-                RpcResponse::success(
-                    id,
-                    json!({
-                        "agentName": st.agent_name,
-                        "apiVersion": st.api_version,
-                        "jsonrpc": "2.0"
-                    }),
-                )
-            }
+            "getVersionInfo" => RpcResponse::success(id, self.version_info().await),
 
             "getStatus" => {
                 let st = self.state.read().await;
@@ -382,7 +413,9 @@ impl RpcDispatcher {
                     _ => {
                         return RpcResponse::error(
                             id,
-                            RpcErrorObject::invalid_params("setSettings requires a settings object parameter"),
+                            RpcErrorObject::invalid_params(
+                                "setSettings requires a settings object parameter",
+                            ),
                         );
                     }
                 };
@@ -391,19 +424,28 @@ impl RpcDispatcher {
                 if let Some(val) = params_val.get("maxRelays").and_then(|v| v.as_u64()) {
                     st.settings.max_relays = val as u32;
                 }
-                if let Some(val) = params_val.get("maxRelaysPerChannel").and_then(|v| v.as_u64()) {
+                if let Some(val) = params_val
+                    .get("maxRelaysPerChannel")
+                    .and_then(|v| v.as_u64())
+                {
                     st.settings.max_relays_per_channel = val as u32;
                 }
                 if let Some(val) = params_val.get("maxDirects").and_then(|v| v.as_u64()) {
                     st.settings.max_directs = val as u32;
                 }
-                if let Some(val) = params_val.get("maxDirectsPerChannel").and_then(|v| v.as_u64()) {
+                if let Some(val) = params_val
+                    .get("maxDirectsPerChannel")
+                    .and_then(|v| v.as_u64())
+                {
                     st.settings.max_directs_per_channel = val as u32;
                 }
                 if let Some(val) = params_val.get("maxUpstreamRate").and_then(|v| v.as_u64()) {
                     st.settings.max_upstream_rate = val as u32;
                 }
-                if let Some(val) = params_val.get("maxUpstreamRateIPv6").and_then(|v| v.as_u64()) {
+                if let Some(val) = params_val
+                    .get("maxUpstreamRateIPv6")
+                    .and_then(|v| v.as_u64())
+                {
                     st.settings.max_upstream_rate_ipv6 = val as u32;
                 }
 
@@ -453,22 +495,73 @@ impl RpcDispatcher {
                 id,
                 RpcErrorObject::unsupported_method("getExternalIPAddresses", "network_discovery"),
             ),
-            "getLogSettings" => RpcResponse::error(
-                id,
-                RpcErrorObject::unsupported_method("getLogSettings", "logging"),
-            ),
-            "setLogSettings" => RpcResponse::error(
-                id,
-                RpcErrorObject::unsupported_method("setLogSettings", "logging"),
-            ),
-            "getLog" => RpcResponse::error(
-                id,
-                RpcErrorObject::unsupported_method("getLog", "logging"),
-            ),
-            "clearLog" => RpcResponse::error(
-                id,
-                RpcErrorObject::unsupported_method("clearLog", "logging"),
-            ),
+            "getLogSettings" | "getLog" | "setLogSettings" | "clearLog" => {
+                let Some(logging) = &self.logging else {
+                    return RpcResponse::error(
+                        id,
+                        RpcErrorObject::unsupported_method(method, "logging"),
+                    );
+                };
+                match method {
+                    "getLogSettings" => RpcResponse::success(id, logging.settings()),
+                    "clearLog" => {
+                        logging.clear();
+                        RpcResponse::success(id, Value::Null)
+                    }
+                    "setLogSettings" => {
+                        let settings = match params.as_ref() {
+                            Some(Value::Object(map)) => map.get("settings").or(params.as_ref()),
+                            Some(Value::Array(items)) => items.first(),
+                            _ => None,
+                        };
+                        let Some(level) = settings
+                            .and_then(|s| s.get("level"))
+                            .and_then(Value::as_u64)
+                        else {
+                            return RpcResponse::error(
+                                id,
+                                RpcErrorObject::invalid_params(
+                                    "settings.level must be an integer from 0 to 5",
+                                ),
+                            );
+                        };
+                        match logging.set_level(level) {
+                            Ok(()) => RpcResponse::success(id, Value::Null),
+                            Err(error) => {
+                                RpcResponse::error(id, RpcErrorObject::invalid_params(error))
+                            }
+                        }
+                    }
+                    _ => {
+                        let number =
+                            |name: &str, index: usize, default: usize| -> Result<usize, String> {
+                                let value = match params.as_ref() {
+                                    None | Some(Value::Null) => None,
+                                    Some(Value::Object(map)) => map.get(name),
+                                    Some(Value::Array(items)) => items.get(index),
+                                    _ => return Err("getLog requires an object or array".into()),
+                                };
+                                match value {
+                                    None | Some(Value::Null) => Ok(default),
+                                    Some(value) => value
+                                        .as_u64()
+                                        .and_then(|n| usize::try_from(n).ok())
+                                        .ok_or_else(|| {
+                                            format!("{name} must be a non-negative integer")
+                                        }),
+                                }
+                            };
+                        match (number("from", 0, 0), number("maxLines", 1, 100)) {
+                            (Ok(from), Ok(max_lines)) => {
+                                RpcResponse::success(id, logging.read(from, max_lines.min(1000)))
+                            }
+                            (Err(error), _) | (_, Err(error)) => {
+                                RpcResponse::error(id, RpcErrorObject::invalid_params(error))
+                            }
+                        }
+                    }
+                }
+            }
             "getChannelStatus" => RpcResponse::error(
                 id,
                 RpcErrorObject::unsupported_method("getChannelStatus", "channel_detail"),
@@ -517,6 +610,19 @@ impl RpcDispatcher {
                 id,
                 RpcErrorObject::unsupported_method("getYellowPageProtocols", "yp_client"),
             ),
+            "getYPChannels" | "updateYPChannels" => {
+                let refresh = method == "updateYPChannels";
+                match &self.yellow_page_directory {
+                    Some(provider) => match provider.channels(refresh).await {
+                        Ok(channels) => RpcResponse::success(id, channels),
+                        Err(error) => RpcResponse::error(id, RpcErrorObject::internal_error(error)),
+                    },
+                    None => RpcResponse::error(
+                        id,
+                        RpcErrorObject::unsupported_method(method, "yp_client"),
+                    ),
+                }
+            }
             "getYellowPages" => RpcResponse::error(
                 id,
                 RpcErrorObject::unsupported_method("getYellowPages", "yp_client"),
@@ -547,7 +653,10 @@ impl RpcDispatcher {
             ),
             "resetListenerAuthenticationKey" => RpcResponse::error(
                 id,
-                RpcErrorObject::unsupported_method("resetListenerAuthenticationKey", "listener_manager"),
+                RpcErrorObject::unsupported_method(
+                    "resetListenerAuthenticationKey",
+                    "listener_manager",
+                ),
             ),
             "removeListener" => RpcResponse::error(
                 id,
@@ -559,7 +668,10 @@ impl RpcDispatcher {
             ),
             "setListenerAuthorizationRequired" => RpcResponse::error(
                 id,
-                RpcErrorObject::unsupported_method("setListenerAuthorizationRequired", "listener_manager"),
+                RpcErrorObject::unsupported_method(
+                    "setListenerAuthorizationRequired",
+                    "listener_manager",
+                ),
             ),
             "getBroadcastHistory" => RpcResponse::error(
                 id,
@@ -572,10 +684,6 @@ impl RpcDispatcher {
             "getNotificationMessages" => RpcResponse::error(
                 id,
                 RpcErrorObject::unsupported_method("getNotificationMessages", "notifications"),
-            ),
-            "updateYPChannels" => RpcResponse::error(
-                id,
-                RpcErrorObject::unsupported_method("updateYPChannels", "yp_client"),
             ),
             "setUserConfig" => RpcResponse::error(
                 id,

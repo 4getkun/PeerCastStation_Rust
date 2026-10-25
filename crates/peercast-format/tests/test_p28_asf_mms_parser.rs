@@ -1,9 +1,8 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use peercast_format::asf::{
     parse_asf_top_level_header, AsfDemuxOutput, AsfDemuxer, AsfDemuxerState, AsfGuid,
-    AsfParseError, AsfTransportProfile, ASF_STREAM_BITRATE_GUID,
-    ASF_STREAM_PROPERTIES_GUID, ASF_STREAM_TYPE_AUDIO_GUID,
-    ASF_TOP_LEVEL_HEADER_GUID,
+    AsfParseError, AsfTransportProfile, ASF_STREAM_BITRATE_GUID, ASF_STREAM_PROPERTIES_GUID,
+    ASF_STREAM_TYPE_AUDIO_GUID, ASF_TOP_LEVEL_HEADER_GUID,
 };
 use std::fs;
 use std::path::Path;
@@ -53,22 +52,38 @@ fn make_wmsp_frame(subtype: u8, mms_payload: &[u8]) -> Bytes {
 
 #[test]
 fn test_p28_upstream_test_asf_real_fixture() {
-    let fixture_path = Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestASF\fixtures\test.asf");
+    let fixture_path =
+        Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestASF\fixtures\test.asf");
     if !fixture_path.exists() {
-        eprintln!("Skipping test_p28_upstream_test_asf_real_fixture: fixture not found at {:?}", fixture_path);
+        eprintln!(
+            "Skipping test_p28_upstream_test_asf_real_fixture: fixture not found at {:?}",
+            fixture_path
+        );
         return;
     }
 
     let file_bytes = fs::read(fixture_path).expect("Failed to read test.asf fixture");
-    assert!(file_bytes.len() > 1_000_000, "test.asf should be ~1.96 MB, got {}", file_bytes.len());
+    assert!(
+        file_bytes.len() > 1_000_000,
+        "test.asf should be ~1.96 MB, got {}",
+        file_bytes.len()
+    );
 
     let mut demuxer = AsfDemuxer::new(AsfTransportProfile::MmsFramed);
-    demuxer.feed(&file_bytes).expect("Feeding test.asf bytes must succeed");
+    demuxer
+        .feed(&file_bytes)
+        .expect("Feeding test.asf bytes must succeed");
 
     // 1. Initial output must be HeaderSnapshotReady
-    let first_out = demuxer.next_output().expect("Parsing test.asf header must succeed");
+    let first_out = demuxer
+        .next_output()
+        .expect("Parsing test.asf header must succeed");
     let (snapshot, metadata) = match first_out {
-        Some(AsfDemuxOutput::HeaderSnapshotReady { snapshot, metadata, epoch }) => {
+        Some(AsfDemuxOutput::HeaderSnapshotReady {
+            snapshot,
+            metadata,
+            epoch,
+        }) => {
             assert_eq!(epoch, 0);
             (snapshot, metadata)
         }
@@ -77,7 +92,11 @@ fn test_p28_upstream_test_asf_real_fixture() {
 
     // Upstream parity check with Station's `test_asfcontentreader.rb`:
     // `assert_equal(5271, content.content_header.data.length)`
-    assert_eq!(snapshot.data.len(), 5271, "Header snapshot length must match Station's 5271 bytes");
+    assert_eq!(
+        snapshot.data.len(),
+        5271,
+        "Header snapshot length must match Station's 5271 bytes"
+    );
     assert_eq!(snapshot.pos, 0);
     assert_eq!(snapshot.container_type, "WMV");
 
@@ -94,12 +113,19 @@ fn test_p28_upstream_test_asf_real_fixture() {
     assert!(metadata.has_audio);
 
     // File properties check
-    let fp = metadata.file_properties.as_ref().expect("FileProperties must be present");
+    let fp = metadata
+        .file_properties
+        .as_ref()
+        .expect("FileProperties must be present");
     assert_eq!(fp.min_packet_size, fp.max_packet_size);
 
     // Stream bitrate records: Stream 1 (Audio: 33,742 bps) and Stream 2 (Video: 404,368 bps)
     assert_eq!(metadata.bitrate_records.len(), 2);
-    let total_br: u32 = metadata.bitrate_records.iter().map(|r| r.average_bitrate_bps).sum();
+    let total_br: u32 = metadata
+        .bitrate_records
+        .iter()
+        .map(|r| r.average_bitrate_bps)
+        .sum();
     assert_eq!(total_br, 438_110);
     assert_eq!(total_br / 1000, 438);
 
@@ -108,11 +134,21 @@ fn test_p28_upstream_test_asf_real_fixture() {
     let mut total_packets = 0;
     let mut expected_pos = snapshot.data.len() as u64;
 
-    while let Some(out) = demuxer.next_output().expect("Parsing test.asf content should succeed") {
+    while let Some(out) = demuxer
+        .next_output()
+        .expect("Parsing test.asf content should succeed")
+    {
         match out {
-            AsfDemuxOutput::ContentPacket { packet, epoch, position } => {
+            AsfDemuxOutput::ContentPacket {
+                packet,
+                epoch,
+                position,
+            } => {
                 assert_eq!(epoch, 0);
-                assert_eq!(position, expected_pos, "Stream position must advance contiguously");
+                assert_eq!(
+                    position, expected_pos,
+                    "Stream position must advance contiguously"
+                );
                 expected_pos += packet.len() as u64;
                 total_packets += 1;
             }
@@ -143,7 +179,10 @@ fn test_p28_stop_block_no_assumed_50_byte_minimum() {
     // Test 1: 30-byte minimal top-level header is parsed successfully without 50-byte rejection
     let minimal_header = make_minimal_top_level_header();
     assert_eq!(minimal_header.len(), 30);
-    assert!(minimal_header.len() < 50, "Header is strictly under 50 bytes");
+    assert!(
+        minimal_header.len() < 50,
+        "Header is strictly under 50 bytes"
+    );
 
     let meta = parse_asf_top_level_header(&minimal_header, 1024 * 1024)
         .expect("30-byte Top-Level Header must NOT be rejected by a false 50-byte minimum!");
@@ -166,7 +205,7 @@ fn test_p28_stop_block_no_assumed_50_byte_minimum() {
     top_level.put_slice(ASF_STREAM_BITRATE_GUID.as_bytes());
     top_level.put_u64_le(38);
     top_level.put_u16_le(2); // 2 records
-    // Record 1: stream 1, 128,000 bps
+                             // Record 1: stream 1, 128,000 bps
     top_level.put_u16_le(1);
     top_level.put_u32_le(128_000);
     // Record 2: stream 2, 384,000 bps
@@ -279,7 +318,9 @@ fn test_p28_header_replacement_epoch_bump() {
     demuxer.feed(&wmsp_header2).unwrap();
     let out3 = demuxer.next_output().unwrap().unwrap();
     match out3 {
-        AsfDemuxOutput::HeaderSnapshotReady { epoch, .. } => assert_eq!(epoch, 1, "Epoch must increment on replacement"),
+        AsfDemuxOutput::HeaderSnapshotReady { epoch, .. } => {
+            assert_eq!(epoch, 1, "Epoch must increment on replacement")
+        }
         _ => panic!("Expected HeaderSnapshotReady"),
     }
     assert_eq!(demuxer.current_epoch(), 1);
@@ -366,7 +407,8 @@ fn test_p28_audio_only_wma_classification() {
 
     assert_eq!(top_level.len(), total_size);
 
-    let meta = parse_asf_top_level_header(&top_level, 1024 * 1024).expect("Parsing audio-only ASF header");
+    let meta =
+        parse_asf_top_level_header(&top_level, 1024 * 1024).expect("Parsing audio-only ASF header");
     assert_eq!(meta.content_type, "WMA");
     assert_eq!(meta.mime_type, "audio/x-ms-wma");
     assert_eq!(meta.stream_ext, ".wma");

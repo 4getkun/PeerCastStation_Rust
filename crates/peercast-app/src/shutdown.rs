@@ -23,7 +23,8 @@ pub async fn wait_for_os_shutdown_signal() -> &'static str {
         use tokio::signal::unix::{signal, SignalKind};
 
         let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
-        let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
 
         tokio::select! {
             _ = sigint.recv() => "POSIX SIGINT",
@@ -33,7 +34,9 @@ pub async fn wait_for_os_shutdown_signal() -> &'static str {
 
     #[cfg(not(any(windows, unix)))]
     {
-        tokio::signal::ctrl_c().await.expect("failed to install ctrl_c handler");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install ctrl_c handler");
         "Generic Ctrl+C"
     }
 }

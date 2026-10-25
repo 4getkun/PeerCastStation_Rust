@@ -53,7 +53,11 @@ async fn test_p43_peer_churn_and_zero_task_leak() {
     );
 
     // Stop/block guard: Zero task leak after churn stops
-    assert_eq!(tracker.active_tasks(), 0, "active tasks must be strictly 0 after churn");
+    assert_eq!(
+        tracker.active_tasks(),
+        0,
+        "active tasks must be strictly 0 after churn"
+    );
 }
 
 /// Acceptance criterion 2:
@@ -85,22 +89,30 @@ async fn test_p43_slow_peer_backpressure_and_lag_eviction() {
 
         // Fast subscriber: admit and immediately drain
         let fast_admit = fast_sink.try_admit(content.clone(), Duration::from_millis(i * 100));
-        assert!(fast_admit.is_ok(), "fast subscriber must always be admitted");
+        assert!(
+            fast_admit.is_ok(),
+            "fast subscriber must always be admitted"
+        );
         let popped = fast_source.recv().await;
         assert!(popped.is_some(), "fast subscriber should drain popped item");
 
         // Slow subscriber: admit without draining until queue overflows
         let slow_admit = slow_sink.try_admit(content, Duration::from_millis(i * 100));
         if let Err(reason) = slow_admit {
-            assert!(
-                matches!(reason, SubscriberDropReason::CountLimitExceeded { .. } | SubscriberDropReason::ByteLimitExceeded { .. })
-            );
+            assert!(matches!(
+                reason,
+                SubscriberDropReason::CountLimitExceeded { .. }
+                    | SubscriberDropReason::ByteLimitExceeded { .. }
+            ));
             slow_evicted = true;
             break;
         }
     }
 
-    assert!(slow_evicted, "slow subscriber must be evicted when bounds are exceeded");
+    assert!(
+        slow_evicted,
+        "slow subscriber must be evicted when bounds are exceeded"
+    );
     // Slow subscriber queue must be strictly bounded
     assert!(slow_source.queued_bytes() <= 4096);
 }
@@ -155,7 +167,10 @@ fn test_p43_source_restart_and_epoch_rollover() {
 
     assert_eq!(cache.total_body_bytes(), 10_000);
     assert_eq!(cache.current_epoch(), Some(2));
-    assert_eq!(cache.header().unwrap().data, Bytes::from_static(b"FLV-HEADER-EPOCH-2"));
+    assert_eq!(
+        cache.header().unwrap().data,
+        Bytes::from_static(b"FLV-HEADER-EPOCH-2")
+    );
 }
 
 /// Acceptance criterion 4:
@@ -231,7 +246,10 @@ async fn test_p43_graceful_shutdown_high_traffic_zero_residual() {
 
     // Await complete drain with timeout
     let drain_res = lifecycle.complete_shutdown(Duration::from_secs(3)).await;
-    assert!(drain_res.is_ok(), "all workers must drain cleanly within timeout");
+    assert!(
+        drain_res.is_ok(),
+        "all workers must drain cleanly within timeout"
+    );
 
     // Stop/block guard: Zero active tasks, zero active connections, zero zombie threads
     assert_eq!(

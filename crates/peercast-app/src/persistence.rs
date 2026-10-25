@@ -7,9 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::config::{
-    AppConfig, ConfigValidationError, CURRENT_SCHEMA_VERSION,
-};
+use crate::config::{AppConfig, ConfigValidationError, CURRENT_SCHEMA_VERSION};
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -197,14 +195,19 @@ impl ConfigManager {
         })?;
         if meta.len() == 0 {
             return Err(ConfigPersistenceError::MigrationBackupFailed(
-                "Backup file created was empty; aborting migration to protect user data".to_string(),
+                "Backup file created was empty; aborting migration to protect user data"
+                    .to_string(),
             ));
         }
 
         // 2. Perform migration logic
         let migrated_config = match old_version {
             1 => migrate_v1_to_v2(val)?,
-            _ => return Err(ConfigPersistenceError::UnsupportedSchemaVersion(old_version)),
+            _ => {
+                return Err(ConfigPersistenceError::UnsupportedSchemaVersion(
+                    old_version,
+                ))
+            }
         };
 
         // 3. Validate migrated config

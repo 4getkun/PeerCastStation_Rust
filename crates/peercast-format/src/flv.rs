@@ -719,8 +719,8 @@ impl FlvHeaderSnapshotBuilder {
         let mut out = BytesMut::with_capacity(1024);
 
         // 13-byte FLV File Header + PreviousTagSize0 (REQ-052)
-        let flags = (if self.has_audio { 0x04 } else { 0x00 })
-            | (if self.has_video { 0x01 } else { 0x00 });
+        let flags =
+            (if self.has_audio { 0x04 } else { 0x00 }) | (if self.has_video { 0x01 } else { 0x00 });
         out.put_u8(b'F');
         out.put_u8(b'L');
         out.put_u8(b'V');

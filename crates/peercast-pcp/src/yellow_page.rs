@@ -27,12 +27,14 @@
 //!    by `allow_public_announcements`.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -52,6 +54,8 @@ pub const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(1000);
 
 /// Maximum capped retry backoff delay.
 pub const MAX_RETRY_DELAY: Duration = Duration::from_millis(30000);
+
+const SHUTDOWN_QUIT_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Servant protocol version advertised during YP handshake (Station default: 1218).
 pub const DEFAULT_SERVANT_VERSION: u32 = 1218;
@@ -114,6 +118,7 @@ impl Default for YpBackoffTracker {
 impl YpBackoffTracker {
     /// Creates a new backoff tracker.
     pub fn new(base_delay: Duration, max_delay: Duration) -> Self {
+        let base_delay = base_delay.min(max_delay);
         Self {
             base_delay,
             max_delay,
@@ -158,6 +163,7 @@ pub struct YpAnnouncementChannel {
     pub name: String,
     pub genre: String,
     pub desc: String,
+    pub comment: String,
     pub url: String,
     pub bitrate_kbps: u32,
     pub format: String,
@@ -173,6 +179,14 @@ pub struct YpAnnouncementChannel {
     pub is_receiving: bool,
 }
 
+/// Supplies current runtime metadata for an outgoing YP announcement.
+pub trait YpAnnouncementProvider: Send + Sync {
+    fn snapshot(
+        &self,
+        current: YpAnnouncementChannel,
+    ) -> Pin<Box<dyn Future<Output = YpAnnouncementChannel> + Send + '_>>;
+}
+
 impl YpAnnouncementChannel {
     /// Creates a new announcement channel with required identities.
     pub fn new(channel_id: ChannelId, broadcast_id: ChannelId, name: String) -> Self {
@@ -182,6 +196,7 @@ impl YpAnnouncementChannel {
             name,
             genre: String::new(),
             desc: String::new(),
+            comment: String::new(),
             url: String::new(),
             bitrate_kbps: 0,
             format: "FLV".to_string(),
@@ -220,6 +235,9 @@ pub fn create_station_yp_bcst_atom(
     }
     if !channel.desc.is_empty() {
         info_children.push(Atom::new_string(ID4::INFO_DESC, &channel.desc));
+    }
+    if !channel.comment.is_empty() {
+        info_children.push(Atom::new_string(ID4::INFO_COMMENT, &channel.comment));
     }
     if !channel.url.is_empty() {
         info_children.push(Atom::new_string(ID4::INFO_URL, &channel.url));
@@ -268,10 +286,7 @@ pub fn create_station_yp_bcst_atom(
             ID4::HOST_CHANID,
             Bytes::copy_from_slice(channel.channel_id.as_bytes()),
         ),
-        Atom::new_leaf(
-            ID4::HOST_ID,
-            Bytes::copy_from_slice(session_id.as_bytes()),
-        ),
+        Atom::new_leaf(ID4::HOST_ID, Bytes::copy_from_slice(session_id.as_bytes())),
         Atom::new_u32_le(ID4::HOST_NUML, channel.listeners),
         Atom::new_u32_le(ID4::HOST_NUMR, channel.relays),
         Atom::new_u32_le(ID4::HOST_UPTIME, channel.uptime.as_secs() as u32),
@@ -298,7 +313,10 @@ pub fn create_station_yp_bcst_atom(
         vec![
             Atom::new_u8(ID4::BCST_TTL, 1),
             Atom::new_u8(ID4::BCST_HOPS, 0),
-            Atom::new_leaf(ID4::BCST_FROM, Bytes::copy_from_slice(session_id.as_bytes())),
+            Atom::new_leaf(
+                ID4::BCST_FROM,
+                Bytes::copy_from_slice(session_id.as_bytes()),
+            ),
             Atom::new_u8(ID4::BCST_GRP, BroadcastGroup::ROOT.raw()),
             Atom::new_leaf(
                 ID4::BCST_CID,
@@ -349,6 +367,12 @@ pub struct PCPYellowPageClient {
     status_tx: watch::Sender<YpConnectionStatus>,
     status_rx: watch::Receiver<YpConnectionStatus>,
     shutdown_tx: watch::Sender<bool>,
+    retry_base: Duration,
+    retry_max: Duration,
+    io_timeout: Duration,
+    advertised_port: u16,
+    announcement_provider: Option<Arc<dyn YpAnnouncementProvider>>,
+    observed_endpoint: RwLock<Option<SocketAddr>>,
 }
 
 impl PCPYellowPageClient {
@@ -377,7 +401,62 @@ impl PCPYellowPageClient {
             status_tx,
             status_rx,
             shutdown_tx,
+            retry_base: INITIAL_RETRY_DELAY,
+            retry_max: MAX_RETRY_DELAY,
+            io_timeout: Duration::from_secs(10),
+            advertised_port: 7144,
+            announcement_provider: None,
+            observed_endpoint: RwLock::new(None),
         })
+    }
+
+    pub fn observed_endpoint(&self) -> Option<SocketAddr> {
+        *self
+            .observed_endpoint
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Configures the retry backoff delays used by `run_loop`.
+    pub fn with_retry_delays(mut self, base: Duration, max: Duration) -> Self {
+        self.retry_base = base.min(max);
+        self.retry_max = max;
+        self
+    }
+
+    /// Configures the timeout for individual connection and protocol I/O operations.
+    pub fn with_io_timeout(mut self, timeout: Duration) -> Self {
+        self.io_timeout = timeout.max(Duration::from_millis(1));
+        self
+    }
+
+    /// Configures the port advertised in the YP HELO atom.
+    pub fn with_advertised_port(mut self, port: u16) -> Self {
+        self.advertised_port = port;
+        self
+    }
+
+    pub fn with_announcement_provider(mut self, provider: Arc<dyn YpAnnouncementProvider>) -> Self {
+        self.announcement_provider = Some(provider);
+        self
+    }
+
+    async fn announcements(&self) -> Vec<YpAnnouncementChannel> {
+        let current = self
+            .channels
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let Some(provider) = &self.announcement_provider else {
+            return current;
+        };
+        let mut updated = Vec::with_capacity(current.len());
+        for channel in current {
+            updated.push(provider.snapshot(channel).await);
+        }
+        updated
     }
 
     /// Observes the current connection status.
@@ -400,8 +479,9 @@ impl PCPYellowPageClient {
     pub async fn add_channel(&self, channel: YpAnnouncementChannel) {
         let mut map = self.channels.lock().await;
         let cid = channel.channel_id;
-        map.insert(cid, channel);
-        self.ref_count.fetch_add(1, Ordering::SeqCst);
+        if map.insert(cid, channel).is_none() {
+            self.ref_count.fetch_add(1, Ordering::SeqCst);
+        }
     }
 
     /// Updates metadata for an already registered channel.
@@ -430,14 +510,14 @@ impl PCPYellowPageClient {
 
     /// Explicitly shuts down the client and closes all directory connections.
     pub fn shutdown(&self) {
-        let _ = self.shutdown_tx.send(true);
+        self.shutdown_tx.send_replace(true);
         let _ = self.status_tx.send(YpConnectionStatus::Stopped);
     }
 
     /// Runs the announcement worker loop until cancelled, terminal banned/server-quit,
     /// or refcount drops to zero.
     pub async fn run_loop(&self) -> Result<(), YpError> {
-        let mut backoff = YpBackoffTracker::default();
+        let mut backoff = YpBackoffTracker::new(self.retry_base, self.retry_max);
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         loop {
@@ -503,9 +583,22 @@ impl PCPYellowPageClient {
         &self,
         shutdown_rx: &mut watch::Receiver<bool>,
     ) -> Result<(), YpError> {
-        let stream = match TcpStream::connect(self.config.directory_endpoint).await {
-            Ok(s) => s,
-            Err(e) => return Err(YpError::ConnectionFailed(e.to_string())),
+        *self
+            .observed_endpoint
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        let connect = tokio::select! {
+            result = tokio::time::timeout(self.io_timeout, TcpStream::connect(self.config.directory_endpoint)) => result,
+            _ = shutdown_rx.changed() => return Err(YpError::Canceled),
+        };
+        let stream = match connect {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => return Err(YpError::ConnectionFailed(e.to_string())),
+            Err(_) => {
+                return Err(YpError::ConnectionFailed(
+                    "TCP connect timed out".to_string(),
+                ));
+            }
         };
 
         let (mut reader, mut writer) = stream.into_split();
@@ -514,7 +607,11 @@ impl PCPYellowPageClient {
         let mut connect_buf = BytesMut::new();
         let _ = Atom::new_leaf(ID4::PCP_CONNECT, Bytes::copy_from_slice(&[1, 0, 0, 0]))
             .encode(&mut connect_buf);
-        writer.write_all(&connect_buf).await?;
+        tokio::select! {
+            result = tokio::time::timeout(self.io_timeout, writer.write_all(&connect_buf)) => result
+                .map_err(|_| YpError::ConnectionFailed("PCP prelude write timed out".to_string()))??,
+            _ = shutdown_rx.changed() => return Err(YpError::Canceled),
+        }
 
         // 2. Send HELO atom
         let helo_atom = Atom::new_parent(
@@ -530,16 +627,25 @@ impl PCPYellowPageClient {
                     ID4::HELO_BCID,
                     Bytes::copy_from_slice(self.broadcast_id.as_bytes()),
                 ),
-                Atom::new_u16_le(ID4::HELO_PORT, 7144),
+                Atom::new_u16_le(ID4::HELO_PORT, self.advertised_port),
+                Atom::new_u16_le(ID4::HELO_PING, self.advertised_port),
             ],
         );
         let mut helo_buf = BytesMut::new();
         let _ = helo_atom.encode(&mut helo_buf);
-        writer.write_all(&helo_buf).await?;
+        tokio::select! {
+            result = tokio::time::timeout(self.io_timeout, writer.write_all(&helo_buf)) => result
+                .map_err(|_| YpError::ConnectionFailed("HELO write timed out".to_string()))??,
+            _ = shutdown_rx.changed() => return Err(YpError::Canceled),
+        }
 
         // 3. Await OLEH from directory
         let mut read_buf = BytesMut::with_capacity(4096);
-        let oleh_atom = read_next_atom(&mut reader, &mut read_buf).await?;
+        let oleh_atom = tokio::select! {
+            result = tokio::time::timeout(self.io_timeout, read_next_atom(&mut reader, &mut read_buf)) => result
+                .map_err(|_| YpError::ConnectionFailed("OLEH read timed out".to_string()))??,
+            _ = shutdown_rx.changed() => return Err(YpError::Canceled),
+        };
 
         // Validate OLEH or check for QUIT / Banned
         if oleh_atom.name() == ID4::PCP_QUIT {
@@ -569,20 +675,58 @@ impl PCPYellowPageClient {
             }
         }
 
+        // The directory observes our address across NAT. Use that address for
+        // announcements which do not already provide an explicit endpoint.
+        let observed_endpoint = oleh_atom.children().and_then(|children| {
+            let ip = children
+                .iter()
+                .find(|child| child.name() == ID4::HELO_REMOTEIP)?
+                .get_ip()
+                .ok()?;
+            if ip.is_unspecified() || ip.is_multicast() {
+                return None;
+            }
+            let port = children
+                .iter()
+                .find(|child| child.name() == ID4::HELO_PORT)?
+                .get_u16_le()
+                .ok()?;
+            Some(SocketAddr::new(ip, port))
+        });
+        *self
+            .observed_endpoint
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = observed_endpoint;
+
         let _ = self.status_tx.send(YpConnectionStatus::Connected);
+        let mut published = HashMap::new();
 
         // 4. Send initial announcements for all active channels immediately
         {
-            let channels_guard = self.channels.lock().await;
-            for ch in channels_guard.values() {
-                let bcst = create_station_yp_bcst_atom(
-                    self.session_id,
-                    self.config.servant_version,
-                    ch,
-                );
+            let mut announcements = self.announcements().await;
+            for channel in &mut announcements {
+                if channel.contact_endpoint.is_none() {
+                    channel.contact_endpoint = observed_endpoint;
+                    if observed_endpoint.is_some_and(|endpoint| endpoint.port() == 0) {
+                        channel.is_firewalled = true;
+                    }
+                }
+            }
+            for ch in &announcements {
+                let bcst =
+                    create_station_yp_bcst_atom(self.session_id, self.config.servant_version, ch);
                 let mut buf = BytesMut::new();
                 let _ = bcst.encode(&mut buf);
-                writer.write_all(&buf).await?;
+                tokio::select! {
+                    result = tokio::time::timeout(self.io_timeout, writer.write_all(&buf)) => result
+                        .map_err(|_| YpError::ConnectionFailed("initial announcement timed out".to_string()))??,
+                    _ = shutdown_rx.changed() => {
+                        let departed = published.values().cloned().collect::<Vec<_>>();
+                        let _ = self.send_withdrawals(&mut writer, &departed, true).await;
+                        return Err(YpError::Canceled);
+                    },
+                }
+                published.insert(ch.channel_id, ch.clone());
             }
         }
 
@@ -592,20 +736,41 @@ impl PCPYellowPageClient {
 
         loop {
             tokio::select! {
+                result = read_next_atom(&mut reader, &mut read_buf) => {
+                    let atom = result?;
+                    if atom.name() == ID4::PCP_QUIT {
+                        let code = atom.get_u32_le().unwrap_or(0);
+                        if code == 0x01000000 {
+                            return Err(YpError::ServerQuit);
+                        }
+                        return Err(YpError::QuitReceived(code));
+                    }
+                }
                 _ = update_interval.tick() => {
                     // Check ownership refcount (REQ-062)
                     if self.ref_count.load(Ordering::SeqCst) == 0 {
-                        // Send clean quit atom upon final channel removal
-                        let quit_atom = Atom::new_u32_le(ID4::PCP_QUIT, 0);
-                        let mut buf = BytesMut::new();
-                        let _ = quit_atom.encode(&mut buf);
-                        let _ = writer.write_all(&buf).await;
+                        let departed = published.values().cloned().collect::<Vec<_>>();
+                        let _ = self.send_withdrawals(&mut writer, &departed, true).await;
                         return Ok(());
                     }
 
                     // Transmit periodic 30s announcement updates
-                    let channels_guard = self.channels.lock().await;
-                    for ch in channels_guard.values() {
+                    let mut announcements = self.announcements().await;
+                    for channel in &mut announcements {
+                        if channel.contact_endpoint.is_none() {
+                            channel.contact_endpoint = observed_endpoint;
+                            if observed_endpoint.is_some_and(|endpoint| endpoint.port() == 0) {
+                                channel.is_firewalled = true;
+                            }
+                        }
+                    }
+                    let active = announcements.into_iter()
+                        .map(|channel| (channel.channel_id, channel)).collect::<HashMap<_, _>>();
+                    let departed = published.iter().filter(|(id, _)| !active.contains_key(id))
+                        .map(|(_, channel)| channel.clone()).collect::<Vec<_>>();
+                    self.send_withdrawals(&mut writer, &departed, false).await?;
+                    published.retain(|id, _| active.contains_key(id));
+                    for ch in active.values() {
                         let bcst = create_station_yp_bcst_atom(
                             self.session_id,
                             self.config.servant_version,
@@ -613,20 +778,60 @@ impl PCPYellowPageClient {
                         );
                         let mut buf = BytesMut::new();
                         let _ = bcst.encode(&mut buf);
-                        writer.write_all(&buf).await?;
+                        tokio::select! {
+                            result = tokio::time::timeout(self.io_timeout, writer.write_all(&buf)) => result
+                                .map_err(|_| YpError::ConnectionFailed("announcement write timed out".to_string()))??,
+                            _ = shutdown_rx.changed() => {
+                                let departed = published.values().cloned().collect::<Vec<_>>();
+                                let _ = self.send_withdrawals(&mut writer, &departed, true).await;
+                                return Err(YpError::Canceled);
+                            },
+                        }
+                        published.insert(ch.channel_id, ch.clone());
                     }
                 }
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
-                        let quit_atom = Atom::new_u32_le(ID4::PCP_QUIT, 0);
-                        let mut buf = BytesMut::new();
-                        let _ = quit_atom.encode(&mut buf);
-                        let _ = writer.write_all(&buf).await;
+                        let departed = published.values().cloned().collect::<Vec<_>>();
+                        let _ = self.send_withdrawals(&mut writer, &departed, true).await;
                         return Ok(());
                     }
                 }
             }
         }
+    }
+
+    async fn send_withdrawals(
+        &self,
+        writer: &mut tokio::net::tcp::OwnedWriteHalf,
+        channels: &[YpAnnouncementChannel],
+        quit: bool,
+    ) -> Result<(), YpError> {
+        let mut buffer = BytesMut::new();
+        for channel in channels {
+            let mut departed = channel.clone();
+            departed.is_receiving = false;
+            departed.is_playable = false;
+            departed.is_relayable = false;
+            let _ = create_station_yp_bcst_atom(
+                self.session_id,
+                self.config.servant_version,
+                &departed,
+            )
+            .encode(&mut buffer);
+        }
+        if quit {
+            let _ = Atom::new_u32_le(ID4::PCP_QUIT, 0).encode(&mut buffer);
+        }
+        if !buffer.is_empty() {
+            tokio::time::timeout(
+                self.io_timeout.min(SHUTDOWN_QUIT_TIMEOUT),
+                writer.write_all(&buffer),
+            )
+            .await
+            .map_err(|_| YpError::ConnectionFailed("withdrawal write timed out".into()))??;
+        }
+        Ok(())
     }
 }
 
@@ -697,10 +902,7 @@ impl MockYellowPageServer {
         let oleh_atom = Atom::new_parent(
             ID4::PCP_OLEH,
             vec![
-                Atom::new_leaf(
-                    ID4::HELO_SESSIONID,
-                    Bytes::copy_from_slice(&[0x77; 16]),
-                ),
+                Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::copy_from_slice(&[0x77; 16])),
                 Atom::new_u8(ID4::HELO_DISABLE, dis_flag),
                 Atom::new_u16_le(ID4::HELO_PORT, 7144),
             ],
@@ -734,12 +936,23 @@ async fn read_next_atom<R: AsyncReadExt + Unpin>(
 ) -> Result<Atom, YpError> {
     loop {
         if !read_buf.is_empty() {
-            let mut bytes = Bytes::copy_from_slice(read_buf);
+            let mut bytes = read_buf.split().freeze();
             let original_len = bytes.len();
-            if let Ok(Some(atom)) = Atom::decode(&mut bytes, &peercast_core::AtomBudget::default()) {
-                let consumed = original_len - bytes.len();
-                read_buf.advance(consumed);
-                return Ok(atom);
+            match Atom::decode(&mut bytes, &peercast_core::AtomBudget::default()) {
+                Ok(Some(atom)) => {
+                    let consumed = original_len - bytes.len();
+                    debug_assert!(consumed > 0);
+                    *read_buf = bytes
+                        .try_into_mut()
+                        .unwrap_or_else(|bytes| BytesMut::from(bytes.as_ref()));
+                    return Ok(atom);
+                }
+                Ok(None) => {
+                    *read_buf = bytes
+                        .try_into_mut()
+                        .unwrap_or_else(|bytes| BytesMut::from(bytes.as_ref()));
+                }
+                Err(error) => return Err(YpError::MalformedResponse(error.to_string())),
             }
         }
 
@@ -748,6 +961,556 @@ async fn read_next_atom<R: AsyncReadExt + Unpin>(
         if n == 0 {
             return Err(YpError::ConnectionFailed("EOF from peer".to_string()));
         }
+        if read_buf.len().saturating_add(n) > peercast_core::AtomBudget::default().max_total_bytes {
+            return Err(YpError::MalformedResponse(
+                "YP input exceeds atom budget".to_string(),
+            ));
+        }
         read_buf.extend_from_slice(&temp[..n]);
+    }
+}
+
+#[cfg(test)]
+mod incremental_reader_tests {
+    use super::*;
+    use tokio::io::duplex;
+
+    #[derive(Debug)]
+    struct LiveAnnouncement;
+
+    impl YpAnnouncementProvider for LiveAnnouncement {
+        fn snapshot(
+            &self,
+            mut current: YpAnnouncementChannel,
+        ) -> Pin<Box<dyn Future<Output = YpAnnouncementChannel> + Send + '_>> {
+            Box::pin(async move {
+                current.listeners = 17;
+                current
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn announcements_apply_runtime_provider_snapshot() {
+        let client = PCPYellowPageClient::new(
+            ChannelId::from_bytes([1; 16]),
+            ChannelId::from_bytes([2; 16]),
+            YpClientConfig::for_loopback(1),
+        )
+        .unwrap()
+        .with_announcement_provider(Arc::new(LiveAnnouncement));
+        client
+            .add_channel(YpAnnouncementChannel::new(
+                ChannelId::from_bytes([3; 16]),
+                ChannelId::from_bytes([4; 16]),
+                "live snapshot".to_string(),
+            ))
+            .await;
+        let snapshot = client.announcements().await;
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].listeners, 17);
+    }
+
+    #[tokio::test]
+    async fn read_next_atom_retains_partial_input_and_coalesced_tail() {
+        let first = Atom::new_string(ID4(*b"test"), "partial");
+        let second = Atom::new_string(ID4(*b"test"), "following");
+        let first_wire = first.to_bytes().unwrap();
+        let second_wire = second.to_bytes().unwrap();
+        let (mut writer, mut reader) = duplex(128);
+        let mut read_buf = BytesMut::new();
+        let mut combined = Vec::from(first_wire.as_ref());
+        combined.extend_from_slice(&second_wire);
+        let split = first_wire.len() / 2;
+
+        let mut pending_read = Box::pin(read_next_atom(&mut reader, &mut read_buf));
+        writer.write_all(&combined[..split]).await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut pending_read)
+                .await
+                .is_err()
+        );
+        writer.write_all(&combined[split..]).await.unwrap();
+        assert_eq!(pending_read.await.unwrap(), first);
+        assert_eq!(
+            read_next_atom(&mut reader, &mut read_buf).await.unwrap(),
+            second
+        );
+    }
+
+    #[tokio::test]
+    async fn read_next_atom_propagates_oversized_and_malformed_leaf_header() {
+        let (mut writer, mut reader) = duplex(64);
+        writer.write_all(b"test\xff\xff\xff\x7f").await.unwrap();
+        let error = tokio::time::timeout(
+            Duration::from_secs(1),
+            read_next_atom(&mut reader, &mut BytesMut::new()),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert!(matches!(error, YpError::MalformedResponse(_)));
+    }
+
+    #[tokio::test]
+    async fn shutdown_before_run_loop_returns_without_connecting() {
+        let client = PCPYellowPageClient::new(
+            ChannelId::from_bytes([1; 16]),
+            ChannelId::from_bytes([2; 16]),
+            YpClientConfig::for_loopback(1),
+        )
+        .unwrap();
+        client
+            .add_channel(YpAnnouncementChannel::new(
+                ChannelId::from_bytes([3; 16]),
+                ChannelId::from_bytes([4; 16]),
+                "shutdown test".to_string(),
+            ))
+            .await;
+        client.shutdown();
+        tokio::time::timeout(Duration::from_millis(100), client.run_loop())
+            .await
+            .expect("shutdown must short-circuit the initial loop")
+            .unwrap();
+        assert_eq!(client.status(), YpConnectionStatus::Stopped);
+    }
+
+    async fn run_observed_endpoint_fixture(
+        observed_port: u16,
+        contact_endpoint: Option<SocketAddr>,
+        update_interval: Duration,
+        announcement_count: usize,
+    ) -> Vec<Atom> {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let directory_endpoint = listener.local_addr().unwrap();
+        let (bcst_tx, bcst_rx) = tokio::sync::oneshot::channel();
+        let fixture = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let (mut reader, mut writer) = socket.split();
+            let mut read_buf = BytesMut::with_capacity(4096);
+            let _connect = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            let helo = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            let helo_children = helo.children().unwrap();
+            assert_eq!(
+                helo_children
+                    .iter()
+                    .find(|child| child.name() == ID4::HELO_PORT)
+                    .and_then(|child| child.get_u16_le().ok()),
+                Some(17144)
+            );
+            assert_eq!(
+                helo_children
+                    .iter()
+                    .find(|child| child.name() == ID4::HELO_PING)
+                    .and_then(|child| child.get_u16_le().ok()),
+                Some(17144)
+            );
+
+            let oleh = Atom::new_parent(
+                ID4::PCP_OLEH,
+                vec![
+                    Atom::new_ip(ID4::HELO_REMOTEIP, "127.0.0.1".parse().unwrap()),
+                    Atom::new_u16_le(ID4::HELO_PORT, observed_port),
+                ],
+            );
+            let mut oleh_buf = BytesMut::new();
+            oleh.encode(&mut oleh_buf).unwrap();
+            writer.write_all(&oleh_buf).await.unwrap();
+
+            let mut bcsts = Vec::with_capacity(announcement_count);
+            for _ in 0..announcement_count {
+                bcsts.push(read_next_atom(&mut reader, &mut read_buf).await.unwrap());
+            }
+            bcst_tx.send(bcsts).unwrap();
+            while let Ok(atom) = read_next_atom(&mut reader, &mut read_buf).await {
+                if atom.name() == ID4::PCP_QUIT {
+                    break;
+                }
+            }
+        });
+
+        let mut config = YpClientConfig::for_loopback(directory_endpoint.port());
+        config.directory_endpoint = directory_endpoint;
+        config.update_interval = update_interval;
+        let client = Arc::new(
+            PCPYellowPageClient::new(
+                ChannelId::from_bytes([1; 16]),
+                ChannelId::from_bytes([2; 16]),
+                config,
+            )
+            .unwrap()
+            .with_advertised_port(17144),
+        );
+        let mut channel = YpAnnouncementChannel::new(
+            ChannelId::from_bytes([3; 16]),
+            ChannelId::from_bytes([4; 16]),
+            "loopback endpoint regression".to_string(),
+        );
+        channel.is_receiving = true;
+        channel.contact_endpoint = contact_endpoint;
+        client.add_channel(channel).await;
+
+        let running_client = Arc::clone(&client);
+        let run_loop = tokio::spawn(async move { running_client.run_loop().await });
+        let bcsts = tokio::time::timeout(Duration::from_secs(2), bcst_rx)
+            .await
+            .expect("fixture should receive the initial announcement")
+            .expect("fixture should send the announcement");
+        assert_eq!(
+            client.observed_endpoint(),
+            Some(SocketAddr::new("127.0.0.1".parse().unwrap(), observed_port,))
+        );
+        client.shutdown();
+        run_loop.await.unwrap().unwrap();
+        fixture.await.unwrap();
+        bcsts
+    }
+
+    fn host_endpoint_and_flags(bcst: &Atom) -> (Option<SocketAddr>, u8) {
+        let host = bcst
+            .children()
+            .unwrap()
+            .iter()
+            .find(|child| child.name() == ID4::PCP_HOST)
+            .expect("announcement should contain host atom");
+        let host_children = host.children().unwrap();
+        let host_ip = host_children
+            .iter()
+            .find(|child| child.name() == ID4::HOST_IP)
+            .and_then(|child| child.get_ip().ok());
+        let host_port = host_children
+            .iter()
+            .find(|child| child.name() == ID4::HOST_PORT)
+            .and_then(|child| child.get_u16_le().ok());
+        let flags = host_children
+            .iter()
+            .find(|child| child.name() == ID4::HOST_FLAGS1)
+            .and_then(|child| child.get_u8().ok())
+            .expect("host flags should be present");
+        (
+            host_ip
+                .zip(host_port)
+                .map(|(ip, port)| SocketAddr::new(ip, port)),
+            flags,
+        )
+    }
+
+    #[tokio::test]
+    async fn loopback_yp_announcement_includes_observed_host_endpoint() {
+        let bcsts = run_observed_endpoint_fixture(17144, None, Duration::from_secs(30), 1).await;
+        let (endpoint, flags) = host_endpoint_and_flags(&bcsts[0]);
+        assert_eq!(endpoint, Some("127.0.0.1:17144".parse().unwrap()));
+        assert_eq!(flags & HostFlags1::FIREWALLED.raw(), 0);
+    }
+
+    #[tokio::test]
+    async fn periodic_yp_announcement_retains_observed_host_endpoint() {
+        let bcsts = run_observed_endpoint_fixture(17144, None, Duration::from_millis(20), 2).await;
+        assert_eq!(bcsts.len(), 2);
+        for bcst in &bcsts {
+            let (endpoint, flags) = host_endpoint_and_flags(bcst);
+            assert_eq!(endpoint, Some("127.0.0.1:17144".parse().unwrap()));
+            assert_eq!(flags & HostFlags1::FIREWALLED.raw(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_contact_endpoint_takes_precedence_over_observed_endpoint() {
+        let explicit = "192.0.2.7:7144".parse().unwrap();
+        let bcsts =
+            run_observed_endpoint_fixture(17144, Some(explicit), Duration::from_secs(30), 1).await;
+        let (endpoint, _) = host_endpoint_and_flags(&bcsts[0]);
+        assert_eq!(endpoint, Some(explicit));
+    }
+
+    #[tokio::test]
+    async fn zero_observed_port_sets_firewalled_host_flag() {
+        let bcsts = run_observed_endpoint_fixture(0, None, Duration::from_secs(30), 1).await;
+        let (endpoint, flags) = host_endpoint_and_flags(&bcsts[0]);
+        assert_eq!(endpoint, Some("127.0.0.1:0".parse().unwrap()));
+        assert_ne!(flags & HostFlags1::FIREWALLED.raw(), 0);
+    }
+
+    #[tokio::test]
+    async fn shutdown_withdraws_channel_host_before_quit() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let directory_endpoint = listener.local_addr().unwrap();
+        let (initial_tx, initial_rx) = tokio::sync::oneshot::channel();
+        let (after_shutdown_tx, after_shutdown_rx) = tokio::sync::oneshot::channel();
+        let fixture = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let (mut reader, mut writer) = socket.split();
+            let mut read_buf = BytesMut::with_capacity(4096);
+            let _connect = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            let _helo = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+
+            let oleh = Atom::new_parent(
+                ID4::PCP_OLEH,
+                vec![
+                    Atom::new_ip(ID4::HELO_REMOTEIP, "127.0.0.1".parse().unwrap()),
+                    Atom::new_u16_le(ID4::HELO_PORT, 17144),
+                ],
+            );
+            let mut oleh_buf = BytesMut::new();
+            oleh.encode(&mut oleh_buf).unwrap();
+            writer.write_all(&oleh_buf).await.unwrap();
+
+            let initial = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            initial_tx.send(initial).unwrap();
+            let after_shutdown = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            let is_quit = after_shutdown.name() == ID4::PCP_QUIT;
+            after_shutdown_tx.send(after_shutdown).unwrap();
+            if !is_quit {
+                while let Ok(atom) = read_next_atom(&mut reader, &mut read_buf).await {
+                    if atom.name() == ID4::PCP_QUIT {
+                        break;
+                    }
+                }
+            }
+        });
+
+        let mut config = YpClientConfig::for_loopback(directory_endpoint.port());
+        config.directory_endpoint = directory_endpoint;
+        let client = Arc::new(
+            PCPYellowPageClient::new(
+                ChannelId::from_bytes([1; 16]),
+                ChannelId::from_bytes([2; 16]),
+                config,
+            )
+            .unwrap()
+            .with_advertised_port(17144),
+        );
+        let mut channel = YpAnnouncementChannel::new(
+            ChannelId::from_bytes([3; 16]),
+            ChannelId::from_bytes([4; 16]),
+            "withdrawal regression".to_string(),
+        );
+        channel.is_receiving = true;
+        client.add_channel(channel).await;
+
+        let running_client = Arc::clone(&client);
+        let run_loop = tokio::spawn(async move { running_client.run_loop().await });
+        let initial = tokio::time::timeout(Duration::from_secs(2), initial_rx)
+            .await
+            .expect("fixture should receive initial announcement")
+            .expect("fixture should send initial announcement");
+        client.shutdown();
+        let after_shutdown = tokio::time::timeout(Duration::from_secs(2), after_shutdown_rx)
+            .await
+            .expect("fixture should receive withdrawal or quit")
+            .expect("fixture should send the post-shutdown atom");
+        run_loop.await.unwrap().unwrap();
+        fixture.await.unwrap();
+
+        assert_eq!(initial.name(), ID4::PCP_BCST);
+        assert_eq!(
+            after_shutdown.name(),
+            ID4::PCP_BCST,
+            "shutdown should withdraw the host before PCP_QUIT"
+        );
+
+        let active_host = initial
+            .children()
+            .unwrap()
+            .iter()
+            .find(|child| child.name() == ID4::PCP_HOST)
+            .expect("initial announcement should have host");
+        let withdrawn_host = after_shutdown
+            .children()
+            .unwrap()
+            .iter()
+            .find(|child| child.name() == ID4::PCP_HOST)
+            .expect("withdrawal should retain host identity");
+        let active_host_children = active_host.children().unwrap();
+        let withdrawn_host_children = withdrawn_host.children().unwrap();
+        for id in [ID4::HOST_CHANID, ID4::HOST_ID, ID4::HOST_IP, ID4::HOST_PORT] {
+            let active_value = active_host_children
+                .iter()
+                .find(|child| child.name() == id)
+                .and_then(|child| child.leaf_bytes());
+            let withdrawn_value = withdrawn_host_children
+                .iter()
+                .find(|child| child.name() == id)
+                .and_then(|child| child.leaf_bytes());
+            assert_eq!(
+                withdrawn_value, active_value,
+                "withdrawal must preserve {id:?}"
+            );
+        }
+        let active_flags = active_host_children
+            .iter()
+            .find(|child| child.name() == ID4::HOST_FLAGS1)
+            .unwrap()
+            .get_u8()
+            .unwrap();
+        let withdrawn_flags = withdrawn_host_children
+            .iter()
+            .find(|child| child.name() == ID4::HOST_FLAGS1)
+            .unwrap()
+            .get_u8()
+            .unwrap();
+        let active_mask =
+            HostFlags1::RECV.raw() | HostFlags1::DIRECT.raw() | HostFlags1::RELAY.raw();
+        assert_eq!(active_flags & active_mask, active_mask);
+        assert_eq!(withdrawn_flags & active_mask, 0);
+    }
+
+    async fn start_channel_fixture(
+        channels: Vec<YpAnnouncementChannel>,
+        update_interval: Duration,
+    ) -> (
+        Arc<PCPYellowPageClient>,
+        tokio::task::JoinHandle<Result<(), YpError>>,
+        tokio::task::JoinHandle<()>,
+        tokio::sync::mpsc::UnboundedReceiver<Atom>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let directory_endpoint = listener.local_addr().unwrap();
+        let (atom_tx, atom_rx) = tokio::sync::mpsc::unbounded_channel();
+        let fixture = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let (mut reader, mut writer) = socket.split();
+            let mut read_buf = BytesMut::with_capacity(4096);
+            let _connect = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            let _helo = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+            let oleh = Atom::new_parent(
+                ID4::PCP_OLEH,
+                vec![
+                    Atom::new_ip(ID4::HELO_REMOTEIP, "127.0.0.1".parse().unwrap()),
+                    Atom::new_u16_le(ID4::HELO_PORT, 17144),
+                ],
+            );
+            let mut oleh_buf = BytesMut::new();
+            oleh.encode(&mut oleh_buf).unwrap();
+            writer.write_all(&oleh_buf).await.unwrap();
+
+            loop {
+                let atom = read_next_atom(&mut reader, &mut read_buf).await.unwrap();
+                let is_quit = atom.name() == ID4::PCP_QUIT;
+                atom_tx.send(atom).unwrap();
+                if is_quit {
+                    break;
+                }
+            }
+        });
+
+        let mut config = YpClientConfig::for_loopback(directory_endpoint.port());
+        config.directory_endpoint = directory_endpoint;
+        config.update_interval = update_interval;
+        let client = Arc::new(
+            PCPYellowPageClient::new(
+                ChannelId::from_bytes([1; 16]),
+                ChannelId::from_bytes([2; 16]),
+                config,
+            )
+            .unwrap()
+            .with_advertised_port(17144),
+        );
+        for channel in channels {
+            client.add_channel(channel).await;
+        }
+        let running_client = Arc::clone(&client);
+        let run_loop = tokio::spawn(async move { running_client.run_loop().await });
+        (client, run_loop, fixture, atom_rx)
+    }
+
+    async fn next_fixture_atom(atoms: &mut tokio::sync::mpsc::UnboundedReceiver<Atom>) -> Atom {
+        tokio::time::timeout(Duration::from_secs(2), atoms.recv())
+            .await
+            .expect("fixture atom should arrive before timeout")
+            .expect("fixture channel should remain open")
+    }
+
+    fn announcement_channel_id(atom: &Atom) -> Vec<u8> {
+        atom.children()
+            .unwrap()
+            .iter()
+            .find(|child| child.name() == ID4::BCST_CID)
+            .expect("announcement should have channel ID")
+            .leaf_bytes()
+            .unwrap()
+            .to_vec()
+    }
+
+    fn test_channel(id: [u8; 16], bcid: [u8; 16], name: &str) -> YpAnnouncementChannel {
+        let mut channel = YpAnnouncementChannel::new(
+            ChannelId::from_bytes(id),
+            ChannelId::from_bytes(bcid),
+            name.to_string(),
+        );
+        channel.is_receiving = true;
+        channel
+    }
+
+    fn assert_withdrawn(atom: &Atom, channel_id: [u8; 16]) {
+        assert_eq!(atom.name(), ID4::PCP_BCST);
+        assert_eq!(announcement_channel_id(atom), channel_id);
+        let (_, flags) = host_endpoint_and_flags(atom);
+        let active_mask =
+            HostFlags1::RECV.raw() | HostFlags1::DIRECT.raw() | HostFlags1::RELAY.raw();
+        assert_eq!(flags & active_mask, 0);
+    }
+
+    #[tokio::test]
+    async fn removing_final_channel_withdraws_then_quits() {
+        let cid = [3; 16];
+        let channel = test_channel(cid, [4; 16], "final owner");
+        let (client, run_loop, fixture, mut atoms) =
+            start_channel_fixture(vec![channel], Duration::from_millis(30)).await;
+        let initial = next_fixture_atom(&mut atoms).await;
+        assert_eq!(initial.name(), ID4::PCP_BCST);
+        assert_eq!(announcement_channel_id(&initial), cid);
+
+        assert!(client.remove_channel(&ChannelId::from_bytes(cid)).await);
+        let withdrawal = next_fixture_atom(&mut atoms).await;
+        let quit = next_fixture_atom(&mut atoms).await;
+        run_loop.await.unwrap().unwrap();
+        fixture.await.unwrap();
+
+        assert_withdrawn(&withdrawal, cid);
+        assert_eq!(quit.name(), ID4::PCP_QUIT);
+    }
+
+    #[tokio::test]
+    async fn removing_one_channel_withdraws_only_it_then_shutdown_withdraws_remaining() {
+        let removed_id = [3; 16];
+        let remaining_id = [5; 16];
+        let channels = vec![
+            test_channel(removed_id, [4; 16], "removed owner"),
+            test_channel(remaining_id, [6; 16], "remaining owner"),
+        ];
+        let (client, run_loop, fixture, mut atoms) =
+            start_channel_fixture(channels, Duration::from_millis(30)).await;
+        let initial_a = next_fixture_atom(&mut atoms).await;
+        let initial_b = next_fixture_atom(&mut atoms).await;
+        let initial_ids = [
+            announcement_channel_id(&initial_a),
+            announcement_channel_id(&initial_b),
+        ];
+        assert!(initial_ids.contains(&removed_id.to_vec()));
+        assert!(initial_ids.contains(&remaining_id.to_vec()));
+
+        assert!(
+            client
+                .remove_channel(&ChannelId::from_bytes(removed_id))
+                .await
+        );
+        let removed_withdrawal = next_fixture_atom(&mut atoms).await;
+        let remaining_update = next_fixture_atom(&mut atoms).await;
+        assert_withdrawn(&removed_withdrawal, removed_id);
+        assert_eq!(remaining_update.name(), ID4::PCP_BCST);
+        assert_eq!(announcement_channel_id(&remaining_update), remaining_id);
+        let (_, active_flags) = host_endpoint_and_flags(&remaining_update);
+        let active_mask =
+            HostFlags1::RECV.raw() | HostFlags1::DIRECT.raw() | HostFlags1::RELAY.raw();
+        assert_eq!(active_flags & active_mask, active_mask);
+
+        client.shutdown();
+        let remaining_withdrawal = next_fixture_atom(&mut atoms).await;
+        let quit = next_fixture_atom(&mut atoms).await;
+        run_loop.await.unwrap().unwrap();
+        fixture.await.unwrap();
+        assert_withdrawn(&remaining_withdrawal, remaining_id);
+        assert_eq!(quit.name(), ID4::PCP_QUIT);
     }
 }

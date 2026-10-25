@@ -13,7 +13,9 @@ pub enum CacheError {
     #[error("Header exceeds maximum allowed budget ({actual} > {max} bytes)")]
     HeaderTooLarge { actual: usize, max: usize },
 
-    #[error("Stale body chunk from epoch {chunk_epoch} rejected (current epoch is {current_epoch})")]
+    #[error(
+        "Stale body chunk from epoch {chunk_epoch} rejected (current epoch is {current_epoch})"
+    )]
     StaleEpoch {
         chunk_epoch: i32,
         current_epoch: i32,
@@ -153,7 +155,11 @@ pub struct BoundedContentCache<C: CacheClock = SystemCacheClock> {
 }
 
 impl BoundedContentCache<SystemCacheClock> {
-    pub fn new(max_body_bytes: usize, max_body_duration: Duration, max_header_bytes: usize) -> Self {
+    pub fn new(
+        max_body_bytes: usize,
+        max_body_duration: Duration,
+        max_header_bytes: usize,
+    ) -> Self {
         Self::with_clock(
             max_body_bytes,
             max_body_duration,

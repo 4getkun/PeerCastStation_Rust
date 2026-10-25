@@ -110,7 +110,8 @@ fn test_p22_ebml_mkv_and_webm_detection() {
 fn test_p22_asf_ogg_mp3_detection() {
     // 1. ASF Header Object GUID
     let asf_guid = [
-        0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
+        0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE,
+        0x6C,
     ];
     let mut asf_data = asf_guid.to_vec();
     asf_data.extend_from_slice(&[0u8; 32]);
@@ -152,25 +153,49 @@ fn test_p22_asf_ogg_mp3_detection() {
 #[test]
 fn test_p22_short_reads_and_ambiguous_prefixes() {
     // Empty input -> NeedsMoreData
-    assert_eq!(detect_container(&[]), SniffResult::NeedsMoreData { needed_bytes: 4 });
+    assert_eq!(
+        detect_container(&[]),
+        SniffResult::NeedsMoreData { needed_bytes: 4 }
+    );
 
     // 1-2 bytes FLV prefix
-    assert_eq!(detect_container(b"F"), SniffResult::NeedsMoreData { needed_bytes: 13 });
-    assert_eq!(detect_container(b"FL"), SniffResult::NeedsMoreData { needed_bytes: 13 });
+    assert_eq!(
+        detect_container(b"F"),
+        SniffResult::NeedsMoreData { needed_bytes: 13 }
+    );
+    assert_eq!(
+        detect_container(b"FL"),
+        SniffResult::NeedsMoreData { needed_bytes: 13 }
+    );
 
     // 3 bytes "FLV" without 13-byte header -> NeedsMoreData 13
-    assert_eq!(detect_container(b"FLV"), SniffResult::NeedsMoreData { needed_bytes: 13 });
+    assert_eq!(
+        detect_container(b"FLV"),
+        SniffResult::NeedsMoreData { needed_bytes: 13 }
+    );
 
     // Partial EBML prefix
-    assert_eq!(detect_container(&[0x1A]), SniffResult::NeedsMoreData { needed_bytes: 32 });
-    assert_eq!(detect_container(&[0x1A, 0x45]), SniffResult::NeedsMoreData { needed_bytes: 32 });
+    assert_eq!(
+        detect_container(&[0x1A]),
+        SniffResult::NeedsMoreData { needed_bytes: 32 }
+    );
+    assert_eq!(
+        detect_container(&[0x1A, 0x45]),
+        SniffResult::NeedsMoreData { needed_bytes: 32 }
+    );
 
     // Partial Ogg prefix
-    assert_eq!(detect_container(b"Og"), SniffResult::NeedsMoreData { needed_bytes: 4 });
+    assert_eq!(
+        detect_container(b"Og"),
+        SniffResult::NeedsMoreData { needed_bytes: 4 }
+    );
 
     // Partial ASF GUID
     let partial_asf = &[0x30, 0x26, 0xB2, 0x75];
-    assert_eq!(detect_container(partial_asf), SniffResult::NeedsMoreData { needed_bytes: 16 });
+    assert_eq!(
+        detect_container(partial_asf),
+        SniffResult::NeedsMoreData { needed_bytes: 16 }
+    );
 }
 
 #[test]
@@ -185,7 +210,10 @@ fn test_p22_misleading_signatures_rejected() {
     let bad_prev_tag_size: Vec<u8> = vec![
         b'F', b'L', b'V', 0x01, 0x05, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x42,
     ];
-    assert_eq!(detect_container(&bad_prev_tag_size), SniffResult::Unsupported);
+    assert_eq!(
+        detect_container(&bad_prev_tag_size),
+        SniffResult::Unsupported
+    );
 
     // 3. Random binary garbage
     let garbage = b"SOME_RANDOM_TEXT_NOT_MEDIA_STREAM";
@@ -203,7 +231,10 @@ fn test_p22_sniff_buffer_capacity_and_replay_fidelity() {
     // 2. Feed fragmented chunks incrementally
     let chunk1 = b"FL";
     sniff_buf.feed(chunk1).unwrap();
-    assert_eq!(sniff_buf.detect(), SniffResult::NeedsMoreData { needed_bytes: 13 });
+    assert_eq!(
+        sniff_buf.detect(),
+        SniffResult::NeedsMoreData { needed_bytes: 13 }
+    );
 
     let chunk2 = b"V\x01\x05\x00\x00\x00\x09\x00\x00\x00\x00";
     sniff_buf.feed(chunk2).unwrap();
@@ -225,5 +256,11 @@ fn test_p22_sniff_buffer_capacity_and_replay_fidelity() {
     // 4. Bounded capacity enforcement (Global Rule 3)
     let oversized_chunk = vec![0xcc; 300];
     let err = sniff_buf.feed(&oversized_chunk).unwrap_err();
-    assert!(matches!(err, SniffError::BufferOverflow { actual: 313, max: 256 }));
+    assert!(matches!(
+        err,
+        SniffError::BufferOverflow {
+            actual: 313,
+            max: 256
+        }
+    ));
 }

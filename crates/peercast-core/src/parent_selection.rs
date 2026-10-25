@@ -26,6 +26,13 @@ use crate::host_registry::{
     is_candidate_eligible, EndpointCooldownTable, EndpointIdentity, HostRegistry,
 };
 
+const WEIGHT_SITE_LOCAL: f64 = 8000.0;
+const WEIGHT_RECEIVING: f64 = 4000.0;
+const WEIGHT_RELAY_AVAILABLE: f64 = 2000.0;
+const MAX_HOPS_FOR_WEIGHT: u32 = 10;
+const WEIGHT_PER_HOP: f64 = 100.0;
+const WEIGHT_PER_RELAY: f64 = 10.0;
+
 /// Trait providing pseudo-random floating-point numbers in [0.0, 1.0) for parent selection.
 pub trait RngSource: Send + Sync {
     /// Returns the next random `f64` in the half-open range `[0.0, 1.0)`.
@@ -243,27 +250,31 @@ impl ParentSelectionPolicy for StationWeightedRandomPolicy {
         rng: &mut dyn RngSource,
     ) -> f64 {
         // Station additive boost for site-local nodes
-        let local_boost = if is_site_local { 8000.0 } else { 0.0 };
+        let local_boost = if is_site_local {
+            WEIGHT_SITE_LOCAL
+        } else {
+            0.0
+        };
 
         // Node is actively receiving the content
         let recv_weight = if candidate.flags.is_receiving() {
-            4000.0
+            WEIGHT_RECEIVING
         } else {
             0.0
         };
 
         // Node is accepting relays (flg1 RELAY bit set means NOT relay full in Station)
         let relay_weight = if candidate.flags.is_relay() {
-            2000.0
+            WEIGHT_RELAY_AVAILABLE
         } else {
             0.0
         };
 
         // Proximity to root tracker: 10 - hops (capped at 0) * 100
-        let hop_weight = 10u32.saturating_sub(candidate.hops) as f64 * 100.0;
+        let hop_weight = MAX_HOPS_FOR_WEIGHT.saturating_sub(candidate.hops) as f64 * WEIGHT_PER_HOP;
 
         // Preference for established relays: relay_count * 10
-        let relay_count_weight = candidate.relay_count as f64 * 10.0;
+        let relay_count_weight = candidate.relay_count as f64 * WEIGHT_PER_RELAY;
 
         let base_weight = recv_weight + relay_weight + hop_weight + relay_count_weight;
         let random_factor = rng.next_f64();
@@ -293,7 +304,11 @@ impl ParentSelectionPolicy for PeerCastYtGreedyHopPolicy {
         // Minimizing hops: 255 - hops gives highest score to fewest hops
         let hop_score = (255u32.saturating_sub(candidate.hops) as f64) * 1000.0;
         let local_score = if is_site_local { 100.0 } else { 0.0 };
-        let recv_score = if candidate.flags.is_receiving() { 10.0 } else { 0.0 };
+        let recv_score = if candidate.flags.is_receiving() {
+            10.0
+        } else {
+            0.0
+        };
         hop_score + local_score + recv_score
     }
 }
@@ -487,9 +502,7 @@ impl<P: ParentSelectionPolicy> ParentSelector<P> {
         }
 
         // Sort descending by score (highest priority first)
-        scored.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         scored
     }

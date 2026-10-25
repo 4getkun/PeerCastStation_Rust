@@ -1,9 +1,11 @@
 use bytes::{Buf, Bytes, BytesMut};
 use std::net::SocketAddr;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+use tokio::time::timeout;
 
 /// Maximum allowed HTTP request line and headers budget (8 KiB) for ingest (REQ-027).
 pub const MAX_INGEST_HEADER_SIZE: usize = 8192;
@@ -20,8 +22,14 @@ pub enum IngestError {
     #[error("HTTP request line/headers exceed budget ({actual} > {max} bytes)")]
     HeaderTooLarge { actual: usize, max: usize },
 
+    #[error("HTTP request line/headers timed out")]
+    HeaderTimedOut,
+
     #[error("Malformed HTTP request: {0}")]
     MalformedRequest(&'static str),
+
+    #[error("Unsupported HTTP transfer encoding")]
+    UnsupportedTransferEncoding,
 
     #[error("Method not allowed: {0} (only POST is supported for push ingest)")]
     MethodNotAllowed(String),
@@ -47,7 +55,9 @@ pub enum IngestError {
 pub struct HttpPushConfig {
     pub bind_addr: SocketAddr,
     pub auth_token: Option<String>,
+    pub max_header_size: usize,
     pub max_chunk_size: usize,
+    pub header_timeout: Duration,
 }
 
 impl HttpPushConfig {
@@ -55,12 +65,29 @@ impl HttpPushConfig {
         Self {
             bind_addr,
             auth_token: None,
+            max_header_size: MAX_INGEST_HEADER_SIZE,
             max_chunk_size: MAX_INGEST_CHUNK_SIZE,
+            header_timeout: Duration::from_secs(5),
         }
     }
 
     pub fn with_auth(mut self, token: impl Into<String>) -> Self {
         self.auth_token = Some(token.into());
+        self
+    }
+
+    pub fn with_max_header_size(mut self, max_header_size: usize) -> Self {
+        self.max_header_size = max_header_size;
+        self
+    }
+
+    pub fn with_max_chunk_size(mut self, max_chunk_size: usize) -> Self {
+        self.max_chunk_size = max_chunk_size;
+        self
+    }
+
+    pub fn with_header_timeout(mut self, header_timeout: Duration) -> Self {
+        self.header_timeout = header_timeout;
         self
     }
 }
@@ -106,7 +133,9 @@ impl HttpPushIngestListener {
 
     /// Accepts an incoming ingest connection and performs the HTTP handshake.
     /// Returns the socket, handshake metadata, and any initial body bytes that were read with the headers.
-    pub async fn accept_connection(&self) -> Result<(TcpStream, IngestHandshake, Bytes), IngestError> {
+    pub async fn accept_connection(
+        &self,
+    ) -> Result<(TcpStream, IngestHandshake, Bytes), IngestError> {
         let listener = self
             .listener
             .as_ref()
@@ -118,35 +147,52 @@ impl HttpPushIngestListener {
             .map_err(|e| IngestError::IoError(e.to_string()))?;
 
         // Read headers up to \r\n\r\n within budget
-        let mut header_buf = Vec::with_capacity(1024);
+        let max_header_size = self.config.max_header_size;
+        let mut header_buf = Vec::with_capacity(max_header_size.min(1024));
         let mut temp = [0u8; 1024];
-        let mut header_end_pos = None;
+        let header_read = timeout(self.config.header_timeout, async {
+            loop {
+                if header_buf.len() >= max_header_size {
+                    return Ok(None);
+                }
+                let read_size = (max_header_size - header_buf.len()).min(temp.len());
+                let n = socket
+                    .read(&mut temp[..read_size])
+                    .await
+                    .map_err(|e| IngestError::IoError(e.to_string()))?;
+                if n == 0 {
+                    return Err(IngestError::ConnectionClosed);
+                }
+                header_buf.extend_from_slice(&temp[..n]);
 
-        while header_buf.len() < MAX_INGEST_HEADER_SIZE {
-            let n = socket
-                .read(&mut temp)
-                .await
-                .map_err(|e| IngestError::IoError(e.to_string()))?;
-            if n == 0 {
-                return Err(IngestError::ConnectionClosed);
+                if let Some(pos) = memchr::memmem::find(&header_buf, b"\r\n\r\n") {
+                    if pos + 4 <= max_header_size {
+                        return Ok(Some(pos));
+                    }
+                    return Ok(None);
+                }
             }
-            header_buf.extend_from_slice(&temp[..n]);
+        })
+        .await;
 
-            if let Some(pos) = header_buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                header_end_pos = Some(pos);
-                break;
+        let header_end = match header_read {
+            Err(_) => {
+                let _ = timeout(
+                    Duration::from_millis(100),
+                    socket.write_all(b"HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n"),
+                )
+                .await;
+                return Err(IngestError::HeaderTimedOut);
             }
-        }
-
-        let header_end = match header_end_pos {
-            Some(pos) => pos,
-            None => {
+            Ok(Err(error)) => return Err(error),
+            Ok(Ok(Some(pos))) => pos,
+            Ok(Ok(None)) => {
                 let _ = socket
                     .write_all(b"HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n")
                     .await;
                 return Err(IngestError::HeaderTooLarge {
                     actual: header_buf.len(),
-                    max: MAX_INGEST_HEADER_SIZE,
+                    max: max_header_size,
                 });
             }
         };
@@ -154,7 +200,10 @@ impl HttpPushIngestListener {
         let header_bytes = &header_buf[..header_end];
         let remaining_body_prefix = Bytes::copy_from_slice(&header_buf[header_end + 4..]);
 
-        let handshake = match parse_ingest_handshake(header_bytes, self.config.auth_token.as_deref()) {
+        let handshake = match parse_ingest_handshake(
+            header_bytes,
+            self.config.auth_token.as_deref(),
+        ) {
             Ok(h) => h,
             Err(err) => {
                 match err {
@@ -168,6 +217,11 @@ impl HttpPushIngestListener {
                             .write_all(b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer realm=\"PeerCast Ingest\"\r\nConnection: close\r\n\r\n")
                             .await;
                     }
+                    IngestError::UnsupportedTransferEncoding => {
+                        let _ = socket
+                            .write_all(b"HTTP/1.1 501 Not Implemented\r\nConnection: close\r\n\r\n")
+                            .await;
+                    }
                     _ => {
                         let _ = socket
                             .write_all(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
@@ -179,7 +233,11 @@ impl HttpPushIngestListener {
         };
 
         // Respond with HTTP 200 OK / 100 Continue if needed
-        let _ = socket.write_all(b"HTTP/1.1 200 OK\r\nServer: PeerCastStation-Rust\r\nConnection: close\r\n\r\n").await;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\n{}Connection: close\r\n\r\n",
+            crate::HTTP_SERVER_HEADER
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
 
         Ok((socket, handshake, remaining_body_prefix))
     }
@@ -210,7 +268,8 @@ pub fn parse_ingest_handshake(
         return Err(IngestError::MethodNotAllowed(method.to_string()));
     }
 
-    let mut is_chunked = false;
+    let mut transfer_encoding = None;
+    let mut has_content_length = false;
     let mut content_type = None;
     let mut user_agent = None;
     let mut authorization = None;
@@ -224,10 +283,13 @@ pub fn parse_ingest_handshake(
             let val = v.trim();
             match key.as_str() {
                 "transfer-encoding" => {
-                    if val.eq_ignore_ascii_case("chunked") {
-                        is_chunked = true;
+                    if transfer_encoding.replace(val.to_string()).is_some() {
+                        return Err(IngestError::MalformedRequest(
+                            "Multiple Transfer-Encoding fields",
+                        ));
                     }
                 }
+                "content-length" => has_content_length = true,
                 "content-type" => content_type = Some(val.to_string()),
                 "user-agent" => user_agent = Some(val.to_string()),
                 "authorization" => authorization = Some(val.to_string()),
@@ -235,6 +297,31 @@ pub fn parse_ingest_handshake(
             }
         }
     }
+
+    let is_chunked = if let Some(encoding) = transfer_encoding {
+        if has_content_length {
+            return Err(IngestError::MalformedRequest(
+                "Content-Length with Transfer-Encoding",
+            ));
+        }
+        if encoding.is_empty() || encoding.split(',').any(|coding| coding.trim().is_empty()) {
+            return Err(IngestError::MalformedRequest("Empty Transfer-Encoding"));
+        }
+        let codings = encoding.split(',').map(str::trim).collect::<Vec<_>>();
+        if codings.len() > 1
+            && codings
+                .iter()
+                .all(|coding| coding.eq_ignore_ascii_case("chunked"))
+        {
+            return Err(IngestError::MalformedRequest("Duplicate chunked encoding"));
+        }
+        if codings.len() != 1 || !codings[0].eq_ignore_ascii_case("chunked") {
+            return Err(IngestError::UnsupportedTransferEncoding);
+        }
+        true
+    } else {
+        false
+    };
 
     // Authorization verification (REQ-065)
     if let Some(expected_token) = required_auth_token {
@@ -289,26 +376,16 @@ pub async fn read_chunked_stream<R: AsyncRead + Unpin>(
 
     loop {
         // Read chunk size line: {hex}\r\n
-        let (chunk_len, line_end) = loop {
-            if let Some(pos) = buffer.windows(2).position(|w| w == b"\r\n") {
-                let hex_str = std::str::from_utf8(&buffer[..pos])
-                    .map_err(|_| IngestError::MalformedChunking("Non-UTF8 chunk size hex"))?;
-                let clean_hex = hex_str.split(';').next().unwrap_or("").trim();
-                let len = usize::from_str_radix(clean_hex, 16)
-                    .map_err(|_| IngestError::MalformedChunking("Invalid chunk size hex"))?;
-                break (len, pos + 2);
-            }
-
-            let n = match reader.read(&mut temp).await {
-                Ok(0) => return Err(IngestError::ConnectionClosed),
-                Ok(n) => n,
-                Err(e) if matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted | std::io::ErrorKind::UnexpectedEof) => {
-                    return Err(IngestError::ConnectionClosed);
-                }
-                Err(e) => return Err(IngestError::IoError(e.to_string())),
-            };
-            buffer.extend_from_slice(&temp[..n]);
-        };
+        let line_end =
+            read_chunk_line(reader, &mut buffer, &mut temp, MAX_INGEST_HEADER_SIZE).await?;
+        let hex_str = std::str::from_utf8(&buffer[..line_end - 2])
+            .map_err(|_| IngestError::MalformedChunking("Non-UTF8 chunk size hex"))?;
+        let clean_hex = hex_str.split(';').next().unwrap_or("");
+        if clean_hex.is_empty() || !clean_hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(IngestError::MalformedChunking("Invalid chunk size hex"));
+        }
+        let chunk_len = usize::from_str_radix(clean_hex, 16)
+            .map_err(|_| IngestError::MalformedChunking("Invalid chunk size hex"))?;
 
         buffer.advance(line_end);
 
@@ -321,27 +398,52 @@ pub async fn read_chunked_stream<R: AsyncRead + Unpin>(
 
         // Chunk length 0 indicates end of chunked stream (0\r\n\r\n)
         if chunk_len == 0 {
-            // Read trailing \r\n if not already buffered
-            while buffer.len() < 2 {
-                let n = reader
-                    .read(&mut temp)
-                    .await
-                    .map_err(|e| IngestError::IoError(e.to_string()))?;
-                if n == 0 {
-                    break;
+            let mut trailer_bytes = 0usize;
+            loop {
+                let remaining = MAX_INGEST_HEADER_SIZE.saturating_sub(trailer_bytes);
+                let trailer_end =
+                    read_chunk_line(reader, &mut buffer, &mut temp, remaining).await?;
+                trailer_bytes += trailer_end;
+                if trailer_end == 2 {
+                    return Ok(());
                 }
-                buffer.extend_from_slice(&temp[..n]);
+
+                let line = &buffer[..trailer_end - 2];
+                let Some(colon) = line.iter().position(|byte| *byte == b':') else {
+                    return Err(IngestError::MalformedChunking("Invalid trailer field"));
+                };
+                if colon == 0 || !line[..colon].iter().copied().all(is_http_token_byte) {
+                    return Err(IngestError::MalformedChunking("Invalid trailer field name"));
+                }
+                if !line[colon + 1..]
+                    .iter()
+                    .copied()
+                    .all(is_http_field_value_byte)
+                {
+                    return Err(IngestError::MalformedChunking(
+                        "Invalid trailer field value",
+                    ));
+                }
+                buffer.advance(trailer_end);
             }
-            return Ok(());
         }
 
         // Read chunk data + trailing \r\n
-        let needed_len = chunk_len + 2;
+        let needed_len = chunk_len
+            .checked_add(2)
+            .ok_or(IngestError::MalformedChunking("Chunk length overflow"))?;
         while buffer.len() < needed_len {
             let n = match reader.read(&mut temp).await {
                 Ok(0) => return Err(IngestError::ConnectionClosed),
                 Ok(n) => n,
-                Err(e) if matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted | std::io::ErrorKind::UnexpectedEof) => {
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::ConnectionAborted
+                            | std::io::ErrorKind::UnexpectedEof
+                    ) =>
+                {
                     return Err(IngestError::ConnectionClosed);
                 }
                 Err(e) => return Err(IngestError::IoError(e.to_string())),
@@ -349,13 +451,106 @@ pub async fn read_chunked_stream<R: AsyncRead + Unpin>(
             buffer.extend_from_slice(&temp[..n]);
         }
 
+        if &buffer[chunk_len..needed_len] != b"\r\n" {
+            return Err(IngestError::MalformedChunking(
+                "Missing chunk data terminator",
+            ));
+        }
         let chunk_data = buffer.split_to(chunk_len).freeze();
-        // Skip \r\n
-        let _crlf = buffer.split_to(2);
+        buffer.advance(2);
 
         if data_sender.send(chunk_data).await.is_err() {
             // Receiver dropped; terminate ingest
             return Ok(());
+        }
+    }
+}
+
+async fn read_chunk_line<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    buffer: &mut BytesMut,
+    temp: &mut [u8],
+    max_line_bytes: usize,
+) -> Result<usize, IngestError> {
+    loop {
+        if let Some(pos) = find_chunk_line_end(buffer) {
+            let line_end = pos + 2;
+            if line_end > max_line_bytes {
+                return Err(IngestError::MalformedChunking(
+                    "Chunk line or trailers too large",
+                ));
+            }
+            return Ok(line_end);
+        }
+        let remaining = max_line_bytes.saturating_sub(buffer.len());
+        if remaining == 0 {
+            return Err(IngestError::MalformedChunking(
+                "Chunk line or trailers too large",
+            ));
+        }
+        let read_len = remaining.min(temp.len());
+        let n = match reader.read(&mut temp[..read_len]).await {
+            Ok(0) => return Err(IngestError::ConnectionClosed),
+            Ok(n) => n,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::UnexpectedEof
+                ) =>
+            {
+                return Err(IngestError::ConnectionClosed);
+            }
+            Err(e) => return Err(IngestError::IoError(e.to_string())),
+        };
+        buffer.extend_from_slice(&temp[..n]);
+    }
+}
+
+#[inline]
+fn find_chunk_line_end(buffer: &[u8]) -> Option<usize> {
+    for end in memchr::memchr_iter(b'\n', buffer) {
+        if end > 0 && buffer[end - 1] == b'\r' {
+            return Some(end - 1);
+        }
+    }
+    None
+}
+
+fn is_http_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
+}
+
+fn is_http_field_value_byte(byte: u8) -> bool {
+    byte == b'\t' || (0x20..=0x7e).contains(&byte) || byte >= 0x80
+}
+
+#[cfg(test)]
+mod delimiter_tests {
+    use super::find_chunk_line_end;
+
+    #[test]
+    fn delimiter_search_matches_scalar_at_every_prefix_boundary() {
+        for length in 0..80 {
+            for position in 0..length {
+                let mut bytes = vec![b'x'; length];
+                bytes[position] = b'\r';
+                if position + 1 < length {
+                    bytes[position + 1] = b'\n';
+                }
+                assert_eq!(
+                    find_chunk_line_end(&bytes),
+                    bytes.windows(2).position(|pair| pair == b"\r\n")
+                );
+            }
+        }
+        assert_eq!(find_chunk_line_end(b""), None);
+        for bytes in [b"\n\r\n".as_slice(), b"\rX\n\r\n", b"\r\n\r\n", b"\n\n\r"] {
+            assert_eq!(
+                find_chunk_line_end(bytes),
+                bytes.windows(2).position(|pair| pair == b"\r\n")
+            );
         }
     }
 }

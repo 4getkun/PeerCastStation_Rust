@@ -1,3 +1,7 @@
+use std::sync::OnceLock;
+
+use sha2::{Digest, Sha256};
+
 /// Embedded asset descriptor containing static bytes, MIME type, and ETag (REQ-066).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmbeddedAsset {
@@ -5,6 +9,13 @@ pub struct EmbeddedAsset {
     pub mime_type: &'static str,
     pub etag: &'static str,
 }
+
+pub const DEFAULT_INDEX_DOCUMENT: &str = "index.html";
+pub const API_CLIENT_SCRIPT_NAME: &str = "peercaststation.js";
+pub const API_CLIENT_SCRIPT_PATH: &str = "api/1/peercaststation.js";
+
+const DEFAULT_CONTENT_SECURITY_POLICY: &str =
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'";
 
 impl EmbeddedAsset {
     pub const fn new(content: &'static [u8], mime_type: &'static str, etag: &'static str) -> Self {
@@ -14,6 +25,85 @@ impl EmbeddedAsset {
             etag,
         }
     }
+}
+
+struct AssetDefinition {
+    path: &'static str,
+    content: &'static [u8],
+    mime_type: &'static str,
+    etag: OnceLock<String>,
+}
+
+impl AssetDefinition {
+    const fn new(path: &'static str, content: &'static [u8], mime_type: &'static str) -> Self {
+        Self {
+            path,
+            content,
+            mime_type,
+            etag: OnceLock::new(),
+        }
+    }
+}
+
+static ASSETS: [AssetDefinition; 13] = [
+    AssetDefinition::new(
+        DEFAULT_INDEX_DOCUMENT,
+        INDEX_HTML,
+        "text/html; charset=utf-8",
+    ),
+    AssetDefinition::new("channels.html", CHANNELS_HTML, "text/html; charset=utf-8"),
+    AssetDefinition::new("settings.html", SETTINGS_HTML, "text/html; charset=utf-8"),
+    AssetDefinition::new("gallery.html", GALLERY_HTML, "text/html; charset=utf-8"),
+    AssetDefinition::new(
+        API_CLIENT_SCRIPT_PATH,
+        PEERCASTSTATION_JS,
+        "application/javascript; charset=utf-8",
+    ),
+    AssetDefinition::new("css/tokens.css", TOKENS_CSS, "text/css; charset=utf-8"),
+    AssetDefinition::new("css/themes/nord.css", NORD_CSS, "text/css; charset=utf-8"),
+    AssetDefinition::new(
+        "css/components/status_card.css",
+        STATUS_CARD_CSS,
+        "text/css; charset=utf-8",
+    ),
+    AssetDefinition::new(
+        "css/components/channel_table.css",
+        CHANNEL_TABLE_CSS,
+        "text/css; charset=utf-8",
+    ),
+    AssetDefinition::new(
+        "css/components/alert_banner.css",
+        ALERT_BANNER_CSS,
+        "text/css; charset=utf-8",
+    ),
+    AssetDefinition::new(
+        "css/components/compact_layout.css",
+        COMPACT_LAYOUT_CSS,
+        "text/css; charset=utf-8",
+    ),
+    AssetDefinition::new(
+        "fixtures/index_fixtures.json",
+        INDEX_FIXTURES_JSON,
+        "application/json; charset=utf-8",
+    ),
+    AssetDefinition::new(
+        "fixtures/channels_fixtures.json",
+        CHANNELS_FIXTURES_JSON,
+        "application/json; charset=utf-8",
+    ),
+];
+
+fn content_etag(content: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(content);
+    let mut etag = String::with_capacity(66);
+    etag.push('"');
+    for byte in digest {
+        etag.push(HEX[(byte >> 4) as usize] as char);
+        etag.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    etag.push('"');
+    etag
 }
 
 // --- Bundled Web Assets (Audited under GPL-3.0-or-later / MIT, REQ-066) ---
@@ -31,13 +121,14 @@ const CHANNELS_FIXTURES_JSON: &[u8] = include_bytes!("../../../ui/fixtures/chann
 /// Standard JavaScript client adapter shim (`/api/1/peercaststation.js`).
 /// Matches Station `PeerCastStationJSApp` (GPL-3.0-or-later).
 const PEERCASTSTATION_JS: &[u8] = r#"(function() {
+  var REQUEST_ID_RANGE = 1000000;
   var PeerCastStation = {
     postRequest: function(method, params, completed) {
       var req = {
         jsonrpc: "2.0",
         method: method,
         params: params || {},
-        id: Math.floor(Math.random() * 1000000)
+        id: Math.floor(Math.random() * REQUEST_ID_RANGE)
       };
       var xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/1", true);
@@ -324,11 +415,11 @@ pub fn get_embedded_asset(path: &str) -> Option<EmbeddedAsset> {
     // Normalize path
     let clean_path = path.trim_start_matches('/');
     let normalized = match clean_path {
-        "" | "index.html" | "html/index.html" => "index.html",
+        "" | DEFAULT_INDEX_DOCUMENT | "html/index.html" => DEFAULT_INDEX_DOCUMENT,
         "channels.html" | "html/channels.html" => "channels.html",
         "settings.html" | "html/settings.html" => "settings.html",
         "gallery.html" | "ui/fixtures/gallery.html" => "gallery.html",
-        "api/1/peercaststation.js" => "api/1/peercaststation.js",
+        API_CLIENT_SCRIPT_PATH => API_CLIENT_SCRIPT_PATH,
         "css/tokens.css" | "ui/css/tokens.css" => "css/tokens.css",
         "css/themes/nord.css" | "ui/css/themes/nord.css" => "css/themes/nord.css",
         "css/components/status_card.css" | "ui/css/components/status_card.css" => {
@@ -352,78 +443,93 @@ pub fn get_embedded_asset(path: &str) -> Option<EmbeddedAsset> {
         other => other,
     };
 
-    match normalized {
-        "index.html" => Some(EmbeddedAsset::new(
-            INDEX_HTML,
-            "text/html; charset=utf-8",
-            "\"peca-idx-1.0\"",
-        )),
-        "channels.html" => Some(EmbeddedAsset::new(
-            CHANNELS_HTML,
-            "text/html; charset=utf-8",
-            "\"peca-chn-1.0\"",
-        )),
-        "settings.html" => Some(EmbeddedAsset::new(
-            SETTINGS_HTML,
-            "text/html; charset=utf-8",
-            "\"peca-set-1.0\"",
-        )),
-        "gallery.html" => Some(EmbeddedAsset::new(
-            GALLERY_HTML,
-            "text/html; charset=utf-8",
-            "\"peca-gal-1.0\"",
-        )),
-        "api/1/peercaststation.js" => Some(EmbeddedAsset::new(
-            PEERCASTSTATION_JS,
-            "application/javascript; charset=utf-8",
-            "\"peca-js-1.0\"",
-        )),
-        "css/tokens.css" => Some(EmbeddedAsset::new(
-            TOKENS_CSS,
-            "text/css; charset=utf-8",
-            "\"peca-tok-1.0\"",
-        )),
-        "css/themes/nord.css" => Some(EmbeddedAsset::new(
-            NORD_CSS,
-            "text/css; charset=utf-8",
-            "\"peca-nrd-1.0\"",
-        )),
-        "css/components/status_card.css" => Some(EmbeddedAsset::new(
-            STATUS_CARD_CSS,
-            "text/css; charset=utf-8",
-            "\"peca-sc-1.0\"",
-        )),
-        "css/components/channel_table.css" => Some(EmbeddedAsset::new(
-            CHANNEL_TABLE_CSS,
-            "text/css; charset=utf-8",
-            "\"peca-ct-1.0\"",
-        )),
-        "css/components/alert_banner.css" => Some(EmbeddedAsset::new(
-            ALERT_BANNER_CSS,
-            "text/css; charset=utf-8",
-            "\"peca-ab-1.0\"",
-        )),
-        "css/components/compact_layout.css" => Some(EmbeddedAsset::new(
-            COMPACT_LAYOUT_CSS,
-            "text/css; charset=utf-8",
-            "\"peca-cl-1.0\"",
-        )),
-        "fixtures/index_fixtures.json" => Some(EmbeddedAsset::new(
-            INDEX_FIXTURES_JSON,
-            "application/json; charset=utf-8",
-            "\"peca-ifx-1.0\"",
-        )),
-        "fixtures/channels_fixtures.json" => Some(EmbeddedAsset::new(
-            CHANNELS_FIXTURES_JSON,
-            "application/json; charset=utf-8",
-            "\"peca-cfx-1.0\"",
-        )),
-        _ => None,
-    }
+    let definition = ASSETS.iter().find(|asset| asset.path == normalized)?;
+    let etag = definition
+        .etag
+        .get_or_init(|| content_etag(definition.content))
+        .as_str();
+    Some(EmbeddedAsset::new(
+        definition.content,
+        definition.mime_type,
+        etag,
+    ))
 }
 
 /// Type alias for embedded asset HTTP response tuple (status, headers, optional body).
 pub type AssetHttpResponse = (u16, Vec<(&'static str, String)>, Option<&'static [u8]>);
+
+fn skip_ows(bytes: &[u8], mut index: usize) -> usize {
+    while matches!(bytes.get(index), Some(b' ' | b'\t')) {
+        index += 1;
+    }
+    index
+}
+
+fn parse_entity_tag(bytes: &[u8], start: usize) -> Option<(usize, usize)> {
+    let mut index = start;
+    if bytes.get(index..index + 2) == Some(b"W/") {
+        index += 2;
+    }
+    let quoted_start = index;
+    if bytes.get(index) != Some(&b'"') {
+        return None;
+    }
+    index += 1;
+    while let Some(&byte) = bytes.get(index) {
+        if byte == b'"' {
+            return Some((quoted_start, index + 1));
+        }
+        // RFC entity-tag opaque bytes: %x21 / %x23-7E / obs-text.
+        if byte < 0x21 || byte == 0x7f {
+            return None;
+        }
+        index += 1;
+    }
+    None
+}
+
+fn if_none_match_matches(value: &str, current_etag: &str) -> bool {
+    let bytes = value.as_bytes();
+    let start = skip_ows(bytes, 0);
+    let mut end = bytes.len();
+    while end > start && matches!(bytes[end - 1], b' ' | b'\t') {
+        end -= 1;
+    }
+    let value = &bytes[start..end];
+    if value == b"*" {
+        return true;
+    }
+
+    let current = current_etag.as_bytes();
+    let Some((current_start, current_end)) = parse_entity_tag(current, 0) else {
+        return false;
+    };
+    if current_end != current.len() {
+        return false;
+    }
+    let current_opaque = &current[current_start..current_end];
+
+    let mut index = 0;
+    let mut matched = false;
+    loop {
+        index = skip_ows(value, index);
+        let Some((tag_start, tag_end)) = parse_entity_tag(value, index) else {
+            return false;
+        };
+        matched |= &value[tag_start..tag_end] == current_opaque;
+        index = skip_ows(value, tag_end);
+        if index == value.len() {
+            return matched;
+        }
+        if value[index] != b',' {
+            return false;
+        }
+        index = skip_ows(value, index + 1);
+        if index == value.len() {
+            return false;
+        }
+    }
+}
 
 /// Builds an HTTP response for an embedded asset, honoring ETags (304 Not Modified)
 /// and injecting security headers (nosniff, sameorigin, CSP) (REQ-066).
@@ -438,18 +544,44 @@ pub fn build_asset_http_response(
         ("X-Frame-Options", "SAMEORIGIN".to_string()),
         (
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'".to_string(),
+            DEFAULT_CONTENT_SECURITY_POLICY.to_string(),
         ),
     ];
 
     // Conditional GET: 304 Not Modified
     if let Some(inm) = if_none_match {
-        if inm.trim() == asset.etag {
-            headers.push(("Content-Length", "0".to_string()));
+        if if_none_match_matches(inm, asset.etag) {
+            headers.push(("Content-Length", asset.content.len().to_string()));
             return (304, headers, None);
         }
     }
 
     headers.push(("Content-Length", asset.content.len().to_string()));
     (200, headers, Some(asset.content))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{content_etag, if_none_match_matches};
+
+    #[test]
+    fn content_hash_is_stable_and_tracks_byte_changes() {
+        let original = content_etag(b"asset body");
+        assert_eq!(original, content_etag(b"asset body"));
+        assert_ne!(original, content_etag(b"asset bodY"));
+    }
+
+    #[test]
+    fn if_none_match_uses_weak_comparison_and_validates_full_lists() {
+        assert!(if_none_match_matches("W/\"tag\"", "\"tag\""));
+        assert!(if_none_match_matches("\"other,tag\", W/\"tag\"", "\"tag\""));
+        assert!(if_none_match_matches("  * \t", "\"tag\""));
+        assert!(!if_none_match_matches("\"other\", \"tag\"", "\"tag\"x"));
+        assert!(!if_none_match_matches("*, \"tag\"", "\"tag\""));
+        assert!(!if_none_match_matches("\"tag\",", "\"tag\""));
+        assert!(!if_none_match_matches("\"tag\"suffix", "\"tag\""));
+        assert!(!if_none_match_matches("\"unterminated", "\"tag\""));
+        assert!(!if_none_match_matches("\"ta\n\"", "\"tag\""));
+        assert!(!if_none_match_matches("\"other\"", "W/\"tag\""));
+    }
 }

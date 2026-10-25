@@ -53,7 +53,9 @@ pub const INDEX_DELIMITER: &str = "<>";
 pub enum IndexParseError {
     #[error("Response body size ({size} bytes) exceeds maximum limit ({limit} bytes)")]
     ResponseTooLarge { size: usize, limit: usize },
-    #[error("Field {field} at line {line} length ({len} bytes) exceeds maximum limit ({limit} bytes)")]
+    #[error(
+        "Field {field} at line {line} length ({len} bytes) exceeds maximum limit ({limit} bytes)"
+    )]
     FieldTooLong {
         line: usize,
         field: usize,

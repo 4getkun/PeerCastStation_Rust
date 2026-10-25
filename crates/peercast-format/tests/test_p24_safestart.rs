@@ -8,18 +8,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Helper: construct a mock FLV video packet (either keyframe 0x17 or interframe 0x27).
-fn make_flv_video_packet(
-    epoch: i32,
-    pos: i64,
-    is_keyframe: bool,
-    is_fragment: bool,
-) -> Content {
+fn make_flv_video_packet(epoch: i32, pos: i64, is_keyframe: bool, is_fragment: bool) -> Content {
     let mut data = Vec::with_capacity(16);
     data.push(9); // FLV Tag Type = Video
     data.extend_from_slice(&[0, 0, 5]); // data_size = 5
     data.extend_from_slice(&[0, 0, 0, 0]); // timestamp = 0
     data.extend_from_slice(&[0, 0, 0]); // stream_id = 0
-    // Tag body byte 0: frame_type (1 = keyframe, 2 = interframe), codec 7 (AVC)
+                                        // Tag body byte 0: frame_type (1 = keyframe, 2 = interframe), codec 7 (AVC)
     let first_byte = if is_keyframe { 0x17 } else { 0x27 };
     data.push(first_byte);
     data.extend_from_slice(&[1, 0, 0, 0]); // AVCPacketType = 1 (NALU)
@@ -169,12 +164,18 @@ fn test_p24_no_keyframe_timeout_bounded_fallback() {
 
     // At t = 1000ms: Interframe skipped
     let if1 = make_flv_video_packet(1, 100, false, false);
-    assert!(matches!(selector.evaluate(&if1, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&if1, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // Advance clock to 3000ms (elapsed 2000ms < 3000ms max_wait)
     fake_clock.set(Duration::from_millis(3000));
     let if2 = make_flv_video_packet(1, 200, false, false);
-    assert!(matches!(selector.evaluate(&if2, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&if2, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // Advance clock to 4500ms (elapsed 3500ms >= 3000ms max_wait)
     fake_clock.set(Duration::from_millis(4500));
@@ -209,11 +210,17 @@ fn test_p24_epoch_restart_resets_safe_start() {
 
     // Stale epoch 1 packet is rejected
     let stale_pkt = make_flv_video_packet(1, 550, true, false);
-    assert!(matches!(selector.evaluate(&stale_pkt, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&stale_pkt, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // Epoch 2 interframe is skipped
     let if2 = make_flv_video_packet(2, 600, false, false);
-    assert!(matches!(selector.evaluate(&if2, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&if2, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // Epoch 2 keyframe is admitted
     let kf2 = make_flv_video_packet(2, 700, true, false);
@@ -241,10 +248,18 @@ fn test_p24_select_cache_start_point_historical() {
     cache.set_header(header).unwrap();
 
     // Push: Keyframe 1 (pos 0), Interframe 1 (pos 1000), Keyframe 2 (pos 2000), Interframe 2 (pos 3000)
-    cache.push_body(make_flv_video_packet(1, 0, true, false), None).unwrap();
-    cache.push_body(make_flv_video_packet(1, 1000, false, false), None).unwrap();
-    cache.push_body(make_flv_video_packet(1, 2000, true, false), None).unwrap();
-    cache.push_body(make_flv_video_packet(1, 3000, false, false), None).unwrap();
+    cache
+        .push_body(make_flv_video_packet(1, 0, true, false), None)
+        .unwrap();
+    cache
+        .push_body(make_flv_video_packet(1, 1000, false, false), None)
+        .unwrap();
+    cache
+        .push_body(make_flv_video_packet(1, 2000, true, false), None)
+        .unwrap();
+    cache
+        .push_body(make_flv_video_packet(1, 3000, false, false), None)
+        .unwrap();
 
     let video_selector = SafeStartSelector::new(SafeStartConfig {
         mode: SafeStartMode::VideoKeyframe,

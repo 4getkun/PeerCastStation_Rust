@@ -25,14 +25,14 @@ pub enum HostError {
 pub struct HostFlags1(pub u8);
 
 impl HostFlags1 {
-    pub const TRACKER: HostFlags1    = HostFlags1(0x01);
-    pub const RELAY: HostFlags1      = HostFlags1(0x02);
-    pub const DIRECT: HostFlags1     = HostFlags1(0x04);
+    pub const TRACKER: HostFlags1 = HostFlags1(0x01);
+    pub const RELAY: HostFlags1 = HostFlags1(0x02);
+    pub const DIRECT: HostFlags1 = HostFlags1(0x04);
     pub const FIREWALLED: HostFlags1 = HostFlags1(0x08);
-    pub const PUSH: HostFlags1       = HostFlags1(0x08);
-    pub const RECV: HostFlags1       = HostFlags1(0x10);
-    pub const CIN: HostFlags1        = HostFlags1(0x20);
-    pub const PRIVATE: HostFlags1    = HostFlags1(0x40);
+    pub const PUSH: HostFlags1 = HostFlags1(0x08);
+    pub const RECV: HostFlags1 = HostFlags1(0x10);
+    pub const CIN: HostFlags1 = HostFlags1(0x20);
+    pub const PRIVATE: HostFlags1 = HostFlags1(0x40);
 
     #[inline]
     pub fn is_tracker(&self) -> bool {
@@ -146,8 +146,8 @@ impl Host {
 
         let mut session_id = ChannelId::from_bytes([0u8; 16]);
         let mut channel_id = ChannelId::from_bytes([0u8; 16]);
-        let mut ip = None;
-        let mut port = None;
+        let mut ips = Vec::with_capacity(2);
+        let mut ports = Vec::with_capacity(2);
         let mut flags = HostFlags1::default();
         let mut direct_count = 0u32;
         let mut relay_count = 0u32;
@@ -178,15 +178,19 @@ impl Host {
                     }
                     ID4::HOST_IP => {
                         if let Ok(addr) = child.get_ip() {
-                            ip = Some(addr);
+                            if ips.len() < 2 {
+                                ips.push(addr);
+                            }
                         }
                     }
                     ID4::HOST_PORT => {
                         if let Ok(p) = child.get_u16_le() {
-                            port = Some(p);
+                            if ports.len() < 2 {
+                                ports.push(p);
+                            }
                         } else if let Ok(p) = child.get_u32_le() {
-                            if p <= 65535 {
-                                port = Some(p as u16);
+                            if p <= 65535 && ports.len() < 2 {
+                                ports.push(p as u16);
                             }
                         }
                     }
@@ -231,17 +235,23 @@ impl Host {
             }
         }
 
-        let ip = ip.ok_or(HostError::InvalidIp)?;
-        let port = port.ok_or(HostError::InvalidPort(0))?;
+        // Repeated IP/port fields describe the global endpoint first, then the local endpoint.
+        let ip = ips.first().copied().ok_or(HostError::InvalidIp)?;
+        let port = ports.first().copied().ok_or(HostError::InvalidPort(0))?;
         if port == 0 {
             return Err(HostError::InvalidPort(0));
         }
+        let local_endpoint = ips
+            .get(1)
+            .zip(ports.get(1))
+            .filter(|(ip, port)| !ip.is_unspecified() && **port != 0)
+            .map(|(ip, port)| SocketAddr::new(*ip, *port));
 
         Ok(Self {
             session_id,
             channel_id,
             broadcast_id: None,
-            local_endpoint: None,
+            local_endpoint,
             global_endpoint: Some(SocketAddr::new(ip, port)),
             flags,
             relay_count,
@@ -256,8 +266,14 @@ impl Host {
     /// Serializes this Host into a wire `host` Atom (REQ-021, REQ-032).
     pub fn to_atom(&self) -> Atom {
         let mut children = vec![
-            Atom::new_leaf(ID4::HOST_ID, Bytes::copy_from_slice(self.session_id.as_bytes())),
-            Atom::new_leaf(ID4::HOST_CHANID, Bytes::copy_from_slice(self.channel_id.as_bytes())),
+            Atom::new_leaf(
+                ID4::HOST_ID,
+                Bytes::copy_from_slice(self.session_id.as_bytes()),
+            ),
+            Atom::new_leaf(
+                ID4::HOST_CHANID,
+                Bytes::copy_from_slice(self.channel_id.as_bytes()),
+            ),
         ];
         if let Some(ep) = self.contact_address() {
             children.push(Atom::new_ip(ID4::HOST_IP, ep.ip()));
@@ -266,7 +282,10 @@ impl Host {
         children.push(Atom::new_u8(ID4::HOST_FLAGS1, self.flags.raw()));
         children.push(Atom::new_u32_le(ID4::HOST_NUML, self.direct_count));
         children.push(Atom::new_u32_le(ID4::HOST_NUMR, self.relay_count));
-        children.push(Atom::new_u32_le(ID4::HOST_UPTIME, self.uptime.as_secs() as u32));
+        children.push(Atom::new_u32_le(
+            ID4::HOST_UPTIME,
+            self.uptime.as_secs() as u32,
+        ));
         children.push(Atom::new_u32_le(ID4::HOST_VERSION, self.version));
         children.push(Atom::new_u32_le(ID4::HOST_UPHP, self.hops));
         Atom::new_parent(ID4::PCP_HOST, children)

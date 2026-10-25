@@ -53,25 +53,17 @@ pub enum SafeStartPhase {
     WaitingForHeader,
 
     /// Header established; actively searching for format-aware safe start point
-    SeekingSafePoint {
-        epoch: i32,
-        started_at: Duration,
-    },
+    SeekingSafePoint { epoch: i32, started_at: Duration },
 
     /// Safe start point identified and admitted; streaming actively
-    Streaming {
-        epoch: i32,
-        started_at_pos: i64,
-    },
+    Streaming { epoch: i32, started_at_pos: i64 },
 }
 
 /// Decision made by `SafeStartSelector` for an evaluated packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SafeStartDecision {
     /// Skip this packet (e.g. interframe before keyframe, or fragment slice)
-    Skip {
-        reason: &'static str,
-    },
+    Skip { reason: &'static str },
 
     /// Header snapshot ready to emit before media packets
     EmitHeader(HeaderSnapshot),
@@ -80,9 +72,7 @@ pub enum SafeStartDecision {
     Admit,
 
     /// Bounded timeout expired: fallback admitted this packet despite not being a keyframe
-    FallbackAdmit {
-        reason: &'static str,
-    },
+    FallbackAdmit { reason: &'static str },
 }
 
 /// Inspects whether raw payload starts with an FLV video keyframe tag.
@@ -179,11 +169,9 @@ impl SafeStartSelector {
         is_keyframe_hint: Option<bool>,
     ) -> SafeStartDecision {
         match self.phase {
-            SafeStartPhase::WaitingForHeader => {
-                SafeStartDecision::Skip {
-                    reason: "Awaiting channel header snapshot before admitting content",
-                }
-            }
+            SafeStartPhase::WaitingForHeader => SafeStartDecision::Skip {
+                reason: "Awaiting channel header snapshot before admitting content",
+            },
 
             SafeStartPhase::Streaming {
                 epoch,
@@ -255,7 +243,8 @@ impl SafeStartSelector {
                         started_at_pos: content.pos,
                     };
                     return SafeStartDecision::FallbackAdmit {
-                        reason: "Keyframe wait timeout exceeded; falling back to unfragmented packet",
+                        reason:
+                            "Keyframe wait timeout exceeded; falling back to unfragmented packet",
                     };
                 }
 

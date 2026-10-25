@@ -8,9 +8,7 @@ use peercast_core::errors::QuitReason;
 use peercast_core::host::Host;
 use peercast_core::id4::ID4;
 
-use crate::http_prelude::{
-    parse_relay_request, PcpHttpError, PcpHttpLimits, PcpRelayRequest,
-};
+use crate::http_prelude::{parse_relay_request, PcpHttpError, PcpHttpLimits, PcpRelayRequest};
 use crate::relay_client::{RelayNetworkProfile, MAX_CANDIDATE_HOSTS, SERVANT_VERSION};
 
 /// Minimum supported servant version in `helo` (matching Station PCPOutputStream.cs:503).
@@ -45,10 +43,7 @@ pub enum RelayServerError {
     Atom(#[from] AtomError),
 
     #[error("Unexpected Atom tag in phase {phase:?}: {tag:?}")]
-    UnexpectedAtom {
-        phase: RelayServerPhase,
-        tag: ID4,
-    },
+    UnexpectedAtom { phase: RelayServerPhase, tag: ID4 },
 
     #[error("Invalid server phase for operation: current is {0:?}")]
     InvalidPhase(RelayServerPhase),
@@ -107,6 +102,7 @@ pub struct RelayServerStateMachine {
     server_agent: String,
     request: Option<PcpRelayRequest>,
     candidate_hosts: Vec<Host>,
+    max_candidate_hosts: usize,
     client_session_id: Option<ChannelId>,
     client_agent: Option<String>,
     client_port: Option<u16>,
@@ -129,6 +125,7 @@ impl RelayServerStateMachine {
             server_agent: "PeerCastStation/1.0".to_string(),
             request: None,
             candidate_hosts: Vec::new(),
+            max_candidate_hosts: MAX_CANDIDATE_HOSTS,
             client_session_id: None,
             client_agent: None,
             client_port: None,
@@ -138,6 +135,11 @@ impl RelayServerStateMachine {
 
     pub fn with_server_agent(mut self, agent: impl Into<String>) -> Self {
         self.server_agent = agent.into();
+        self
+    }
+
+    pub fn with_max_candidate_hosts(mut self, max: usize) -> Self {
+        self.max_candidate_hosts = max.max(1);
         self
     }
 
@@ -190,7 +192,9 @@ impl RelayServerStateMachine {
             IpAddr::V6(v6) => {
                 let octets = v6.octets();
                 if octets[0..10] == [0; 10] && octets[10] == 0xff && octets[11] == 0xff {
-                    IpAddr::V4(std::net::Ipv4Addr::new(octets[12], octets[13], octets[14], octets[15]))
+                    IpAddr::V4(std::net::Ipv4Addr::new(
+                        octets[12], octets[13], octets[14], octets[15],
+                    ))
                 } else {
                     IpAddr::V6(v6)
                 }
@@ -281,7 +285,7 @@ impl RelayServerStateMachine {
         if self.phase != RelayServerPhase::WaitingDecision {
             return Err(RelayServerError::InvalidPhase(self.phase));
         }
-        hosts.truncate(MAX_CANDIDATE_HOSTS);
+        hosts.truncate(self.max_candidate_hosts);
         self.candidate_hosts = hosts;
         self.phase = RelayServerPhase::WaitingHelo503;
         let response = format!(
@@ -323,22 +327,23 @@ impl RelayServerStateMachine {
     ///
     /// Consumes only bytes belonging to current messages, cleanly leaving any following
     /// bytes intact in `buf` for subsequent reads.
-    pub fn feed_bytes(&mut self, buf: &mut Bytes) -> Result<Option<RelayServerEvent>, RelayServerError> {
+    pub fn feed_bytes(
+        &mut self,
+        buf: &mut Bytes,
+    ) -> Result<Option<RelayServerEvent>, RelayServerError> {
         match self.phase {
-            RelayServerPhase::WaitingRequest => {
-                match parse_relay_request(buf, &self.http_limits) {
-                    Ok(Some(req)) => {
-                        self.request = Some(req.clone());
-                        self.phase = RelayServerPhase::WaitingDecision;
-                        Ok(Some(RelayServerEvent::RequestReceived(req)))
-                    }
-                    Ok(None) => Ok(None),
-                    Err(e) => {
-                        self.phase = RelayServerPhase::Terminal(QuitReason::BAD_RESPONSE);
-                        Err(RelayServerError::Http(e))
-                    }
+            RelayServerPhase::WaitingRequest => match parse_relay_request(buf, &self.http_limits) {
+                Ok(Some(req)) => {
+                    self.request = Some(req.clone());
+                    self.phase = RelayServerPhase::WaitingDecision;
+                    Ok(Some(RelayServerEvent::RequestReceived(req)))
                 }
-            }
+                Ok(None) => Ok(None),
+                Err(e) => {
+                    self.phase = RelayServerPhase::Terminal(QuitReason::BAD_RESPONSE);
+                    Err(RelayServerError::Http(e))
+                }
+            },
 
             RelayServerPhase::WaitingDecision => {
                 // Cannot advance until application calls accept(), reject_full(), or reject_not_found()
@@ -367,10 +372,14 @@ impl RelayServerStateMachine {
                 }
 
                 self.parse_helo_fields(&atom)?;
-                let client_sid = self.client_session_id.ok_or(RelayServerError::MissingSessionId)?;
+                let client_sid = self
+                    .client_session_id
+                    .ok_or(RelayServerError::MissingSessionId)?;
                 if self.client_version.unwrap_or(0) < MIN_HELO_VERSION {
                     self.phase = RelayServerPhase::Terminal(QuitReason::BAD_AGENT);
-                    return Err(RelayServerError::BadAgentVersion(self.client_version.unwrap_or(0)));
+                    return Err(RelayServerError::BadAgentVersion(
+                        self.client_version.unwrap_or(0),
+                    ));
                 }
 
                 // Build outbound: oleh + ok(1) (REQ-032)
@@ -407,10 +416,14 @@ impl RelayServerStateMachine {
                 }
 
                 self.parse_helo_fields(&atom)?;
-                let client_sid = self.client_session_id.ok_or(RelayServerError::MissingSessionId)?;
+                let client_sid = self
+                    .client_session_id
+                    .ok_or(RelayServerError::MissingSessionId)?;
                 if self.client_version.unwrap_or(0) < MIN_HELO_VERSION {
                     self.phase = RelayServerPhase::Terminal(QuitReason::BAD_AGENT);
-                    return Err(RelayServerError::BadAgentVersion(self.client_version.unwrap_or(0)));
+                    return Err(RelayServerError::BadAgentVersion(
+                        self.client_version.unwrap_or(0),
+                    ));
                 }
 
                 // Build outbound: oleh + host candidates + quit(1003) (REQ-032, REQ-033)

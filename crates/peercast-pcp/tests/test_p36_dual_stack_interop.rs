@@ -40,37 +40,49 @@ fn test_p36_header_version_and_family_consistency_matrix() {
 
     // Case 1: IPv4 channel + x-peercast-pcp: 1 + IPv4 socket -> ACCEPT (200)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv4_addr));
-        let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv4_addr));
+        let raw =
+            b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         assert!(server.validate_request_family().is_ok());
     }
 
     // Case 2: IPv4 channel + x-peercast-pcp: 100 + IPv4 socket -> REJECT (404 mismatch)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv4_addr));
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv4_addr));
         let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         let err = server.validate_request_family().unwrap_err();
-        assert!(matches!(err, RelayServerError::NetworkFamilyMismatch { .. }));
+        assert!(matches!(
+            err,
+            RelayServerError::NetworkFamilyMismatch { .. }
+        ));
         let not_found_bytes = server.reject_not_found();
-        assert!(String::from_utf8(not_found_bytes).unwrap().starts_with("HTTP/1.0 404 Not Found"));
+        assert!(String::from_utf8(not_found_bytes)
+            .unwrap()
+            .starts_with("HTTP/1.0 404 Not Found"));
     }
 
     // Case 3: IPv4 channel + missing x-peercast-pcp -> REJECT (400 bad request)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv4_addr));
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv4_addr));
         let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         let err = server.validate_request_family().unwrap_err();
         assert_eq!(err, RelayServerError::MissingPcpHeader);
         let bad_req_bytes = server.reject_bad_request("Missing x-peercast-pcp header");
-        assert!(String::from_utf8(bad_req_bytes).unwrap().starts_with("HTTP/1.0 400 Bad Request"));
+        assert!(String::from_utf8(bad_req_bytes)
+            .unwrap()
+            .starts_with("HTTP/1.0 400 Bad Request"));
     }
 
     // Case 4: IPv6 channel + x-peercast-pcp: 100 + IPv6 socket -> ACCEPT (200)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(ipv6_addr));
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(ipv6_addr));
         let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         assert!(server.validate_request_family().is_ok());
@@ -78,29 +90,43 @@ fn test_p36_header_version_and_family_consistency_matrix() {
 
     // Case 5: IPv6 channel + x-peercast-pcp: 1 + IPv6 socket -> REJECT (404 mismatch)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(ipv6_addr));
-        let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(ipv6_addr));
+        let raw =
+            b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         let err = server.validate_request_family().unwrap_err();
-        assert!(matches!(err, RelayServerError::NetworkFamilyMismatch { .. }));
+        assert!(matches!(
+            err,
+            RelayServerError::NetworkFamilyMismatch { .. }
+        ));
     }
 
     // Case 6: IPv6 channel + x-peercast-pcp: 100 + IPv4 socket -> REJECT (404 mismatch)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(ipv4_addr));
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(ipv4_addr));
         let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         let err = server.validate_request_family().unwrap_err();
-        assert!(matches!(err, RelayServerError::NetworkFamilyMismatch { .. }));
+        assert!(matches!(
+            err,
+            RelayServerError::NetworkFamilyMismatch { .. }
+        ));
     }
 
     // Case 7: IPv4 channel + x-peercast-pcp: 1 + IPv6 socket -> REJECT (404 mismatch)
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv6_addr));
-        let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(ipv6_addr));
+        let raw =
+            b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         let err = server.validate_request_family().unwrap_err();
-        assert!(matches!(err, RelayServerError::NetworkFamilyMismatch { .. }));
+        assert!(matches!(
+            err,
+            RelayServerError::NetworkFamilyMismatch { .. }
+        ));
     }
 }
 
@@ -114,15 +140,18 @@ fn test_p36_ipv4_mapped_address_handling() {
 
     // Case 1: IPv4 channel with header 1 + mapped IP -> unmapped to IPv4, so VALID!
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(mapped_ip));
-        let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(mapped_ip));
+        let raw =
+            b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 1\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         assert!(server.validate_request_family().is_ok());
     }
 
     // Case 2: IPv4 channel with header 100 + mapped IP -> header mismatch, so REJECTED!
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(mapped_ip));
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv4, Some(mapped_ip));
         let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         assert!(server.validate_request_family().is_err());
@@ -130,7 +159,8 @@ fn test_p36_ipv4_mapped_address_handling() {
 
     // Case 3: IPv6 channel with header 100 + mapped IP -> logical IP is IPv4, so REJECTED on IPv6 channel!
     {
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(mapped_ip));
+        let mut server =
+            RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(mapped_ip));
         let raw = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
         server.feed_bytes(&mut Bytes::from_static(raw)).unwrap();
         assert!(server.validate_request_family().is_err());
@@ -157,7 +187,11 @@ async fn test_p36_ipv6_loopback_relay_200_handshake() {
 
     let server_task = tokio::spawn(async move {
         let (mut socket, peer_addr) = listener.accept().await.unwrap();
-        let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(peer_addr.ip()));
+        let mut server = RelayServerStateMachine::new(
+            server_sid,
+            RelayNetworkProfile::IPv6,
+            Some(peer_addr.ip()),
+        );
 
         let mut buf = BytesMut::with_capacity(1024);
         let mut tmp = [0u8; 512];
@@ -208,12 +242,8 @@ async fn test_p36_ipv6_loopback_relay_200_handshake() {
 
     let client_task = tokio::spawn(async move {
         let mut socket = TcpStream::connect(addr).await.unwrap();
-        let mut client = RelayClientStateMachine::new(
-            cid,
-            client_sid,
-            RelayNetworkProfile::IPv6,
-            0,
-        );
+        let mut client =
+            RelayClientStateMachine::new(cid, client_sid, RelayNetworkProfile::IPv6, 0);
 
         // 1. Send HTTP request with x-peercast-pcp: 100
         let req_bytes = client.build_relay_request(&addr.to_string(), "RustRelay/1.0");
@@ -280,9 +310,14 @@ fn test_p36_dual_stack_503_candidate_host_distribution() {
     let client_sid = sample_client_sid();
     let cid = sample_cid();
 
-    let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(IpAddr::V6(Ipv6Addr::LOCALHOST)));
+    let mut server = RelayServerStateMachine::new(
+        server_sid,
+        RelayNetworkProfile::IPv6,
+        Some(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+    );
 
-    let raw_request = b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
+    let raw_request =
+        b"GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\nx-peercast-pcp: 100\r\n\r\n";
     let mut req_buf = Bytes::from_static(raw_request);
     server.feed_bytes(&mut req_buf).unwrap();
     server.validate_request_family().unwrap();
@@ -366,7 +401,9 @@ async fn test_p36_probe_behavior_differences_station_vs_yt() {
         let n = socket.read(&mut tmp).await.unwrap();
         buf.extend_from_slice(&tmp[..n]);
         let mut freeze = buf.clone().freeze();
-        let ver = ProbeCodec::parse_probe_preamble(&mut freeze, &budget).unwrap().unwrap();
+        let ver = ProbeCodec::parse_probe_preamble(&mut freeze, &budget)
+            .unwrap()
+            .unwrap();
 
         // Station pong validation: strictly requires version 1 (REQ-036)
         if ProbeCodec::validate_pong_preamble(ver, ProbePeerProfile::PeerCastStation).is_ok() {
@@ -419,7 +456,9 @@ async fn test_p36_probe_behavior_differences_station_vs_yt() {
         let n = socket.read(&mut tmp).await.unwrap();
         buf.extend_from_slice(&tmp[..n]);
         let mut freeze = buf.clone().freeze();
-        let ver = ProbeCodec::parse_probe_preamble(&mut freeze, &budget).unwrap().unwrap();
+        let ver = ProbeCodec::parse_probe_preamble(&mut freeze, &budget)
+            .unwrap()
+            .unwrap();
 
         // Station pong strictly validates version 1
         if ProbeCodec::validate_pong_preamble(ver, ProbePeerProfile::PeerCastStation).is_err() {
@@ -457,7 +496,9 @@ async fn test_p36_probe_behavior_differences_station_vs_yt() {
         let n = socket.read(&mut tmp).await.unwrap();
         buf.extend_from_slice(&tmp[..n]);
         let mut freeze = buf.clone().freeze();
-        let ver = ProbeCodec::parse_probe_preamble(&mut freeze, &budget).unwrap().unwrap();
+        let ver = ProbeCodec::parse_probe_preamble(&mut freeze, &budget)
+            .unwrap()
+            .unwrap();
 
         // YT pong accepts version 1 or 100
         assert!(ProbeCodec::validate_pong_preamble(ver, ProbePeerProfile::PeerCastYt).is_ok());
@@ -518,7 +559,8 @@ fn test_p36_reconnect_cursor_over_ipv6() {
     let cid = sample_cid();
 
     // 1. Client creates request with cursor pos 131072 over IPv6
-    let mut client = RelayClientStateMachine::new(cid, client_sid, RelayNetworkProfile::IPv6, 131072);
+    let mut client =
+        RelayClientStateMachine::new(cid, client_sid, RelayNetworkProfile::IPv6, 131072);
     let req_bytes = client.build_relay_request("[::1]:7144", "RustClient/1.0");
     let req_str = String::from_utf8(req_bytes.to_vec()).unwrap();
 
@@ -526,9 +568,16 @@ fn test_p36_reconnect_cursor_over_ipv6() {
     assert!(req_str.contains("x-peercast-pos: 131072\r\n"));
 
     // 2. Server receives and parses request
-    let mut server = RelayServerStateMachine::new(server_sid, RelayNetworkProfile::IPv6, Some(IpAddr::V6(Ipv6Addr::LOCALHOST)));
+    let mut server = RelayServerStateMachine::new(
+        server_sid,
+        RelayNetworkProfile::IPv6,
+        Some(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+    );
     let mut in_bytes = Bytes::from(req_bytes);
-    let ev = server.feed_bytes(&mut in_bytes).unwrap().expect("RequestReceived");
+    let ev = server
+        .feed_bytes(&mut in_bytes)
+        .unwrap()
+        .expect("RequestReceived");
 
     match ev {
         RelayServerEvent::RequestReceived(req) => {

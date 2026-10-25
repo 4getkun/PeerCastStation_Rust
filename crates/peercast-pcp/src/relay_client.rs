@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use peercast_core::atom::{Atom, AtomBudget, AtomError};
 use peercast_core::channel_id::ChannelId;
-use peercast_core::content::{Content, ContinuationFlags};
+use peercast_core::content::Content;
 use peercast_core::errors::QuitReason;
 use peercast_core::host::Host;
 use peercast_core::id4::ID4;
@@ -12,6 +12,7 @@ use peercast_core::id4::ID4;
 use crate::http_prelude::{
     parse_relay_response, PcpHttpError, PcpHttpLimits, PcpHttpStatus, PcpRelayResponse,
 };
+use crate::packet::{ChannelPacket, PacketError, PacketPayload};
 
 /// Maximum candidate hosts collected during a 503 response sequence (Global Rule 3).
 pub const MAX_CANDIDATE_HOSTS: usize = 64;
@@ -33,6 +34,70 @@ pub enum RelayClientPhase {
     Terminal(QuitReason),
 }
 
+#[cfg(test)]
+mod packet_runtime_tests {
+    use super::*;
+
+    fn data_packet(pos: u32, len: usize) -> Atom {
+        Atom::new_parent(
+            ID4::CHAN_PKT,
+            vec![
+                Atom::new_leaf(ID4::PKT_TYPE, Bytes::copy_from_slice(&ID4::PKT_TYPE_DATA.0)),
+                Atom::new_u32_le(ID4::PKT_POS, pos),
+                Atom::new_leaf(ID4::PKT_DATA, Bytes::from(vec![0; len])),
+            ],
+        )
+    }
+
+    #[test]
+    fn incoming_packets_enforce_body_bound_and_unwrap_wire_rollover() {
+        let mut machine = RelayClientStateMachine::new(
+            ChannelId::from_bytes([1; 16]),
+            ChannelId::from_bytes([2; 16]),
+            RelayNetworkProfile::IPv4,
+            0,
+        );
+        assert!(matches!(
+            machine.parse_pkt_atom(&data_packet(0, crate::packet::MAX_PACKET_DATALEN + 1)),
+            Err(RelayError::Packet(PacketError::PacketDataTooLarge { .. }))
+        ));
+        assert!(
+            matches!(machine.parse_pkt_atom(&data_packet(u32::MAX - 4, 7)).unwrap(), Some(RelayEvent::MediaChunk(content)) if content.pos == i64::from(u32::MAX - 4))
+        );
+        assert!(
+            matches!(machine.parse_pkt_atom(&data_packet(2, 1)).unwrap(), Some(RelayEvent::MediaChunk(content)) if content.pos == (1i64 << 32) + 2)
+        );
+    }
+
+    #[test]
+    fn relay_helo_with_ping_includes_matching_port_and_ping() {
+        let machine = RelayClientStateMachine::new(
+            ChannelId::from_bytes([1; 16]),
+            ChannelId::from_bytes([2; 16]),
+            RelayNetworkProfile::IPv4,
+            0,
+        );
+        let mut encoded = machine
+            .build_helo_with_ping("PeerCastRust/1.0", 7144)
+            .unwrap();
+        let atom = Atom::decode(&mut encoded, &AtomBudget::default())
+            .unwrap()
+            .unwrap();
+        let children = atom.children().unwrap();
+        let port = children
+            .iter()
+            .find(|child| child.name() == ID4::HELO_PORT)
+            .and_then(|child| child.get_u16_le().ok());
+        let ping = children
+            .iter()
+            .find(|child| child.name() == ID4::HELO_PING)
+            .and_then(|child| child.get_u16_le().ok());
+
+        assert_eq!(port, Some(7144));
+        assert_eq!(ping, Some(7144));
+    }
+}
+
 impl RelayClientPhase {
     #[inline]
     pub fn is_terminal(&self) -> bool {
@@ -43,6 +108,8 @@ impl RelayClientPhase {
 /// Errors produced during relay handshake or streaming.
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 pub enum RelayError {
+    #[error("Channel packet error: {0}")]
+    Packet(#[from] PacketError),
     #[error("HTTP prelude error: {0}")]
     Http(#[from] PcpHttpError),
 
@@ -53,10 +120,7 @@ pub enum RelayError {
     InvalidOkValue(u32),
 
     #[error("Unexpected Atom tag in phase {phase:?}: {tag:?}")]
-    UnexpectedAtom {
-        phase: RelayClientPhase,
-        tag: ID4,
-    },
+    UnexpectedAtom { phase: RelayClientPhase, tag: ID4 },
 
     #[error("Server returned quit: {0}")]
     ServerQuit(QuitReason),
@@ -80,6 +144,8 @@ pub enum RelayEvent {
     },
     /// Received a stream media or header chunk.
     MediaChunk(Content),
+    /// Received a stream header chunk.
+    HeaderChunk(Content),
     /// Received channel metadata (`info` Atom).
     ChannelInfo(Atom),
     /// Received track metadata (`trck` Atom).
@@ -116,9 +182,11 @@ pub struct RelayClientStateMachine {
     session_id: ChannelId,
     network_profile: RelayNetworkProfile,
     cursor_pos: i64,
+    last_unwrapped_pos: Option<i64>,
     http_limits: PcpHttpLimits,
     atom_budget: AtomBudget,
     candidate_hosts: Vec<Host>,
+    max_candidate_hosts: usize,
     remote_session_id: Option<ChannelId>,
     remote_ip: Option<IpAddr>,
     remote_port: Option<u16>,
@@ -138,14 +206,22 @@ impl RelayClientStateMachine {
             session_id,
             network_profile,
             cursor_pos,
+            last_unwrapped_pos: (cursor_pos > 0).then_some(cursor_pos),
             http_limits: PcpHttpLimits::default(),
             atom_budget: AtomBudget::default(),
             candidate_hosts: Vec::new(),
+            max_candidate_hosts: MAX_CANDIDATE_HOSTS,
             remote_session_id: None,
             remote_ip: None,
             remote_port: None,
             stream_epoch: 1,
         }
+    }
+
+    /// Sets the maximum number of valid candidate hosts retained during a 503 exchange.
+    pub fn with_max_candidate_hosts(mut self, max_candidate_hosts: usize) -> Self {
+        self.max_candidate_hosts = max_candidate_hosts.max(1);
+        self
     }
 
     pub fn phase(&self) -> RelayClientPhase {
@@ -198,6 +274,20 @@ impl RelayClientStateMachine {
 
     /// Formats client `helo` Atom for handshake.
     pub fn build_helo(&self, agent: &str, port: Option<u16>) -> Result<Bytes, AtomError> {
+        self.build_helo_with_options(agent, port, None)
+    }
+
+    /// Formats client `helo` Atom with both advertised port and a PCP ping request.
+    pub fn build_helo_with_ping(&self, agent: &str, port: u16) -> Result<Bytes, AtomError> {
+        self.build_helo_with_options(agent, Some(port), Some(port))
+    }
+
+    fn build_helo_with_options(
+        &self,
+        agent: &str,
+        port: Option<u16>,
+        ping_port: Option<u16>,
+    ) -> Result<Bytes, AtomError> {
         let mut children = vec![
             Atom::new_string(ID4::HELO_AGENT, agent),
             Atom::new_leaf(
@@ -208,6 +298,9 @@ impl RelayClientStateMachine {
         ];
         if let Some(p) = port {
             children.push(Atom::new_u16_le(ID4::HELO_PORT, p));
+        }
+        if let Some(p) = ping_port {
+            children.push(Atom::new_u16_le(ID4::HELO_PING, p));
         }
         let helo = Atom::new_parent(ID4::PCP_HELO, children);
         helo.to_bytes()
@@ -226,9 +319,7 @@ impl RelayClientStateMachine {
 
             RelayClientPhase::WaitingResponse => {
                 match parse_relay_response(buf, &self.http_limits) {
-                    Ok(Some(resp)) => {
-                        self.handle_http_response(resp)
-                    }
+                    Ok(Some(resp)) => self.handle_http_response(resp),
                     Ok(None) => Ok(None),
                     Err(PcpHttpError::NotFoundOffAir) => {
                         self.phase = RelayClientPhase::Terminal(QuitReason::OFF_AIR);
@@ -296,7 +387,7 @@ impl RelayClientStateMachine {
                     // Validate candidate host (REQ-032, REQ-043)
                     if let Ok(host) = Host::from_atom(&atom) {
                         if host.is_valid_candidate(&self.session_id, None)
-                            && self.candidate_hosts.len() < MAX_CANDIDATE_HOSTS
+                            && self.candidate_hosts.len() < self.max_candidate_hosts
                         {
                             self.candidate_hosts.push(host);
                         }
@@ -347,7 +438,10 @@ impl RelayClientStateMachine {
         }
     }
 
-    fn handle_http_response(&mut self, resp: PcpRelayResponse) -> Result<Option<RelayEvent>, RelayError> {
+    fn handle_http_response(
+        &mut self,
+        resp: PcpRelayResponse,
+    ) -> Result<Option<RelayEvent>, RelayError> {
         match resp.status {
             PcpHttpStatus::Ok200 => {
                 self.phase = RelayClientPhase::WaitingOleh200;
@@ -438,31 +532,25 @@ impl RelayClientStateMachine {
     }
 
     fn parse_pkt_atom(&mut self, pkt: &Atom) -> Result<Option<RelayEvent>, RelayError> {
-        let mut pos = 0i64;
-        let mut cont = ContinuationFlags::NONE;
-        let mut data = Bytes::new();
-
-        if let Some(children) = pkt.children() {
-            for child in children {
-                if child.name() == ID4::PKT_POS {
-                    pos = child.get_u32_le().unwrap_or(0) as i64;
-                } else if child.name() == ID4::PKT_CONT {
-                    cont = ContinuationFlags(child.get_u8().unwrap_or(0));
-                } else if child.name() == ID4::PKT_DATA || child.name() == ID4::PKT_HEAD {
-                    if let Some(b) = child.leaf_bytes() {
-                        data = b.clone();
-                    }
-                }
-            }
-        }
+        let packet = ChannelPacket::from_atom(pkt, self.last_unwrapped_pos)?;
+        self.last_unwrapped_pos = Some(packet.pos);
+        self.cursor_pos = packet.pos;
+        let (data, is_header) = match packet.payload {
+            PacketPayload::Header(data) => (data, true),
+            PacketPayload::Data(data) => (data, false),
+        };
 
         let content = Content::new(
             self.stream_epoch,
             std::time::Duration::from_millis(0),
-            pos,
+            packet.pos,
             data,
-            cont,
+            packet.cont,
         );
-        Ok(Some(RelayEvent::MediaChunk(content)))
+        Ok(Some(if is_header {
+            RelayEvent::HeaderChunk(content)
+        } else {
+            RelayEvent::MediaChunk(content)
+        }))
     }
 }

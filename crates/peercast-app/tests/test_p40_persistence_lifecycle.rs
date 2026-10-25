@@ -42,7 +42,9 @@ fn test_p40_config_validation_and_invariants() {
     config.server.bind_address = "not-an-ip".to_string();
     assert_eq!(
         config.validate(),
-        Err(ConfigValidationError::InvalidBindAddress("not-an-ip".to_string()))
+        Err(ConfigValidationError::InvalidBindAddress(
+            "not-an-ip".to_string()
+        ))
     );
     config.server.bind_address = DEFAULT_BIND_ADDRESS.to_string();
 
@@ -68,7 +70,10 @@ fn test_p40_config_validation_and_invariants() {
 
     // 6. Zero upstream rate
     config.server.max_upstream_rate = 0;
-    assert_eq!(config.validate(), Err(ConfigValidationError::ZeroUpstreamRate));
+    assert_eq!(
+        config.validate(),
+        Err(ConfigValidationError::ZeroUpstreamRate)
+    );
     config.server.max_upstream_rate = 10000;
 
     // 7. Insecure remote admin (enabled without token or token < 8 chars)
@@ -94,7 +99,9 @@ fn test_p40_config_validation_and_invariants() {
     config.logging.level = "invalid_level".to_string();
     assert_eq!(
         config.validate(),
-        Err(ConfigValidationError::InvalidLogLevel("invalid_level".to_string()))
+        Err(ConfigValidationError::InvalidLogLevel(
+            "invalid_level".to_string()
+        ))
     );
     config.logging.level = "info".to_string();
 
@@ -195,7 +202,10 @@ fn test_p40_safe_migration_and_backup_preservation() {
         if fname.starts_with("peercast.json.bak.") && fname.ends_with("_v1") {
             backup_found = true;
             let backup_content = fs::read_to_string(entry.path()).unwrap();
-            assert_eq!(backup_content, legacy_v1_json, "backup must preserve exact original bytes");
+            assert_eq!(
+                backup_content, legacy_v1_json,
+                "backup must preserve exact original bytes"
+            );
         }
     }
     assert!(backup_found, "migration backup file must exist on disk");
@@ -265,7 +275,10 @@ fn test_p40_cli_flags_parsing_and_precedence() {
     let short_cli = AppCliArgs::parse_from(short_args).expect("parse short flags should succeed");
     assert_eq!(short_cli.port, Some(7160));
     assert_eq!(short_cli.bind_address.as_deref(), Some("192.168.1.10"));
-    assert_eq!(short_cli.config_path, Some(PathBuf::from("/etc/peercast.json")));
+    assert_eq!(
+        short_cli.config_path,
+        Some(PathBuf::from("/etc/peercast.json"))
+    );
     assert!(short_cli.kill);
 
     // 3. CLI takes precedence over configuration file
@@ -306,16 +319,24 @@ async fn test_p40_lifecycle_state_machine_and_reentrancy_guard() {
 
     // 4. Re-entrancy guard: subsequent calls return false immediately
     let duplicate = lifecycle.request_shutdown(ShutdownReason::IpcKill).await;
-    assert!(!duplicate, "duplicate shutdown call must be rejected by re-entrancy guard");
+    assert!(
+        !duplicate,
+        "duplicate shutdown call must be rejected by re-entrancy guard"
+    );
 
     // 5. Complete shutdown transitions to Stopped
-    let res = lifecycle.complete_shutdown(Duration::from_millis(100)).await;
+    let res = lifecycle
+        .complete_shutdown(Duration::from_millis(100))
+        .await;
     assert!(res.is_ok());
     assert_eq!(lifecycle.phase().await, LifecyclePhase::Stopped);
 
     // 6. Shutdown call while Stopped returns false
     let after_stopped = lifecycle.request_shutdown(ShutdownReason::AdminRpc).await;
-    assert!(!after_stopped, "shutdown call on Stopped state must return false");
+    assert!(
+        !after_stopped,
+        "shutdown call on Stopped state must return false"
+    );
 }
 
 /// Acceptance criterion 7:
@@ -352,15 +373,25 @@ async fn test_p40_graceful_shutdown_during_active_traffic() {
     assert_eq!(tracker.active_tasks(), task_count);
 
     // Trigger shutdown
-    lifecycle.request_shutdown(ShutdownReason::OsSignal("SIGINT".to_string())).await;
+    lifecycle
+        .request_shutdown(ShutdownReason::OsSignal("SIGINT".to_string()))
+        .await;
 
     // Drain tasks with timeout
     let drain_result = lifecycle.complete_shutdown(Duration::from_secs(2)).await;
     assert!(drain_result.is_ok(), "all tasks must drain within timeout");
 
     // Stop/block guard: Verify zero tasks survived shutdown
-    assert_eq!(tracker.active_tasks(), 0, "active task count must be strictly 0 after shutdown");
-    assert_eq!(completed_tasks.load(Ordering::SeqCst), task_count, "all tasks must have acknowledged shutdown");
+    assert_eq!(
+        tracker.active_tasks(),
+        0,
+        "active task count must be strictly 0 after shutdown"
+    );
+    assert_eq!(
+        completed_tasks.load(Ordering::SeqCst),
+        task_count,
+        "all tasks must have acknowledged shutdown"
+    );
 }
 
 /// Acceptance criterion 8:

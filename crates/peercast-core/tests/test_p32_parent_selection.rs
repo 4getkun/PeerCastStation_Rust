@@ -115,7 +115,8 @@ fn test_p32_locality_additive_dominance() {
 fn test_p32_pre_scoring_eligibility_enforcement() {
     let clock = Arc::new(FakeClock::new(0));
     let mut registry = HostRegistry::with_clock(DEFAULT_FRESHNESS_THRESHOLD, 512, clock.clone());
-    let mut cooldown = EndpointCooldownTable::with_clock(DEFAULT_COOLDOWN_DURATION, 512, clock.clone());
+    let mut cooldown =
+        EndpointCooldownTable::with_clock(DEFAULT_COOLDOWN_DURATION, 512, clock.clone());
 
     let self_sid = ChannelId::from_bytes([0xEE; 16]);
     let self_addr: SocketAddr = "10.0.0.100:7144".parse().unwrap();
@@ -132,7 +133,13 @@ fn test_p32_pre_scoring_eligibility_enforcement() {
     let channel_id = ChannelId::from_bytes([0xAA; 16]);
 
     // 1. High scoring host that matches self session ID (self-loop): MUST BE EXCLUDED
-    let mut self_host = make_candidate(0xEE, "10.0.0.1:7144".parse().unwrap(), HostFlags1::RELAY, 0, 5);
+    let mut self_host = make_candidate(
+        0xEE,
+        "10.0.0.1:7144".parse().unwrap(),
+        HostFlags1::RELAY,
+        0,
+        5,
+    );
     self_host.channel_id = channel_id;
     self_host.session_id = self_sid;
     registry.upsert(self_host);
@@ -288,8 +295,8 @@ fn test_p32_policy_diversity_peercast_yt_greedy_differs_from_station() {
 #[test]
 fn test_p32_reconnect_budget_and_station_backoff_arithmetic() {
     let mut budget = ReconnectBudget::new(
-        5, // max 5 attempts per cycle
-        Duration::from_millis(1000), // base 1000ms
+        5,                            // max 5 attempts per cycle
+        Duration::from_millis(1000),  // base 1000ms
         Duration::from_millis(30000), // cap 30000ms
     );
 
@@ -365,25 +372,61 @@ fn test_p32_locality_detector_rules() {
     assert!(detector.is_site_local(&h1));
 
     // 2. RFC 1918 private IPv4 addresses
-    let h_192 = make_candidate(2, "192.168.1.1:7144".parse().unwrap(), HostFlags1::default(), 0, 0);
+    let h_192 = make_candidate(
+        2,
+        "192.168.1.1:7144".parse().unwrap(),
+        HostFlags1::default(),
+        0,
+        0,
+    );
     assert!(detector.is_site_local(&h_192));
 
-    let h_10 = make_candidate(3, "10.250.0.1:7144".parse().unwrap(), HostFlags1::default(), 0, 0);
+    let h_10 = make_candidate(
+        3,
+        "10.250.0.1:7144".parse().unwrap(),
+        HostFlags1::default(),
+        0,
+        0,
+    );
     assert!(detector.is_site_local(&h_10));
 
-    let h_172 = make_candidate(4, "172.20.10.5:7144".parse().unwrap(), HostFlags1::default(), 0, 0);
+    let h_172 = make_candidate(
+        4,
+        "172.20.10.5:7144".parse().unwrap(),
+        HostFlags1::default(),
+        0,
+        0,
+    );
     assert!(detector.is_site_local(&h_172));
 
     // 3. Loopback
-    let h_loop = make_candidate(5, "127.0.0.1:7144".parse().unwrap(), HostFlags1::default(), 0, 0);
+    let h_loop = make_candidate(
+        5,
+        "127.0.0.1:7144".parse().unwrap(),
+        HostFlags1::default(),
+        0,
+        0,
+    );
     assert!(detector.is_site_local(&h_loop));
 
     // 4. Public IP not matching listener
-    let h_public = make_candidate(6, "198.51.100.1:7144".parse().unwrap(), HostFlags1::default(), 0, 0);
+    let h_public = make_candidate(
+        6,
+        "198.51.100.1:7144".parse().unwrap(),
+        HostFlags1::default(),
+        0,
+        0,
+    );
     assert!(!detector.is_site_local(&h_public));
 
     // 5. Host without global_endpoint (null global): treated as site-local (Station parity)
-    let mut h_null_global = make_candidate(7, "10.0.0.1:7144".parse().unwrap(), HostFlags1::default(), 0, 0);
+    let mut h_null_global = make_candidate(
+        7,
+        "10.0.0.1:7144".parse().unwrap(),
+        HostFlags1::default(),
+        0,
+        0,
+    );
     h_null_global.global_endpoint = None;
     assert!(detector.is_site_local(&h_null_global));
 }

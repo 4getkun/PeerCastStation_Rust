@@ -445,7 +445,10 @@ impl Default for MkvDemuxer {
 impl MkvDemuxer {
     /// Creates a new MkvDemuxer with default limits.
     pub fn new() -> Self {
-        Self::with_limits(DEFAULT_MAX_MKV_BUFFER_CAPACITY, DEFAULT_MAX_MKV_ELEMENT_SIZE)
+        Self::with_limits(
+            DEFAULT_MAX_MKV_BUFFER_CAPACITY,
+            DEFAULT_MAX_MKV_ELEMENT_SIZE,
+        )
     }
 
     /// Creates a new MkvDemuxer with explicit memory bounds (Global Rule 3).
@@ -548,10 +551,7 @@ impl MkvDemuxer {
                     self.max_size_length = max_sz as usize;
 
                     self.header_elements.clear();
-                    self.header_elements.push(MkvElement {
-                        header,
-                        data,
-                    });
+                    self.header_elements.push(MkvElement { header, data });
                     self.state = MkvDemuxerState::AwaitingSegment;
                 }
                 MkvDemuxerState::AwaitingSegment => {
@@ -589,9 +589,17 @@ impl MkvDemuxer {
 
                         let is_webm = self.doc_type == "webm";
                         let (ctype, mime, ext) = if is_webm {
-                            ("WEBM".to_string(), "video/webm".to_string(), ".webm".to_string())
+                            (
+                                "WEBM".to_string(),
+                                "video/webm".to_string(),
+                                ".webm".to_string(),
+                            )
                         } else {
-                            ("MKV".to_string(), "video/x-matroska".to_string(), ".mkv".to_string())
+                            (
+                                "MKV".to_string(),
+                                "video/x-matroska".to_string(),
+                                ".mkv".to_string(),
+                            )
                         };
 
                         let meta = MkvMetadata {
@@ -673,10 +681,7 @@ impl MkvDemuxer {
                             }
                         }
 
-                        self.header_elements.push(MkvElement {
-                            header,
-                            data,
-                        });
+                        self.header_elements.push(MkvElement { header, data });
                     }
                 }
                 MkvDemuxerState::StreamingClusters => {

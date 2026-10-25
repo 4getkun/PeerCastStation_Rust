@@ -215,7 +215,8 @@ impl<C: CacheClock> GossipDedupCache<C> {
         let now = self.clock.now();
         let window = self.window;
         let before = self.entries.len();
-        self.entries.retain(|_, &mut seen_at| now.saturating_sub(seen_at) <= window);
+        self.entries
+            .retain(|_, &mut seen_at| now.saturating_sub(seen_at) <= window);
         before.saturating_sub(self.entries.len())
     }
 
@@ -389,7 +390,9 @@ impl<C: CacheClock> GossipForwarder<C> {
                     process_locally: false,
                     forward_packet: None,
                     target_groups: BroadcastGroup(0),
-                    drop_reason: Some(GossipDropReason::MalformedAtom("Missing 'hops'".to_string())),
+                    drop_reason: Some(GossipDropReason::MalformedAtom(
+                        "Missing 'hops'".to_string(),
+                    )),
                 };
             }
         };
@@ -401,7 +404,9 @@ impl<C: CacheClock> GossipForwarder<C> {
                     process_locally: false,
                     forward_packet: None,
                     target_groups: BroadcastGroup(0),
-                    drop_reason: Some(GossipDropReason::MalformedAtom("Missing 'from'".to_string())),
+                    drop_reason: Some(GossipDropReason::MalformedAtom(
+                        "Missing 'from'".to_string(),
+                    )),
                 };
             }
         };

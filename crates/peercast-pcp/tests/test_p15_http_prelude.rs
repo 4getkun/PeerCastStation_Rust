@@ -22,7 +22,9 @@ fn test_header_and_first_atom_in_one_read_transition() {
     let mut buf = Bytes::from(combined);
 
     // 2. Parse HTTP relay response
-    let response = parse_relay_response(&mut buf, &limits).unwrap().expect("Response must parse");
+    let response = parse_relay_response(&mut buf, &limits)
+        .unwrap()
+        .expect("Response must parse");
     assert_eq!(response.status, PcpHttpStatus::Ok200);
     assert_eq!(response.pos, Some(12345));
 
@@ -32,7 +34,10 @@ fn test_header_and_first_atom_in_one_read_transition() {
         .unwrap()
         .expect("Atom must decode from retained tail");
     assert_eq!(decoded_atom, first_atom);
-    assert!(buf.is_empty(), "Buffer must be cleanly drained after decoding Atom");
+    assert!(
+        buf.is_empty(),
+        "Buffer must be cleanly drained after decoding Atom"
+    );
 }
 
 #[test]
@@ -60,7 +65,9 @@ fn test_fragmented_crlf_and_incremental_arrival() {
 
     // Now complete with remaining byte
     let mut complete = Bytes::copy_from_slice(full.as_bytes());
-    let resp = parse_relay_response(&mut complete, &limits).unwrap().expect("Must succeed when complete");
+    let resp = parse_relay_response(&mut complete, &limits)
+        .unwrap()
+        .expect("Must succeed when complete");
     assert_eq!(resp.status, PcpHttpStatus::Ok200);
     assert!(complete.is_empty());
 }
@@ -102,7 +109,9 @@ fn test_relay_request_valid_and_invalid() {
     );
     let mut buf = Bytes::from(req_str.into_bytes());
 
-    let req = parse_relay_request(&mut buf, &limits).unwrap().expect("Request must parse");
+    let req = parse_relay_request(&mut buf, &limits)
+        .unwrap()
+        .expect("Request must parse");
     assert_eq!(req.channel_id, ChannelId::from_hex(hex_id).unwrap());
     assert_eq!(req.http_version, "HTTP/1.0");
     assert_eq!(req.pcp_version, Some(1));

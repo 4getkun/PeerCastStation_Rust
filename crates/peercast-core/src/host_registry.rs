@@ -156,7 +156,11 @@ pub struct EndpointCooldownTable<C: CacheClock = SystemCacheClock> {
 impl EndpointCooldownTable<SystemCacheClock> {
     /// Creates a new cooldown table with default duration and system monotonic clock.
     pub fn new(cooldown_duration: Duration, max_entries: usize) -> Self {
-        Self::with_clock(cooldown_duration, max_entries, Arc::new(SystemCacheClock::new()))
+        Self::with_clock(
+            cooldown_duration,
+            max_entries,
+            Arc::new(SystemCacheClock::new()),
+        )
     }
 }
 
@@ -283,7 +287,8 @@ impl<C: CacheClock> EndpointCooldownTable<C> {
         let now = self.clock.now();
         let cooldown = self.cooldown_duration;
         let before = self.entries.len();
-        self.entries.retain(|_, entry| entry.is_active_at(now, cooldown));
+        self.entries
+            .retain(|_, entry| entry.is_active_at(now, cooldown));
         before.saturating_sub(self.entries.len())
     }
 
@@ -314,7 +319,11 @@ pub struct HostRegistry<C: CacheClock = SystemCacheClock> {
 impl HostRegistry<SystemCacheClock> {
     /// Creates a new host registry with default freshness threshold and system monotonic clock.
     pub fn new(freshness_threshold: Duration, max_hosts: usize) -> Self {
-        Self::with_clock(freshness_threshold, max_hosts, Arc::new(SystemCacheClock::new()))
+        Self::with_clock(
+            freshness_threshold,
+            max_hosts,
+            Arc::new(SystemCacheClock::new()),
+        )
     }
 }
 
@@ -407,7 +416,8 @@ impl<C: CacheClock> HostRegistry<C> {
         }
 
         // 4. Insert new registered host
-        self.hosts.insert(primary_key, RegisteredHost::new(host, now));
+        self.hosts
+            .insert(primary_key, RegisteredHost::new(host, now));
         action
     }
 

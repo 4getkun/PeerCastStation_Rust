@@ -50,13 +50,9 @@ pub enum RouteTarget {
         extension: Option<String>,
     },
     /// Static / embedded web asset route (e.g. `/`, `/index.html`, `/css/tokens.css`).
-    StaticAsset {
-        path: String,
-    },
+    StaticAsset { path: String },
     /// JSON-RPC 2.0 API endpoint (`/api/1` or `/api/1/peercaststation.js`).
-    RpcApi {
-        subpath: String,
-    },
+    RpcApi { subpath: String },
 }
 
 /// A parsed incoming HTTP request for direct streaming or playlist generation.
@@ -162,7 +158,9 @@ impl HttpRequest {
 
         // Enforce method constraints per target route (REQ-060)
         match target {
-            RouteTarget::Stream { .. } | RouteTarget::Playlist { .. } | RouteTarget::StaticAsset { .. } => {
+            RouteTarget::Stream { .. }
+            | RouteTarget::Playlist { .. }
+            | RouteTarget::StaticAsset { .. } => {
                 if method != HttpMethod::Get && method != HttpMethod::Head {
                     return Err(RoutingError::MethodNotAllowed(method_str.to_string()));
                 }
@@ -234,9 +232,7 @@ impl RouteTarget {
 }
 
 /// Extracts and validates a 32-character hexadecimal channel ID and optional extension (REQ-060).
-fn extract_channel_id_and_ext(
-    segment: &str,
-) -> Result<(String, Option<String>), RoutingError> {
+fn extract_channel_id_and_ext(segment: &str) -> Result<(String, Option<String>), RoutingError> {
     if segment.is_empty() {
         return Err(RoutingError::InvalidChannelId(segment.to_string()));
     }

@@ -39,7 +39,9 @@ pub enum SniffResult {
 /// Errors produced during sniffing or prefix buffering.
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 pub enum SniffError {
-    #[error("Sniff buffer exceeded maximum configured bound ({actual} > {max} bytes) (Global Rule 3)")]
+    #[error(
+        "Sniff buffer exceeded maximum configured bound ({actual} > {max} bytes) (Global Rule 3)"
+    )]
     BufferOverflow { actual: usize, max: usize },
 }
 
@@ -209,9 +211,7 @@ pub fn detect_container(data: &[u8]) -> SniffResult {
         }
 
         // Search for "webm" or "matroska" in the initial EBML header elements
-        let is_webm = data[..data.len().min(128)]
-            .windows(4)
-            .any(|w| w == b"webm");
+        let is_webm = data[..data.len().min(128)].windows(4).any(|w| w == b"webm");
 
         let (ctype, mime) = if is_webm {
             ("WEBM", "video/webm")
@@ -220,7 +220,11 @@ pub fn detect_container(data: &[u8]) -> SniffResult {
         };
 
         return SniffResult::Definitive(ContainerInfo {
-            container_type: if is_webm { ContainerType::WebM } else { ContainerType::MKV },
+            container_type: if is_webm {
+                ContainerType::WebM
+            } else {
+                ContainerType::MKV
+            },
             content_type_str: ctype.to_string(),
             mime_type: mime.to_string(),
             has_audio: true,

@@ -36,11 +36,17 @@ fn test_scalar_fixed_width_le() {
     // Malformed widths must fail without reading out of bounds
     assert!(matches!(
         Scalar::read_u16_le(&[0x34]),
-        Err(ScalarError::WidthMismatch { expected: 2, actual: 1 })
+        Err(ScalarError::WidthMismatch {
+            expected: 2,
+            actual: 1
+        })
     ));
     assert!(matches!(
         Scalar::read_u16_le(&[0x34, 0x12, 0x00]),
-        Err(ScalarError::WidthMismatch { expected: 2, actual: 3 })
+        Err(ScalarError::WidthMismatch {
+            expected: 2,
+            actual: 3
+        })
     ));
 
     // Little-endian u32
@@ -51,11 +57,17 @@ fn test_scalar_fixed_width_le() {
 
     assert!(matches!(
         Scalar::read_u32_le(&[0x78, 0x56, 0x34]),
-        Err(ScalarError::WidthMismatch { expected: 4, actual: 3 })
+        Err(ScalarError::WidthMismatch {
+            expected: 4,
+            actual: 3
+        })
     ));
     assert!(matches!(
         Scalar::read_u32_le(&[0x78, 0x56, 0x34, 0x12, 0x00]),
-        Err(ScalarError::WidthMismatch { expected: 4, actual: 5 })
+        Err(ScalarError::WidthMismatch {
+            expected: 4,
+            actual: 5
+        })
     ));
 
     // Little-endian u64
@@ -70,7 +82,10 @@ fn test_scalar_nul_terminated_string() {
     let s = "PeerCast";
     let encoded = Scalar::write_nul_terminated_utf8(s);
     assert_eq!(&encoded[..], b"PeerCast\0");
-    assert_eq!(Scalar::read_nul_terminated_utf8(&encoded).unwrap(), "PeerCast");
+    assert_eq!(
+        Scalar::read_nul_terminated_utf8(&encoded).unwrap(),
+        "PeerCast"
+    );
 
     // Missing terminating NUL
     assert!(matches!(

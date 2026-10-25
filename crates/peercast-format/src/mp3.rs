@@ -116,11 +116,20 @@ impl Mp3FrameHeader {
         }
 
         let (bitrate_kbps, sample_rate_hz) = if mpeg_version == 1 {
-            (MPEG1_L3_BITRATES_KBPS[bitrate_idx], MPEG1_SAMPLING_RATES_HZ[sr_idx])
+            (
+                MPEG1_L3_BITRATES_KBPS[bitrate_idx],
+                MPEG1_SAMPLING_RATES_HZ[sr_idx],
+            )
         } else if mpeg_version == 2 {
-            (MPEG2_L3_BITRATES_KBPS[bitrate_idx], MPEG2_SAMPLING_RATES_HZ[sr_idx])
+            (
+                MPEG2_L3_BITRATES_KBPS[bitrate_idx],
+                MPEG2_SAMPLING_RATES_HZ[sr_idx],
+            )
         } else {
-            (MPEG2_L3_BITRATES_KBPS[bitrate_idx], MPEG25_SAMPLING_RATES_HZ[sr_idx])
+            (
+                MPEG2_L3_BITRATES_KBPS[bitrate_idx],
+                MPEG25_SAMPLING_RATES_HZ[sr_idx],
+            )
         };
 
         let padding = ((b2 >> 1) & 0x01) != 0;
@@ -254,7 +263,11 @@ impl Mp3Demuxer {
 
             // Sync search for 0xFF
             if self.buffer[0] != 0xFF || (self.buffer[1] & 0xE0) != 0xE0 {
-                if let Some(pos) = self.buffer.windows(2).position(|w| w[0] == 0xFF && (w[1] & 0xE0) == 0xE0) {
+                if let Some(pos) = self
+                    .buffer
+                    .windows(2)
+                    .position(|w| w[0] == 0xFF && (w[1] & 0xE0) == 0xE0)
+                {
                     self.buffer.advance(pos);
                 } else {
                     let keep = self.buffer.len().min(1);

@@ -87,7 +87,9 @@ pub enum OggParseError {
     #[error("Ogg packet size {actual} exceeded configured maximum limit {max} (Global Rule 3)")]
     PacketSizeExceeded { actual: usize, max: usize },
 
-    #[error("Unsupported codec in Ogg container (REQ-056: Ogg container support is not universal)")]
+    #[error(
+        "Unsupported codec in Ogg container (REQ-056: Ogg container support is not universal)"
+    )]
     UnsupportedCodec,
 
     #[error("Invalid packet continuation without preceding continued segment")]
@@ -382,7 +384,11 @@ impl OggDemuxer {
 
             // Sync search for 'OggS'
             if self.buffer[0..4] != OGG_CAPTURE_PATTERN {
-                if let Some(pos) = self.buffer.windows(4).position(|w| w == OGG_CAPTURE_PATTERN) {
+                if let Some(pos) = self
+                    .buffer
+                    .windows(4)
+                    .position(|w| w == OGG_CAPTURE_PATTERN)
+                {
                     self.buffer.advance(pos);
                 } else {
                     let keep = self.buffer.len().min(3);
@@ -399,7 +405,10 @@ impl OggDemuxer {
 
             // Chained stream detection: if BOS arrives while state is Ended or StreamingMedia,
             // bump epoch and restart header collection for the new bitstream (RFC 3533, REQ-051).
-            if header.is_bos() && (self.state == OggDemuxerState::StreamingMedia || self.state == OggDemuxerState::Ended) {
+            if header.is_bos()
+                && (self.state == OggDemuxerState::StreamingMedia
+                    || self.state == OggDemuxerState::Ended)
+            {
                 self.current_epoch += 1;
                 self.state = OggDemuxerState::AwaitingBos;
                 self.header_pages.clear();
@@ -445,10 +454,26 @@ impl OggDemuxer {
 
                     let is_video = codec == OggCodec::Theora;
                     let (ctype, mime, ext) = match codec {
-                        OggCodec::Vorbis => ("OGG".to_string(), "audio/ogg".to_string(), ".ogg".to_string()),
-                        OggCodec::Opus => ("OPUS".to_string(), "audio/ogg".to_string(), ".opus".to_string()),
-                        OggCodec::Theora => ("OGM".to_string(), "video/ogg".to_string(), ".ogm".to_string()),
-                        OggCodec::Unsupported => ("OGG".to_string(), "application/ogg".to_string(), ".ogg".to_string()),
+                        OggCodec::Vorbis => (
+                            "OGG".to_string(),
+                            "audio/ogg".to_string(),
+                            ".ogg".to_string(),
+                        ),
+                        OggCodec::Opus => (
+                            "OPUS".to_string(),
+                            "audio/ogg".to_string(),
+                            ".opus".to_string(),
+                        ),
+                        OggCodec::Theora => (
+                            "OGM".to_string(),
+                            "video/ogg".to_string(),
+                            ".ogm".to_string(),
+                        ),
+                        OggCodec::Unsupported => (
+                            "OGG".to_string(),
+                            "application/ogg".to_string(),
+                            ".ogg".to_string(),
+                        ),
                     };
 
                     self.metadata = Some(OggMetadata {

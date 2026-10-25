@@ -3,6 +3,12 @@ use std::time::Duration;
 
 use crate::content::Content;
 
+/// Default maximum retained content bytes (8 MiB).
+pub const DEFAULT_RINGBUFFER_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// Default maximum retained content time window (3 seconds).
+pub const DEFAULT_RINGBUFFER_TIME_WINDOW: Duration = Duration::from_secs(3);
+
 /// Bounded sliding-window buffer for channel media content (REQ-025, REQ-027).
 ///
 /// Enforces dual simultaneous constraints:
@@ -21,7 +27,7 @@ pub struct ContentRingBuffer {
 
 impl Default for ContentRingBuffer {
     fn default() -> Self {
-        Self::new(8 * 1024 * 1024, Duration::from_secs(3))
+        Self::new(DEFAULT_RINGBUFFER_MAX_BYTES, DEFAULT_RINGBUFFER_TIME_WINDOW)
     }
 }
 
@@ -100,7 +106,12 @@ impl ContentRingBuffer {
     /// Finds content starting from a requested position or timestamp.
     ///
     /// Selects the first chunk matching or immediately succeeding `(stream_id, timestamp, pos)`.
-    pub fn find_from(&self, stream_id: i32, timestamp: Duration, pos: i64) -> impl Iterator<Item = &Content> {
+    pub fn find_from(
+        &self,
+        stream_id: i32,
+        timestamp: Duration,
+        pos: i64,
+    ) -> impl Iterator<Item = &Content> {
         self.items.iter().filter(move |c| {
             if c.stream_id != stream_id {
                 c.stream_id > stream_id

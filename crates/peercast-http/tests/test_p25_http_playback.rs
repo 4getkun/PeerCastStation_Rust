@@ -2,13 +2,12 @@ use bytes::{BufMut, BytesMut};
 use peercast_core::cache::HeaderSnapshot;
 use peercast_core::content::{Content, ContinuationFlags};
 use peercast_format::flv::{FlvParserEvent, FlvStreamParser, FlvTagType};
-use peercast_format::safestart::SafeStartMode;
+use peercast_format::safestart::{SafeStartConfig, SafeStartMode};
 use peercast_http::playlist::{PlaylistBuilder, PlaylistEntry, PlaylistFormat};
-use peercast_http::router::{
-    HttpMethod, HttpRequest, HttpVersion, RouteTarget, RoutingError,
-};
+use peercast_http::router::{HttpMethod, HttpRequest, HttpVersion, RouteTarget, RoutingError};
 use peercast_http::streamer::{
-    build_http_200_headers, resolve_framing, stream_media_to_client, HttpFraming,
+    build_http_200_headers, resolve_framing, stream_media_to_client,
+    stream_media_to_client_with_config, HttpFraming,
 };
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,14 +19,20 @@ fn test_p25_http_framing_parity_and_mms_guards() {
     // 1. HTTP/1.1 with FLV: must be chunked
     let framing1 = resolve_framing(HttpVersion::Http11, "video/x-flv");
     assert_eq!(framing1, HttpFraming::Chunked);
-    let hdr1 = String::from_utf8(build_http_200_headers(HttpVersion::Http11, "video/x-flv", framing1).to_vec()).unwrap();
+    let hdr1 = String::from_utf8(
+        build_http_200_headers(HttpVersion::Http11, "video/x-flv", framing1).to_vec(),
+    )
+    .unwrap();
     assert!(hdr1.contains("HTTP/1.1 200 OK"));
     assert!(hdr1.contains("Transfer-Encoding: chunked"));
 
     // 2. HTTP/1.0 with FLV: MUST NOT be chunked (REQ-060 stop/block rule)
     let framing2 = resolve_framing(HttpVersion::Http10, "video/x-flv");
     assert_eq!(framing2, HttpFraming::RawContinuous);
-    let hdr2 = String::from_utf8(build_http_200_headers(HttpVersion::Http10, "video/x-flv", framing2).to_vec()).unwrap();
+    let hdr2 = String::from_utf8(
+        build_http_200_headers(HttpVersion::Http10, "video/x-flv", framing2).to_vec(),
+    )
+    .unwrap();
     assert!(hdr2.contains("HTTP/1.0 200 OK"));
     assert!(!hdr2.contains("Transfer-Encoding"));
     assert!(hdr2.contains("Connection: close"));
@@ -35,7 +40,10 @@ fn test_p25_http_framing_parity_and_mms_guards() {
     // 3. HTTP/1.1 with MMS / ASF: MUST NOT be chunked (REQ-060 stop/block rule)
     let framing3 = resolve_framing(HttpVersion::Http11, "video/x-ms-asf");
     assert_eq!(framing3, HttpFraming::RawContinuous);
-    let hdr3 = String::from_utf8(build_http_200_headers(HttpVersion::Http11, "video/x-ms-asf", framing3).to_vec()).unwrap();
+    let hdr3 = String::from_utf8(
+        build_http_200_headers(HttpVersion::Http11, "video/x-ms-asf", framing3).to_vec(),
+    )
+    .unwrap();
     assert!(!hdr3.contains("Transfer-Encoding"));
     assert!(hdr3.contains("Connection: close"));
 
@@ -46,7 +54,10 @@ fn test_p25_http_framing_parity_and_mms_guards() {
 #[test]
 fn test_p25_channel_id_validation_and_negative_routing() {
     // 1. Valid channel ID with extension
-    let req1 = HttpRequest::parse(b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
+    let req1 = HttpRequest::parse(
+        b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\nHost: localhost\r\n\r\n",
+    )
+    .unwrap();
     assert_eq!(req1.method, HttpMethod::Get);
     assert_eq!(req1.version, HttpVersion::Http11);
     assert_eq!(
@@ -58,7 +69,10 @@ fn test_p25_channel_id_validation_and_negative_routing() {
     );
 
     // 2. Valid playlist request
-    let req2 = HttpRequest::parse(b"GET /pls/9778E62BDC59DF56F9216D0387F80BF2.m3u?tip=127.0.0.1 HTTP/1.0\r\n\r\n").unwrap();
+    let req2 = HttpRequest::parse(
+        b"GET /pls/9778E62BDC59DF56F9216D0387F80BF2.m3u?tip=127.0.0.1 HTTP/1.0\r\n\r\n",
+    )
+    .unwrap();
     assert_eq!(req2.version, HttpVersion::Http10);
     assert_eq!(
         req2.target,
@@ -68,14 +82,19 @@ fn test_p25_channel_id_validation_and_negative_routing() {
             extension: Some("m3u".to_string()),
         }
     );
-    assert_eq!(req2.query_params, vec![("tip".to_string(), "127.0.0.1".to_string())]);
+    assert_eq!(
+        req2.query_params,
+        vec![("tip".to_string(), "127.0.0.1".to_string())]
+    );
 
     // 3. Negative test: Missing channel ID
     let err1 = HttpRequest::parse(b"GET /stream/ HTTP/1.1\r\n\r\n").unwrap_err();
     assert!(matches!(err1, RoutingError::InvalidChannelId(_)));
 
     // 4. Negative test: Invalid non-hex characters
-    let err2 = HttpRequest::parse(b"GET /stream/9778E62BDC59DF56F9216D0387F80ZZZ.flv HTTP/1.1\r\n\r\n").unwrap_err();
+    let err2 =
+        HttpRequest::parse(b"GET /stream/9778E62BDC59DF56F9216D0387F80ZZZ.flv HTTP/1.1\r\n\r\n")
+            .unwrap_err();
     assert!(matches!(err2, RoutingError::InvalidChannelId(_)));
 
     // 5. Negative test: Invalid length (too short)
@@ -83,7 +102,9 @@ fn test_p25_channel_id_validation_and_negative_routing() {
     assert!(matches!(err3, RoutingError::InvalidChannelId(_)));
 
     // 6. Negative test: Unsupported method
-    let err4 = HttpRequest::parse(b"POST /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\n\r\n").unwrap_err();
+    let err4 =
+        HttpRequest::parse(b"POST /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\n\r\n")
+            .unwrap_err();
     assert!(matches!(err4, RoutingError::MethodNotAllowed(_)));
 
     // 7. Negative test: Unknown path
@@ -110,12 +131,16 @@ fn test_p25_playlist_escaping_and_negative_injection() {
     let lines: Vec<&str> = m3u_str.lines().collect();
     assert_eq!(lines[0], "#EXTM3U");
     assert!(lines[1].starts_with("#EXTINF:-1, Safe Title"));
-    assert_eq!(lines.len(), 3, "Must only have header, title, and one stream URL");
+    assert_eq!(
+        lines.len(),
+        3,
+        "Must only have header, title, and one stream URL"
+    );
     assert!(lines[2].starts_with("http://localhost:7144/stream/"));
 
     // 2. ASX with XML injection attack attempt
-    let builder_asx = PlaylistBuilder::new(PlaylistFormat::ASX, "localhost:7144")
-        .add_entry(PlaylistEntry {
+    let builder_asx =
+        PlaylistBuilder::new(PlaylistFormat::ASX, "localhost:7144").add_entry(PlaylistEntry {
             channel_id_hex: "9778E62BDC59DF56F9216D0387F80BF2".to_string(),
             title: "Title with <script>evil()</script> & 'quotes' \"double\"".to_string(),
             extension: "wmv".to_string(),
@@ -131,11 +156,13 @@ fn test_p25_playlist_escaping_and_negative_injection() {
     assert!(asx_str.contains("&amp;"));
     assert!(asx_str.contains("&quot;"));
     assert!(asx_str.contains("&apos;"));
-    assert!(asx_str.contains("<Ref href=\"mms://localhost:7144/stream/9778E62BDC59DF56F9216D0387F80BF2.wmv\" />"));
+    assert!(asx_str.contains(
+        "<Ref href=\"mms://localhost:7144/stream/9778E62BDC59DF56F9216D0387F80BF2.wmv\" />"
+    ));
 
     // 3. PLS generation
-    let builder_pls = PlaylistBuilder::new(PlaylistFormat::PLS, "localhost:7144")
-        .add_entry(PlaylistEntry {
+    let builder_pls =
+        PlaylistBuilder::new(PlaylistFormat::PLS, "localhost:7144").add_entry(PlaylistEntry {
             channel_id_hex: "9778E62BDC59DF56F9216D0387F80BF2".to_string(),
             title: "Channel One".to_string(),
             extension: "mp3".to_string(),
@@ -146,7 +173,9 @@ fn test_p25_playlist_escaping_and_negative_injection() {
     let pls_str = String::from_utf8(pls_bytes.to_vec()).unwrap();
     assert!(pls_str.contains("[playlist]"));
     assert!(pls_str.contains("NumberOfEntries=1"));
-    assert!(pls_str.contains("File1=http://localhost:7144/stream/9778E62BDC59DF56F9216D0387F80BF2.mp3"));
+    assert!(
+        pls_str.contains("File1=http://localhost:7144/stream/9778E62BDC59DF56F9216D0387F80BF2.mp3")
+    );
     assert!(pls_str.contains("Title1=Channel One"));
 }
 
@@ -161,7 +190,10 @@ fn make_flv_header_snapshot() -> HeaderSnapshot {
     out.put_u32(0); // PreviousTagSize0 = 0
 
     // Minimal metadata tag (AMF0 ScriptData)
-    let meta_body = vec![2, 0, 10, b'o', b'n', b'M', b'e', b't', b'a', b'D', b'a', b't', b'a', 8, 0, 0, 0, 0, 0, 0, 9];
+    let meta_body = vec![
+        2, 0, 10, b'o', b'n', b'M', b'e', b't', b'a', b'D', b'a', b't', b'a', 8, 0, 0, 0, 0, 0, 0,
+        9,
+    ];
     out.put_u8(18); // ScriptData
     out.put_u8(0);
     out.put_u8(0);
@@ -191,7 +223,13 @@ fn make_flv_keyframe_chunk(epoch: i32, pos: i64) -> Content {
     data.put_slice(&body);
     data.put_u32(11 + body.len() as u32); // PreviousTagSize
 
-    Content::new(epoch, Duration::from_millis(100), pos, data.freeze(), ContinuationFlags::NONE)
+    Content::new(
+        epoch,
+        Duration::from_millis(100),
+        pos,
+        data.freeze(),
+        ContinuationFlags::NONE,
+    )
 }
 
 #[tokio::test]
@@ -222,7 +260,8 @@ async fn test_p25_loopback_http_streaming_flv_and_safe_start() {
 
     // Client task connecting over real loopback TCP socket
     let mut client = TcpStream::connect(addr).await.unwrap();
-    let req_bytes = b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    let req_bytes =
+        b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\nHost: localhost\r\n\r\n";
     client.write_all(req_bytes).await.unwrap();
 
     // Send a media keyframe chunk through the channel
@@ -240,7 +279,10 @@ async fn test_p25_loopback_http_streaming_flv_and_safe_start() {
     assert!(resp_str.contains("Transfer-Encoding: chunked\r\n"));
 
     // Extract body and decode HTTP chunked framing
-    let header_end = response_bytes.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    let header_end = response_bytes
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap();
     let mut chunked_body = &response_bytes[header_end + 4..];
 
     let mut raw_flv = Vec::new();
@@ -266,7 +308,10 @@ async fn test_p25_loopback_http_streaming_flv_and_safe_start() {
     let mut file_header_found = false;
     let mut keyframe_found = false;
 
-    while let Some(ev) = parser.next_event().expect("De-chunked FLV stream must parse cleanly in player") {
+    while let Some(ev) = parser
+        .next_event()
+        .expect("De-chunked FLV stream must parse cleanly in player")
+    {
         event_count += 1;
         match ev {
             FlvParserEvent::FileHeader(h) => {
@@ -288,6 +333,142 @@ async fn test_p25_loopback_http_streaming_flv_and_safe_start() {
     assert!(event_count >= 2);
 
     server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_p25_streamer_uses_configured_safe_start_timeout() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = mpsc::channel(1);
+    let header_snapshot = make_flv_header_snapshot();
+
+    let server_task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request_buf = [0u8; 256];
+        let n = socket.read(&mut request_buf).await.unwrap();
+        let request = HttpRequest::parse(&request_buf[..n]).unwrap();
+        stream_media_to_client_with_config(
+            &mut socket,
+            &request,
+            &header_snapshot,
+            rx,
+            SafeStartConfig {
+                mode: SafeStartMode::VideoKeyframe,
+                max_wait: Duration::ZERO,
+            },
+        )
+        .await
+        .unwrap();
+    });
+
+    let mut client = TcpStream::connect(addr).await.unwrap();
+    client
+        .write_all(b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\n\r\n")
+        .await
+        .unwrap();
+    let interframe = Content::new(
+        1,
+        Duration::from_millis(100),
+        1000,
+        vec![9, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0x27, 0x01],
+        ContinuationFlags::NONE,
+    );
+    tx.send(interframe).await.unwrap();
+    drop(tx);
+
+    let mut response = Vec::new();
+    client.read_to_end(&mut response).await.unwrap();
+    assert!(response.windows(2).any(|window| window == [0x27, 0x01]));
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_p25_http11_empty_payload_does_not_end_chunked_stream() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = mpsc::channel(4);
+    let header_snapshot = HeaderSnapshot::new(1, 0, "RAW", bytes::Bytes::new());
+
+    let server_task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request_buf = [0u8; 256];
+        let n = socket.read(&mut request_buf).await.unwrap();
+        let request = HttpRequest::parse(&request_buf[..n]).unwrap();
+        stream_media_to_client(
+            &mut socket,
+            &request,
+            &header_snapshot,
+            rx,
+            SafeStartMode::Raw,
+        )
+        .await
+        .unwrap();
+    });
+
+    let mut client = TcpStream::connect(addr).await.unwrap();
+    client
+        .write_all(
+            b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2 HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        )
+        .await
+        .unwrap();
+    tx.send(Content::new(
+        1,
+        Duration::from_millis(1),
+        0,
+        b"ABC".to_vec(),
+        ContinuationFlags::NONE,
+    ))
+    .await
+    .unwrap();
+    tx.send(Content::new(
+        1,
+        Duration::from_millis(2),
+        3,
+        Vec::new(),
+        ContinuationFlags::NONE,
+    ))
+    .await
+    .unwrap();
+    tx.send(Content::new(
+        1,
+        Duration::from_millis(3),
+        3,
+        b"DEF".to_vec(),
+        ContinuationFlags::NONE,
+    ))
+    .await
+    .unwrap();
+    drop(tx);
+
+    let mut response = Vec::new();
+    client.read_to_end(&mut response).await.unwrap();
+    let header_end = response.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    assert!(response[..header_end].starts_with(b"HTTP/1.1 200 OK\r\n"));
+    let mut body = &response[header_end + 4..];
+    let mut payload = Vec::new();
+    let mut terminators = 0;
+    while !body.is_empty() {
+        let line_end = body.windows(2).position(|w| w == b"\r\n").unwrap();
+        let chunk_len =
+            usize::from_str_radix(std::str::from_utf8(&body[..line_end]).unwrap(), 16).unwrap();
+        body = &body[line_end + 2..];
+        if chunk_len == 0 {
+            terminators += 1;
+            assert!(
+                body.starts_with(b"\r\n"),
+                "zero chunk must have its final CRLF"
+            );
+            body = &body[2..];
+            assert!(body.is_empty(), "zero chunk must be the final wire data");
+            break;
+        }
+        payload.extend_from_slice(&body[..chunk_len]);
+        body = &body[chunk_len + 2..];
+    }
+    assert_eq!(payload, b"ABCDEF");
+    assert_eq!(terminators, 1);
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -332,7 +513,10 @@ async fn test_p25_http_10_raw_streaming_loopback() {
     assert!(resp_str.contains("Connection: close\r\n"));
     assert!(!resp_str.contains("Transfer-Encoding: chunked")); // REQ-060 guard!
 
-    let header_end = response_bytes.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    let header_end = response_bytes
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap();
     let raw_flv = &response_bytes[header_end + 4..];
 
     // Raw body directly parses in FlvStreamParser without chunked decoding
@@ -370,7 +554,10 @@ async fn test_p25_client_disconnect_and_resource_cleanup() {
     });
 
     let mut client = TcpStream::connect(addr).await.unwrap();
-    client.write_all(b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\n\r\n").await.unwrap();
+    client
+        .write_all(b"GET /stream/9778E62BDC59DF56F9216D0387F80BF2.flv HTTP/1.1\r\n\r\n")
+        .await
+        .unwrap();
 
     // Read only first few bytes of response headers, then abruptly drop socket
     let mut buf = [0u8; 32];

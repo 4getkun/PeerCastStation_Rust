@@ -170,7 +170,10 @@ fn test_p28_ts_no_rai_timeout_fallback() {
 
     // Stream sends video TS packets without RAI (e.g. encoder without RAI flags)
     let pkt1 = make_ts_packet(257, 1, false, &[1, 2, 3]);
-    assert!(matches!(selector.evaluate(&pkt1, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&pkt1, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // Advance clock past 3s timeout
     fake_clock.set(Duration::from_millis(4500)); // 3500ms > 3000ms max_wait
@@ -206,12 +209,18 @@ fn test_p28_pid_change_resets_safe_start() {
     // Stale epoch 1 packet rejected
     let mut stale_pkt = make_ts_packet(257, 2, true, &[3, 4]);
     stale_pkt.stream_id = 1;
-    assert!(matches!(selector.evaluate(&stale_pkt, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&stale_pkt, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // Non-RAI packet in epoch 2 skipped
     let mut if2 = make_ts_packet(513, 1, false, &[5, 6]);
     if2.stream_id = 2;
-    assert!(matches!(selector.evaluate(&if2, None), SafeStartDecision::Skip { .. }));
+    assert!(matches!(
+        selector.evaluate(&if2, None),
+        SafeStartDecision::Skip { .. }
+    ));
 
     // RAI keyframe in epoch 2 admitted
     let mut kf2 = make_ts_packet(513, 2, true, &[7, 8]);

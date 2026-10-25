@@ -1,0 +1,34 @@
+[package]
+name = "peercast-desktop"
+version = "1.0.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", features = ["tray-icon"] }
+peercast-app = { path = "../peercast-app" }
+peercast-rpc = { path = "../peercast-rpc" }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "net", "io-util", "macros", "rt-multi-thread", "fs", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+regex = "=1.13.1"
+unicode-normalization = "0.1"
+tauri-plugin-dialog = "=2.8.3"
+rodio = { version = "=0.23.0", default-features = false, features = ["playback", "wav"] }
+chrono = { version = "=0.4.45", default-features = false, features = ["clock"] }
+tauri-plugin-autostart = "=2.7.0"
+tauri-plugin-single-instance = "=2.5.4"
+uuid = { version = "1.29.0", features = ["v4"] }
+tauri-plugin-updater = "=2.14.0"
+
+[dev-dependencies]
+tempfile = "3"
+peercast-core = { path = "../peercast-core" }
+peercast-pcp = { path = "../peercast-pcp" }
+bytes.workspace = true

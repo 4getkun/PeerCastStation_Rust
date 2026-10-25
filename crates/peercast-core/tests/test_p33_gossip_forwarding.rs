@@ -117,7 +117,16 @@ fn test_p33_ttl_thresholds_0_1_2() {
     );
 
     // Case 1: TTL = 0 -> Expired, cannot forward
-    let bcst_ttl0 = create_bcst_atom(0, 5, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"data0");
+    let bcst_ttl0 = create_bcst_atom(
+        0,
+        5,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"data0",
+    );
     let dec0 = forwarder.evaluate_incoming_bcst(&bcst_ttl0);
     assert_eq!(
         dec0.drop_reason,
@@ -126,17 +135,38 @@ fn test_p33_ttl_thresholds_0_1_2() {
     assert!(dec0.forward_packet.is_none());
 
     // Case 2: TTL = 1 -> Expired for forwarding (Station requires ttl > 1)
-    let bcst_ttl1 = create_bcst_atom(1, 5, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"data1");
+    let bcst_ttl1 = create_bcst_atom(
+        1,
+        5,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"data1",
+    );
     let dec1 = forwarder.evaluate_incoming_bcst(&bcst_ttl1);
     assert_eq!(
         dec1.drop_reason,
         Some(GossipDropReason::ExpiredTtl { incoming_ttl: 1 })
     );
     assert!(dec1.forward_packet.is_none());
-    assert!(dec1.process_locally, "TTL=1 broadcast with no dest is still delivered locally");
+    assert!(
+        dec1.process_locally,
+        "TTL=1 broadcast with no dest is still delivered locally"
+    );
 
     // Case 3: TTL = 2 -> Forwardable! New TTL = 1, New Hops = 6
-    let bcst_ttl2 = create_bcst_atom(2, 5, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"data2");
+    let bcst_ttl2 = create_bcst_atom(
+        2,
+        5,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"data2",
+    );
     let dec2 = forwarder.evaluate_incoming_bcst(&bcst_ttl2);
     assert!(dec2.drop_reason.is_none());
     assert!(dec2.forward_packet.is_some());
@@ -154,13 +184,8 @@ fn test_p33_hop_overflow_protection_at_255() {
     let cid = ChannelId::from_bytes([0xAA; 16]);
 
     let clock = Arc::new(FakeClock::new(0));
-    let mut forwarder = GossipForwarder::with_clock(
-        self_sid,
-        2,
-        512,
-        Duration::from_secs(60),
-        clock,
-    );
+    let mut forwarder =
+        GossipForwarder::with_clock(self_sid, 2, 512, Duration::from_secs(60), clock);
 
     // Incoming with hops = 255 (maximum u8)
     let incoming = create_bcst_atom(
@@ -196,13 +221,8 @@ fn test_p33_local_destination_not_forwarded() {
     let cid = ChannelId::from_bytes([0xAA; 16]);
 
     let clock = Arc::new(FakeClock::new(0));
-    let mut forwarder = GossipForwarder::with_clock(
-        self_sid,
-        2,
-        512,
-        Duration::from_secs(60),
-        clock,
-    );
+    let mut forwarder =
+        GossipForwarder::with_clock(self_sid, 2, 512, Duration::from_secs(60), clock);
 
     // 1. Specifically addressed to self: processed locally, NEVER forwarded
     let for_self = create_bcst_atom(
@@ -218,7 +238,10 @@ fn test_p33_local_destination_not_forwarded() {
     let dec_self = forwarder.evaluate_incoming_bcst(&for_self);
     assert!(dec_self.process_locally);
     assert!(dec_self.forward_packet.is_none());
-    assert_eq!(dec_self.drop_reason, Some(GossipDropReason::LocalDestination));
+    assert_eq!(
+        dec_self.drop_reason,
+        Some(GossipDropReason::LocalDestination)
+    );
 
     // 2. Specifically addressed to another node: NOT processed locally, BUT forwarded
     let for_other = create_bcst_atom(
@@ -232,8 +255,14 @@ fn test_p33_local_destination_not_forwarded() {
         b"for_other_only",
     );
     let dec_other = forwarder.evaluate_incoming_bcst(&for_other);
-    assert!(!dec_other.process_locally, "Not addressed to us; do not process locally");
-    assert!(dec_other.forward_packet.is_some(), "Addressed to remote node; eligible to forward");
+    assert!(
+        !dec_other.process_locally,
+        "Not addressed to us; do not process locally"
+    );
+    assert!(
+        dec_other.forward_packet.is_some(),
+        "Addressed to remote node; eligible to forward"
+    );
     assert!(dec_other.drop_reason.is_none());
 }
 
@@ -245,13 +274,8 @@ fn test_p33_reflection_loop_prevention() {
     let cid = ChannelId::from_bytes([0xAA; 16]);
 
     let clock = Arc::new(FakeClock::new(0));
-    let mut forwarder = GossipForwarder::with_clock(
-        self_sid,
-        2,
-        512,
-        Duration::from_secs(60),
-        clock,
-    );
+    let mut forwarder =
+        GossipForwarder::with_clock(self_sid, 2, 512, Duration::from_secs(60), clock);
 
     // Echo/reflection of our own broadcast: from == self_sid
     let own_echo = create_bcst_atom(
@@ -280,13 +304,8 @@ fn test_p33_unknown_broadcast_group() {
     let cid = ChannelId::from_bytes([0xAA; 16]);
 
     let clock = Arc::new(FakeClock::new(0));
-    let mut forwarder = GossipForwarder::with_clock(
-        self_sid,
-        2,
-        512,
-        Duration::from_secs(60),
-        clock,
-    );
+    let mut forwarder =
+        GossipForwarder::with_clock(self_sid, 2, 512, Duration::from_secs(60), clock);
 
     // Group = 0 (empty/invalid)
     let bcst_g0 = create_bcst_atom(5, 0, from_sid, None, 0, cid, ID4::PCP_CHAN, b"g0");
@@ -296,10 +315,22 @@ fn test_p33_unknown_broadcast_group() {
     // Group = 0x80 (undefined upper bits)
     let bcst_g80 = create_bcst_atom(5, 0, from_sid, None, 0x80, cid, ID4::PCP_CHAN, b"g80");
     let dec80 = forwarder.evaluate_incoming_bcst(&bcst_g80);
-    assert_eq!(dec80.drop_reason, Some(GossipDropReason::UnknownGroup(0x80)));
+    assert_eq!(
+        dec80.drop_reason,
+        Some(GossipDropReason::UnknownGroup(0x80))
+    );
 
     // Valid group = 4 (Relays)
-    let bcst_relays = create_bcst_atom(5, 0, from_sid, None, BroadcastGroup::RELAYS.raw(), cid, ID4::PCP_CHAN, b"relays");
+    let bcst_relays = create_bcst_atom(
+        5,
+        0,
+        from_sid,
+        None,
+        BroadcastGroup::RELAYS.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"relays",
+    );
     let dec_relays = forwarder.evaluate_incoming_bcst(&bcst_relays);
     assert!(dec_relays.forward_packet.is_some());
     assert_eq!(dec_relays.target_groups, BroadcastGroup::RELAYS);
@@ -317,15 +348,51 @@ fn test_p33_storm_suppression_and_bounded_dedup_cache() {
     let mut forwarder = GossipForwarder::with_clock(
         self_sid,
         2,
-        3, // max_dedup_entries = 3 (strictly bounded!)
+        3,                       // max_dedup_entries = 3 (strictly bounded!)
         Duration::from_secs(60), // 60s storm suppression window
         clock.clone(),
     );
 
-    let packet_a = create_bcst_atom(5, 0, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"unique_a");
-    let packet_b = create_bcst_atom(5, 0, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"unique_b");
-    let packet_c = create_bcst_atom(5, 0, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"unique_c");
-    let packet_d = create_bcst_atom(5, 0, from_sid, None, BroadcastGroup::ALL.raw(), cid, ID4::PCP_CHAN, b"unique_d");
+    let packet_a = create_bcst_atom(
+        5,
+        0,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"unique_a",
+    );
+    let packet_b = create_bcst_atom(
+        5,
+        0,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"unique_b",
+    );
+    let packet_c = create_bcst_atom(
+        5,
+        0,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"unique_c",
+    );
+    let packet_d = create_bcst_atom(
+        5,
+        0,
+        from_sid,
+        None,
+        BroadcastGroup::ALL.raw(),
+        cid,
+        ID4::PCP_CHAN,
+        b"unique_d",
+    );
 
     // 1. Packet A arrives at t=0: accepted and forwarded
     let dec_a1 = forwarder.evaluate_incoming_bcst(&packet_a);
@@ -404,12 +471,8 @@ fn test_p33_source_exclusion_routing() {
     };
 
     // Forwarding with source peer specified:
-    let recipients = select_forwarding_recipients(
-        &decision,
-        Some(&sid_src),
-        Some(&addr_src),
-        &peers,
-    );
+    let recipients =
+        select_forwarding_recipients(&decision, Some(&sid_src), Some(&addr_src), &peers);
 
     // Sender (Peer A) MUST BE EXCLUDED!
     assert_eq!(recipients.len(), 2);

@@ -1,0 +1,1807 @@
+(() => {
+  "use strict";
+
+  const invoke = (command, args) => {
+    const call = window.__TAURI__?.core?.invoke;
+    return typeof call === "function"
+      ? call(command, args)
+      : Promise.reject(new Error("Tauri backendに接続できません。アプリ内で開いてください。"));
+  };
+  const byId = (id) => document.getElementById(id);
+  const YP_REFRESH_COOLDOWN_MS = 30_000;
+  const state = {
+    snapshot: null,
+    busy: false,
+    broadcastBusy: false,
+    stoppingBroadcasts: new Set(),
+    broadcastFormInitialized: false,
+    broadcastFormDirty: false,
+    refreshing: false,
+    manualRefreshing: false,
+    ypChannels: [],
+    ypLoaded: false,
+    ypBusy: false,
+    ypRefreshing: false,
+    ypRefreshTimer: null,
+    ypRefreshCooldownUntil: 0,
+    ypLastUpdatedAt: null,
+    ypRefreshMode: "manual",
+    ypRefreshIntervalSecs: 300,
+    ypDirectoryDirty: false,
+    ypRefreshPending: false,
+    ypRefreshForcePending: false,
+    ypError: "",
+    ypStarted: false,
+    ypQuery: "",
+    ypSource: "all",
+    ypScope: "normal",
+    ypSourceSignature: "",
+    ypSelectionKey: null,
+    channelSelectionId: null,
+    channelFingerprint: "",
+    connectionSelectionId: null,
+    connectionTab: "connections",
+    connectionFingerprint: "",
+    detailKind: null,
+    detailKey: null,
+    detailTab: "info",
+    logQuery: "",
+    logFingerprint: "",
+    settingsView: null,
+    settingsMountPromise: null,
+    viewTransition: false,
+    closingMain: false,
+    ypSeenAt: new Map(),
+    ypGeneration: null,
+    recordingSelectionId: null,
+    recordingListFingerprint: "",
+    recordingBusy: false,
+    pendingRecordingRemoval: null,
+  };
+
+  const viewTitles = { yp: "チャンネル", channels: "配信", connections: "接続", recordings: "録画", logs: "ログ", settings: "設定" };
+  const internalTestId = "0123456789abcdef0123456789abcdef";
+  const logRanks = { error: 0, fatal: 0, warn: 1, warning: 1, info: 2, debug: 3, trace: 4 };
+
+  function text(id, value) {
+    const element = byId(id);
+    if (element) element.textContent = value == null ? "" : String(value);
+  }
+
+  function setNotice(message, isError = false) {
+    const element = byId("notice");
+    if (!element) return;
+    element.textContent = message;
+    element.hidden = !message;
+    element.classList.toggle("notice-error", isError);
+  }
+
+  function errorText(error) {
+    return String(error && error.message ? error.message : error);
+  }
+
+  function setBusy(busy) {
+    state.busy = busy;
+    ["probe-button", "refresh-button", "restart-button", "stop-button"].forEach((id) => {
+      const button = byId(id);
+      if (button) button.disabled = busy;
+    });
+    updateYpControls();
+    updateRecordingControls();
+  }
+
+  function updateRefreshControls() {
+    const ypCooldownSecs = Math.ceil(Math.max(0, state.ypRefreshCooldownUntil - performance.now()) / 1000);
+    [["yp-refresh", state.ypRefreshing, state.busy || state.ypBusy || ypCooldownSecs > 0],
+      ["refresh-button", state.manualRefreshing, state.busy || state.manualRefreshing]].forEach(([id, refreshing, disabled]) => {
+      const button = byId(id);
+      if (!button) return;
+      if (button.disabled !== disabled) button.disabled = disabled;
+      button.classList.toggle("is-refreshing", refreshing);
+      button.setAttribute("aria-busy", String(refreshing));
+      const label = button.querySelector(".refresh-label");
+      const remaining = id === "yp-refresh" ? ypCooldownSecs : 0;
+      const nextLabel = refreshing ? "更新中…" : remaining > 0 ? `更新（${remaining}秒後）` : "更新";
+      if (label && label.textContent !== nextLabel) label.textContent = nextLabel;
+      if (id === "yp-refresh") button.title = remaining > 0 ? `サーバー負荷を抑えるため、あと${remaining}秒待ってから更新できます` : "";
+    });
+  }
+
+  async function finishRefreshFeedback(startedAt) {
+    const remaining = 400 - (performance.now() - startedAt);
+    if (remaining > 0) await new Promise((resolve) => window.setTimeout(resolve, remaining));
+  }
+
+  function formatBytes(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) return "—";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
+    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+    return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+  }
+
+  function formatDuration(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value < 0) return "—";
+    const total = Math.floor(value);
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    return days ? `${days}日 ${hours}時間` : hours ? `${hours}時間 ${minutes}分` : minutes ? `${minutes}分 ${secs}秒` : `${secs}秒`;
+  }
+
+  function displayValue(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    return String(value);
+  }
+
+  function counter(value) {
+    const number = ypViewerCount({ listeners: value });
+    return number === null ? "—" : String(number);
+  }
+
+  function isCountableYpChannel(channel) {
+    const channelId = String(channel?.channelId || "");
+    const tracker = String(channel?.tracker || "").trim();
+    const bitrate = Number(channel?.bitrate);
+    const hasBitrate = channel?.bitrate !== null && channel?.bitrate !== undefined && String(channel.bitrate).trim() !== "";
+    return /^[0-9a-f]{32}$/i.test(channelId)
+      && !/^0{32}$/i.test(channelId)
+      && Boolean(tracker)
+      && (!hasBitrate || !Number.isFinite(bitrate) || bitrate > 0);
+  }
+  function isPlayableYpChannel(channel) {
+    return isCountableYpChannel(channel);
+  }
+  function countableYpChannelCount(channels) {
+    return channels.filter(isCountableYpChannel).length;
+  }
+  function isBroadcastingChannel(channel) {
+    return channel?.isBroadcasting === true;
+  }
+  function channelAnnotation(channel) { return channel?.annotation && typeof channel.annotation === "object" ? channel.annotation : channel || {}; }
+
+  function ypViewerCount(channel) {
+    const value = channel?.listeners;
+    if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    }
+    return null;
+  }
+
+  function orderYpChannels(channels) {
+    return channels
+      .map((channel, index) => ({
+        channel,
+        index,
+        favorite: Boolean(channelAnnotation(channel).isFavorite),
+        playable: isPlayableYpChannel(channel),
+        viewers: ypViewerCount(channel),
+      }))
+      .sort((a, b) => {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        if (a.favorite) {
+          if (a.viewers !== null && b.viewers !== null) return b.viewers - a.viewers || a.index - b.index;
+          if (a.viewers !== null) return -1;
+          if (b.viewers !== null) return 1;
+          return a.index - b.index;
+        }
+        if (a.playable !== b.playable) return a.playable ? -1 : 1;
+        if (!a.playable) return a.index - b.index;
+        if (a.viewers !== null && b.viewers !== null) return b.viewers - a.viewers || a.index - b.index;
+        if (a.viewers !== null) return -1;
+        if (b.viewers !== null) return 1;
+        return a.index - b.index;
+      })
+      .map(({ channel }) => channel);
+  }
+
+  function ypChannelKey(channel) {
+    return `${String(channel.channelId || "").toLowerCase()}\u0000${String(channel.yellowPage || "")}`;
+  }
+
+  function advanceYpGeneration(previous, channels, succeeded = true) {
+    if (!succeeded) return previous;
+    const knownKeys = new Set(channels.map(ypChannelKey));
+    if (!previous?.initialized) {
+      return { initialized: true, knownKeys, currentNewKeys: new Set(), previousNewKeys: new Set() };
+    }
+    const currentNewKeys = new Set([...knownKeys].filter((key) => !previous.knownKeys.has(key)));
+    return {
+      initialized: true,
+      knownKeys,
+      currentNewKeys,
+      previousNewKeys: new Set(previous.currentNewKeys),
+    };
+  }
+
+  function ypNewcomerIndicator(key, generation) {
+    if (generation?.currentNewKeys?.has(key)) {
+      return { src: "assets/bulb-new.svg", label: "今回の更新で追加" };
+    }
+    if (generation?.previousNewKeys?.has(key)) {
+      return { src: "assets/bulb-previous.svg", label: "前回の更新で追加" };
+    }
+    return null;
+  }
+
+  function currentYpChannel() {
+    if (!state.ypSelectionKey) return null;
+    return state.ypChannels.find((channel) => ypChannelKey(channel) === state.ypSelectionKey) || null;
+  }
+
+  function currentView() {
+    return document.querySelector("[data-view].active")?.dataset.view || "yp";
+  }
+
+  function directoryChannelFor(id) {
+    if (!id) return null;
+    const normalized = String(id).toLowerCase();
+    const selected = currentYpChannel();
+    if (selected && String(selected.channelId || "").toLowerCase() === normalized) return selected;
+    return state.ypChannels.find((channel) => String(channel.channelId || "").toLowerCase() === normalized) || null;
+  }
+
+  function currentSelectedDirectoryChannel() {
+    if (state.detailKind === "yp") return currentYpChannel();
+    if (state.detailKind === "channel") return directoryChannelFor(state.channelSelectionId);
+    return null;
+  }
+
+  function sourcePages() {
+    return Array.isArray(state.snapshot?.yellowPages) ? state.snapshot.yellowPages : [];
+  }
+
+  function updateYpSources() {
+    const select = byId("yp-source");
+    if (!select) return false;
+    const pages = sourcePages();
+    const signature = JSON.stringify(pages.map((page) => [page.name || "", page.channelsUrl || ""]));
+    if (signature === state.ypSourceSignature) return false;
+    const previous = select.value || state.ypSource;
+    state.ypSourceSignature = signature;
+    select.replaceChildren();
+    const all = document.createElement("option");
+    all.value = "all";
+    all.textContent = "すべてのYellow Page";
+    select.append(all);
+    pages.forEach((page) => {
+      const option = document.createElement("option");
+      option.value = page.name || page.channelsUrl || "";
+      option.textContent = page.name || page.channelsUrl || "名称未設定";
+      select.append(option);
+    });
+    const values = new Set(["all", ...pages.map((page) => page.name || page.channelsUrl || "")]);
+    state.ypSource = values.has(previous) ? previous : "all";
+    select.value = state.ypSource;
+    return true;
+  }
+
+  function visibleYpChannels() {
+    const query = state.ypQuery.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
+    return orderYpChannels(state.ypChannels).filter((channel) => {
+      const annotation = channelAnnotation(channel);
+      if (state.ypScope === "normal" && annotation.isHidden) return false;
+      if (state.ypScope === "favorite" && (!annotation.isFavorite || annotation.isHidden)) return false;
+      if (state.ypSource !== "all" && String(channel.yellowPage || "") !== state.ypSource) return false;
+      if (!query) return true;
+      return ["name", "genre", "description", "comment"].some((field) =>
+        String(channel[field] ?? "").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query));
+    });
+  }
+
+  function ensureVisibleYpSelection(channels) {
+    if (!channels.some((channel) => ypChannelKey(channel) === state.ypSelectionKey)) {
+      state.ypSelectionKey = channels.length ? ypChannelKey(channels[0]) : null;
+    }
+    if (currentView() === "yp" && (state.detailKind === "yp" || !state.detailKind)) {
+      state.detailKind = state.ypSelectionKey ? "yp" : null;
+      state.detailKey = state.ypSelectionKey;
+    }
+  }
+
+  function appendText(parent, tag, className, value) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    element.textContent = value;
+    parent.append(element);
+    return element;
+  }
+
+  function renderYpDirectory() {
+    const root = byId("yp-results");
+    if (!root) return;
+    const filtered = visibleYpChannels();
+    ensureVisibleYpSelection(filtered);
+    root.replaceChildren();
+    text("yp-count", `${countableYpChannelCount(filtered)} 件の配信`);
+    const empty = byId("yp-empty");
+    if (empty) {
+      empty.hidden = filtered.length > 0;
+      empty.textContent = state.ypError
+        ? "一覧を取得できませんでした。更新して再試行してください。"
+        : state.ypLoaded && !state.ypChannels.length && !sourcePages().length
+          ? "設定画面でチャンネル一覧を取得するYellow Pageを登録してください。"
+          : state.ypLoaded
+            ? "条件に一致する掲載情報はありません。"
+            : "一覧を取得しています…";
+    }
+    filtered.forEach((channel) => {
+      const index = state.ypChannels.indexOf(channel);
+      const key = ypChannelKey(channel);
+      const row = document.createElement("article");
+      row.className = "yp-row";
+      row.dataset.ypIndex = String(index);
+      row.classList.toggle("selected", key === state.ypSelectionKey);
+      if (!isPlayableYpChannel(channel)) row.classList.add("notice-row");
+      const annotation = channelAnnotation(channel);
+      row.classList.toggle("is-favorite", Boolean(annotation.isFavorite));
+      row.classList.toggle("is-ng", Boolean(annotation.isHidden));
+      const textColor = safeRuleColor(annotation.ruleTextColor);
+      const backgroundColor = safeRuleColor(annotation.ruleBackgroundColor);
+      row.classList.toggle("has-rule-style", Boolean(textColor || backgroundColor));
+      if (textColor) row.style.setProperty("--rule-text-color", textColor);
+      if (backgroundColor) row.style.setProperty("--rule-background-color", backgroundColor);
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "yp-play-button";
+      play.dataset.ypIndex = String(index);
+      play.disabled = state.busy || state.ypBusy || !state.snapshot?.running || !isPlayableYpChannel(channel) || state.snapshot?.playerAvailable === false;
+      play.setAttribute("aria-label", `${displayValue(channel.name)} をプレイヤーで開く`);
+      const icon = document.createElement("img");
+      icon.src = "assets/tabler/player-play.svg";
+      icon.alt = "";
+      play.append(icon);
+      row.append(play);
+
+      const copy = document.createElement("div");
+      copy.className = "yp-row-copy";
+      const titleLine = document.createElement("div");
+      titleLine.className = "yp-row-title-line";
+      const titleButton = document.createElement("button");
+      titleButton.type = "button";
+      titleButton.className = "yp-row-select";
+      titleButton.dataset.ypIndex = String(index);
+      titleButton.textContent = displayValue(channel.name);
+      titleButton.setAttribute("aria-label", `${displayValue(channel.name)}${annotation.isFavorite ? "、お気に入り" : ""}${annotation.isHidden ? "、NG条件に一致" : ""}`);
+      if (annotation.isFavorite) {
+        const star = document.createElement("span"); star.className = "icon icon-star yp-favorite-star"; star.setAttribute("aria-label", "お気に入り"); titleButton.append(star);
+      }
+      if (annotation.isHidden && state.ypScope === "all") appendText(titleButton, "span", "yp-ng-badge", "NG");
+      titleLine.append(titleButton);
+      const newcomer = ypNewcomerIndicator(key, state.ypGeneration);
+      if (newcomer) {
+        const indicator = document.createElement("img");
+        indicator.className = "yp-row-newcomer";
+        indicator.src = newcomer.src;
+        indicator.alt = newcomer.label;
+        indicator.title = newcomer.label;
+        indicator.setAttribute("aria-label", newcomer.label);
+        titleLine.append(indicator);
+      }
+      copy.append(titleLine);
+      const summary = [channel.genre, channel.description].filter(Boolean).map(String).join(" · ");
+      if (summary) appendText(copy, "p", "", summary);
+      if (channel.comment) appendText(copy, "p", "", String(channel.comment));
+      row.append(copy);
+      const audience = appendText(row, "div", "yp-row-audience", `${counter(channel.listeners)} / ${counter(channel.relays)}`);
+      audience.setAttribute("aria-label", `視聴 ${counter(channel.listeners)}、リレー ${counter(channel.relays)}`);
+      const rate = counter(channel.bitrate);
+      const format = document.createElement("div");
+      format.className = "yp-row-format";
+      appendText(format, "span", "", displayValue(channel.contentType));
+      appendText(format, "span", "", rate === "—" ? "—" : `${rate} kbps`);
+      appendText(format, "span", "", formatDuration(channel.uptime));
+      format.setAttribute("aria-label", "形式、ビットレート、配信時間");
+      row.append(format);
+      root.append(row);
+    });
+    text("yp-status", state.ypBusy ? "チャンネル一覧を取得しています…" : state.ypError ? state.ypError : state.ypLoaded ? `${countableYpChannelCount(filtered)}件を表示中` : "一覧をまだ取得していません。");
+    renderYpSelectionStyles();
+    renderSelectedDetail();
+    updateYpControls();
+  }
+  function safeRuleColor(value) { return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : ""; }
+
+  function renderYpSelectionStyles() {
+    const root = byId("yp-results");
+    if (!root) return;
+    root.querySelectorAll(".yp-row").forEach((row) => {
+      const index = Number(row.dataset.ypIndex);
+      const channel = state.ypChannels[index];
+      row.classList.toggle("selected", Boolean(channel && ypChannelKey(channel) === state.ypSelectionKey));
+    });
+  }
+
+  function updateYpControls() {
+    updateRefreshControls();
+    const source = byId("yp-source");
+    if (source) source.disabled = state.busy || state.ypBusy || !sourcePages().length;
+    const selected = currentSelectedDirectoryChannel();
+    const canPlay = Boolean(state.snapshot?.running && selected && isPlayableYpChannel(selected) && state.snapshot?.playerAvailable !== false);
+    ["selected-play"].forEach((id) => {
+      const button = byId(id);
+      if (button) button.disabled = state.busy || state.ypBusy || !canPlay;
+    });
+    const rowButtons = byId("yp-results")?.querySelectorAll(".yp-play-button") || [];
+    rowButtons.forEach((button) => {
+      const channel = state.ypChannels[Number(button.dataset.ypIndex)];
+      button.disabled = state.busy || state.ypBusy || !state.snapshot?.running || !channel || !isPlayableYpChannel(channel) || state.snapshot?.playerAvailable === false;
+    });
+    updateRecordingControls();
+  }
+
+  function selectYpChannel(channel, redraw = false) {
+    state.ypSelectionKey = ypChannelKey(channel);
+    state.detailKind = "yp";
+    state.detailKey = state.ypSelectionKey;
+    state.channelSelectionId = null;
+    if (redraw) renderYpDirectory();
+    else {
+      renderYpSelectionStyles();
+      renderSelectedDetail();
+      updateYpControls();
+    }
+  }
+
+  async function fetchYpChannels(refresh = false, manual = false) {
+    if (!sourcePages().length) {
+      state.ypLoaded = true;
+      state.ypChannels = [];
+      state.ypError = "";
+      renderYpDirectory();
+      return;
+    }
+    if (manual && (state.busy || state.ypBusy || state.ypRefreshCooldownUntil > performance.now())) {
+      updateRefreshControls();
+      return;
+    }
+    if (!beginYpFetch(state, refresh)) return;
+    const startedAt = performance.now();
+    state.ypRefreshing = true;
+    const previousSelection = state.ypSelectionKey;
+    state.ypError = "";
+    renderYpDirectory();
+    try {
+      const channels = await invoke("get_yp_channels", { refresh: Boolean(refresh) });
+      if (!Array.isArray(channels)) throw new Error("一覧の応答形式が正しくありません。");
+      state.ypGeneration = advanceYpGeneration(state.ypGeneration, channels);
+      state.ypChannels = channels;
+      state.ypLoaded = true;
+      state.ypLastUpdatedAt = Date.now();
+      state.ypSelectionKey = previousSelection;
+      if (!state.ypRefreshPending) notifyNewYpChannels(channels);
+    } catch (error) {
+      state.ypError = errorText(error);
+      state.ypLoaded = true;
+    } finally {
+      await finishRefreshFeedback(startedAt);
+      state.ypRefreshing = false;
+      state.ypBusy = false;
+      state.ypRefreshCooldownUntil = performance.now() + YP_REFRESH_COOLDOWN_MS;
+      renderYpDirectory();
+      flushPendingYpRefresh();
+      scheduleYpAutoRefresh();
+    }
+  }
+
+  function beginYpFetch(state, refresh) {
+    if (state.ypBusy || state.busy) {
+      state.ypRefreshPending = true;
+      state.ypRefreshForcePending ||= Boolean(refresh);
+      return false;
+    }
+    state.ypBusy = true;
+    return true;
+  }
+
+  function scheduleYpAutoRefresh() {
+    if (state.ypRefreshTimer !== null) window.clearTimeout(state.ypRefreshTimer);
+    state.ypRefreshTimer = null;
+    if (state.ypRefreshMode !== "auto") return;
+    state.ypRefreshTimer = window.setTimeout(() => {
+      state.ypRefreshTimer = null;
+      void fetchYpChannels(true);
+    }, state.ypRefreshIntervalSecs * 1000);
+  }
+
+  function applyDirectoryPreferences(directory = {}, syncForm = false) {
+    const nextMode = directory.autoRefresh ? "auto" : "manual";
+    const interval = Number(directory.refreshIntervalSecs);
+    const nextInterval = Number.isFinite(interval) ? Math.min(3600, Math.max(60, Math.ceil(interval / 60) * 60)) : 300;
+    const changed = state.ypRefreshMode !== nextMode || state.ypRefreshIntervalSecs !== nextInterval;
+    state.ypRefreshMode = nextMode;
+    state.ypRefreshIntervalSecs = nextInterval;
+    if (syncForm) state.ypDirectoryDirty = false;
+    if (!state.ypDirectoryDirty || syncForm) {
+      const radio = document.querySelector(`input[name="yp-refresh-mode"][value="${state.ypRefreshMode}"]`);
+      if (radio) radio.checked = true;
+      const field = byId("yp-refresh-interval");
+      if (field) field.value = String(state.ypRefreshIntervalSecs / 60);
+    }
+    if (changed) scheduleYpAutoRefresh();
+  }
+
+  async function saveDirectoryPreferences() {
+    const field = byId("yp-refresh-interval");
+    const mode = document.querySelector('input[name="yp-refresh-mode"]:checked')?.value === "auto";
+    const interval = Math.min(60, Math.max(1, Math.trunc(Number(field?.value) || 5))) * 60;
+    const current = state.snapshot || {};
+    const desktop = current.desktop || {};
+    const directory = { autoRefresh: mode, refreshIntervalSecs: interval };
+    try {
+      const snapshot = await invoke("apply_preferences", { limits: current.limits || {}, yellowPages: current.yellowPages || [], desktop: { ...desktop, directory, window: desktop.window || { width: 1600, height: 900, minimizeToTray: false, launchAtStartup: false }, player: desktop.player || { executable: null, arguments: '\"<stream/>\" \"<channelname/>\" \"<contact/>\"' }, channelRules: desktop.channelRules || [], recording: desktop.recording || {} } });
+      state.snapshot = snapshot;
+      applyDirectoryPreferences(snapshot.desktop?.directory || directory, true);
+      setNotice("一覧の更新設定を保存しました。");
+    } catch (error) {
+      setNotice(`一覧の更新設定を保存できませんでした: ${errorText(error)}`, true);
+    }
+  }
+
+  function refreshYpAfterRuntimeChange(force = true) {
+    if (!state.ypStarted && !state.ypLoaded && !state.ypBusy) return;
+    state.ypRefreshPending = true;
+    state.ypRefreshForcePending ||= Boolean(force);
+    flushPendingYpRefresh();
+  }
+
+  function refreshYpAfterPreferencesChange(before, after) {
+    const runtimePrefsChanged = JSON.stringify([before?.limits || {}, before?.yellowPages || []]) !== JSON.stringify([after?.limits || {}, after?.yellowPages || []]);
+    if (runtimePrefsChanged) {
+      refreshYpAfterRuntimeChange(true);
+      return;
+    }
+    const channelRulesChanged = JSON.stringify(before?.desktop?.channelRules || []) !== JSON.stringify(after?.desktop?.channelRules || []);
+    if (channelRulesChanged) refreshYpAfterRuntimeChange(false);
+  }
+
+  function flushPendingYpRefresh() {
+    if (!state.ypRefreshPending || state.ypBusy || state.busy) return;
+    const force = state.ypRefreshForcePending;
+    state.ypRefreshPending = false;
+    state.ypRefreshForcePending = false;
+    void fetchYpChannels(force);
+  }
+  function notifyNewYpChannels(channels) {
+    const now = Date.now();
+    const notices = [];
+    const soundRules = new Set();
+    channels.forEach((channel) => {
+      const key = ypChannelKey(channel);
+      const lastSeen = state.ypSeenAt.get(key);
+      const annotation = channelAnnotation(channel);
+      if (annotation.isFavorite && !annotation.ruleMute && (lastSeen === undefined || now - lastSeen >= 3600000)) {
+        notices.push(displayValue(channel.name));
+        if (annotation.matchedRuleId && annotation.ruleSoundPath) soundRules.add(String(annotation.matchedRuleId));
+      }
+      state.ypSeenAt.set(key, now);
+    });
+    if (notices.length) {
+      setNotice(`お気に入りの新着: ${notices.slice(0, 5).join("、")}${notices.length > 5 ? `、ほか${notices.length - 5}件` : ""}`);
+      soundRules.forEach((ruleId) => { void invoke("play_rule_sound", { ruleId }).catch(() => {}); });
+    }
+  }
+
+  function runtimeChannelFor(id) {
+    const channels = Array.isArray(state.snapshot?.channels) ? state.snapshot.channels : [];
+    return channels.find((channel) => String(channel.id || "").toLowerCase() === String(id || "").toLowerCase()) || null;
+  }
+
+  function safeHttpUrl(value) {
+    try {
+      const url = new URL(String(value || ""));
+      return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function setDetailMetadata(id, values) {
+    const root = byId(id);
+    if (!root) return;
+    root.replaceChildren();
+    values.forEach(([label, value]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = displayValue(value);
+      root.append(dt, dd);
+    });
+  }
+
+  function renderSelectedDetail() {
+    if (currentView() === "channels") {
+      renderBroadcastDetail();
+      return;
+    }
+    const broadcastDetailContent = byId("broadcast-detail-content");
+    if (broadcastDetailContent) broadcastDetailContent.hidden = true;
+    const empty = byId("detail-empty");
+    const content = byId("detail-content");
+    const isYp = state.detailKind === "yp";
+    const selected = isYp ? currentYpChannel() : state.detailKind === "channel" ? runtimeChannelFor(state.channelSelectionId) : null;
+    const directory = selected && !isYp ? directoryChannelFor(selected.id) : selected;
+    if (!selected) {
+      if (empty) empty.hidden = false;
+      if (content) content.hidden = true;
+      state.detailKind = null;
+      state.detailKey = null;
+      text("detail-title", "");
+      text("detail-source", "");
+      text("detail-description", "");
+      text("detail-comment", "");
+      text("detail-genre", "");
+      setDetailMetadata("detail-metadata", []);
+      setDetailMetadata("detail-extra-metadata", []);
+      updateDetailActions(null);
+      updateConnectionSummary(null);
+      return;
+    }
+    if (empty) empty.hidden = true;
+    if (content) content.hidden = false;
+    text("detail-title", displayValue(directory?.name || selected.name));
+    text("detail-source", directory ? displayValue(directory.yellowPage) : isYp ? displayValue(selected.yellowPage) : "このアプリのチャンネル");
+    text("detail-description", displayValue(directory?.description));
+    text("detail-comment", displayValue(directory?.comment));
+    text("detail-genre", displayValue(directory?.genre));
+    const info = directory || {};
+    const rate = counter(info.bitrate);
+    setDetailMetadata("detail-metadata", [
+      ["形式", info.contentType], ["ビットレート", rate === "—" ? "—" : `${rate} kbps`],
+      ["配信時間", formatDuration(info.uptime)], ["視聴 / リレー", `${counter(info.listeners)} / ${counter(info.relays)}`],
+    ]);
+    setDetailMetadata("detail-extra-metadata", [
+      ["チャンネルID", info.channelId || selected.id], ["トラック", info.trackTitle], ["アルバム", info.album],
+      ["アーティスト", info.creator], ["トラックURL", info.trackUrl],
+    ]);
+    updateDetailActions(directory);
+    updateConnectionSummary(isYp ? runtimeChannelFor(selected.channelId) : selected);
+  }
+
+  function updateDetailActions(channel) {
+    const play = byId("selected-play");
+    if (play) play.disabled = state.busy || state.ypBusy || !state.snapshot?.running || !channel || !isPlayableYpChannel(channel) || state.snapshot?.playerAvailable === false;
+    const contact = byId("copy-contact");
+    if (contact) contact.disabled = !channel || !safeHttpUrl(channel.contactUrl);
+    const stream = byId("copy-stream");
+    const exists = Boolean(channel && runtimeChannelFor(channel.channelId));
+    if (stream) stream.disabled = !state.snapshot?.running || !exists || !channel?.channelId;
+    const addFavorite = byId("add-favorite-rule");
+    const addNg = byId("add-ng-rule");
+    if (addFavorite) addFavorite.disabled = !channel || !channel.name || state.busy;
+    if (addNg) addNg.disabled = !channel || !channel.name || state.busy;
+  }
+
+  function updateConnectionSummary(channel) {
+    const summary = byId("connection-summary");
+    if (!summary) return;
+    summary.replaceChildren();
+    const values = channel
+      ? [["状態", channel.status], ["バッファ", channel.sessionId ? `${formatBytes(channel.bufferedBytes)} / ${counter(channel.bufferedPackets)} パケット` : null], ["接続試行", counter(channel.connectionAttempts)]]
+      : [["状態", "未接続"]];
+    values.forEach(([label, value]) => {
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const detail = document.createElement("dd");
+      detail.textContent = displayValue(value);
+      summary.append(term, detail);
+    });
+  }
+
+  function activateView(view) {
+    if (!viewTitles[view]) return;
+    document.querySelectorAll("[data-view]").forEach((button) => {
+      const active = button.dataset.view === view;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    const directoryTools = byId("directory-tools");
+    if (directoryTools) directoryTools.hidden = view !== "yp";
+    const ypRefresh = byId("yp-refresh");
+    if (ypRefresh) ypRefresh.hidden = view !== "yp";
+    const snapshotRefresh = byId("refresh-button");
+    if (snapshotRefresh) snapshotRefresh.hidden = view === "yp" || view === "settings";
+    ["yp", "channels", "connections", "recordings", "logs", "settings"].forEach((name) => {
+      const element = byId(`view-${name}`);
+      if (element) element.hidden = name !== view;
+    });
+    const workspace = document.querySelector(".workspace");
+    if (workspace) {
+      workspace.classList.toggle("logs-view", view === "logs");
+      workspace.classList.toggle("recordings-view", view === "recordings");
+      workspace.classList.toggle("connections-view-active", view === "connections");
+      workspace.hidden = view === "settings";
+    }
+    const broadcast = byId("header-broadcast");
+    if (broadcast) broadcast.hidden = view === "settings" || view === "recordings";
+    const settingsView = byId("view-settings");
+    if (settingsView) settingsView.hidden = view !== "settings";
+    text("view-title", viewTitles[view]);
+    text("titlebar-view", viewTitles[view]);
+    if (view === "recordings") text("yp-count", `${Array.isArray(state.snapshot?.recordings) ? state.snapshot.recordings.length : 0} 件の録画`);
+    else if (view === "yp") text("yp-count", `${countableYpChannelCount(visibleYpChannels())} 件の配信`);
+    else if (view === "channels") text("yp-count", `${broadcastingChannels(state.snapshot).length} 件の配信`);
+    else if (view === "connections") text("yp-count", `${allRuntimeChannels(state.snapshot).length} 件の稼働チャンネル`);
+    if (view === "yp") {
+      ensureVisibleYpSelection(visibleYpChannels());
+      state.detailKind = state.ypSelectionKey ? "yp" : null;
+      state.detailKey = state.ypSelectionKey;
+      renderSelectedDetail();
+    } else if (view === "channels") {
+      const channels = broadcastingChannels(state.snapshot);
+      if (!channels.some((channel) => channel.id === state.channelSelectionId)) state.channelSelectionId = channels[0]?.id || null;
+      state.detailKind = state.channelSelectionId ? "channel" : null;
+      state.detailKey = state.channelSelectionId;
+      renderChannels(state.snapshot || { channels: [] });
+      renderSelectedDetail();
+    } else if (view === "connections") {
+      const channels = allRuntimeChannels(state.snapshot);
+      if (!channels.some((channel) => connectionChannelKey(channel) === String(state.connectionSelectionId))) {
+        state.connectionSelectionId = channels[0] ? connectionChannelKey(channels[0]) : null;
+      }
+      renderConnections(state.snapshot || { channels: [] });
+    } else if (view === "recordings") renderRecordings(state.snapshot || { recordings: [] });
+    else if (view === "logs") renderLogs();
+    if (view === "yp" && !state.ypLoaded && !state.ypBusy) fetchYpChannels(false);
+  }
+
+  async function mountSettings() {
+    if (state.settingsView) return;
+    if (state.settingsMountPromise) return state.settingsMountPromise;
+    state.settingsMountPromise = (async () => {
+      const host = byId("settings-host");
+      if (!host) throw new Error("設定画面の表示領域が見つかりません。");
+      if (typeof window.createSettingsView !== "function") throw new Error("設定画面を初期化できません。");
+      const sourceUrl = new URL("settings.html", window.location.href);
+      const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error(`設定画面を読み込めません (${response.status})。`);
+      const parsed = new DOMParser().parseFromString(await response.text(), "text/html");
+      const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
+      shadow.replaceChildren();
+      ["settings.css", "settings-embedded.css"].forEach((path) => {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = new URL(path, window.location.href).href;
+        shadow.append(link);
+      });
+      [...parsed.body.childNodes].forEach((node) => shadow.append(document.importNode(node, true)));
+      const settingsView = window.createSettingsView(shadow, {
+        initialSnapshot: state.snapshot,
+        onBack: () => requestView("yp"),
+        onSaved: (snapshot) => {
+          const before = state.snapshot || {};
+          renderSnapshot(snapshot);
+          refreshYpAfterPreferencesChange(before, snapshot);
+        },
+      });
+      state.settingsView = settingsView;
+    })();
+    try {
+      await state.settingsMountPromise;
+    } catch (error) {
+      state.settingsMountPromise = null;
+      throw error;
+    }
+  }
+
+  async function requestView(view) {
+    if (!viewTitles[view] || state.viewTransition || view === currentView()) return false;
+    state.viewTransition = true;
+    try {
+      if (state.settingsView && !(await state.settingsView.requestLeave())) return false;
+      if (view === "settings") await mountSettings();
+      activateView(view);
+      return true;
+    } catch (error) {
+      setNotice(`画面を切り替えられませんでした: ${errorText(error)}`, true);
+      return false;
+    } finally {
+      state.viewTransition = false;
+    }
+  }
+
+  async function closeMainWindow() {
+    if (state.closingMain) return false;
+    state.closingMain = true;
+    try {
+      if (state.settingsMountPromise) await state.settingsMountPromise;
+      if (state.settingsView && !(await state.settingsView.requestLeave())) return false;
+      await invoke("close_window");
+      return true;
+    } catch (error) {
+      setNotice(`終了できませんでした: ${errorText(error)}`, true);
+      return false;
+    } finally {
+      state.closingMain = false;
+    }
+  }
+  window.requestMainClose = closeMainWindow;
+
+  function activateDetailTab(name) {
+    if (!["info", "connections", "tree"].includes(name)) return;
+    state.detailTab = name;
+    document.querySelectorAll("[data-detail-tab]").forEach((button) => {
+      const active = button.dataset.detailTab === name;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    ["info", "connections", "tree"].forEach((panel) => {
+      const element = byId(`detail-${panel}`);
+      if (element) element.hidden = panel !== name;
+    });
+  }
+
+  function activateConnectionTab(name) {
+    if (!["connections", "info", "tree"].includes(name)) return;
+    state.connectionTab = name;
+    document.querySelectorAll("[data-connection-tab]").forEach((button) => {
+      const active = button.dataset.connectionTab === name;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    ["connections", "info", "tree"].forEach((panel) => {
+      const element = byId(panel === "connections" ? "connections-panel" : `connections-${panel}-panel`);
+      if (element) element.hidden = panel !== name;
+    });
+  }
+
+  function allRuntimeChannels(snapshot) {
+    return Array.isArray(snapshot?.channels) ? snapshot.channels : [];
+  }
+
+  function networkStatusLabel(status) {
+    return ({ open: "リレー可能", closed: "ポート未開放", unknown: "ポート未確認", unavailable: "利用不可" })[status] || "ポート未確認";
+  }
+
+  function networkOverallStatus(network = {}) {
+    const statuses = [network.ipv4, network.ipv6];
+    if (statuses.includes("open")) return "open";
+    if (statuses.includes("closed") && statuses.every((status) => status === "closed" || status === "unavailable")) return "closed";
+    if (statuses.every((status) => status === "unavailable")) return "unavailable";
+    return "unknown";
+  }
+
+  function connectionPortLabel(portOpen) {
+    return portOpen === true ? "開放" : portOpen === false ? "閉鎖" : "未確認";
+  }
+
+  function connectionKindLabel(kind) {
+    return ({ source: "上流ソース", relay: "子リレー", direct: "直接接続", ingest: "入力", announce: "YP掲載", metadata: "メタデータ", interface: "管理接続" })[kind] || "接続";
+  }
+
+  function connectionStateLabel(status) {
+    return ({ connected: "接続済み", connecting: "接続中", idle: "待機", error: "接続エラー" })[status] || displayValue(status);
+  }
+
+  function connectionChannelKey(channel) {
+    return `${channel.id}:${channel.sessionId || ""}`;
+  }
+
+  function renderConnections(snapshot) {
+    const channels = allRuntimeChannels(snapshot);
+    const list = byId("connections-channel-list");
+    if (!list) return;
+    const fingerprint = JSON.stringify(channels.map((channel) => [connectionChannelKey(channel), channel.purpose, channel.name, channel.status, channel.isBroadcasting, channel.listeners, channel.relays]));
+    if (fingerprint !== state.connectionFingerprint) {
+      state.connectionFingerprint = fingerprint;
+      if (!channels.some((channel) => connectionChannelKey(channel) === String(state.connectionSelectionId))) {
+        state.connectionSelectionId = channels[0] ? connectionChannelKey(channels[0]) : null;
+      }
+      list.replaceChildren();
+      if (!channels.length) appendText(list, "p", "connections-list-empty", "稼働中のチャンネルはありません。");
+      channels.forEach((channel) => {
+        const id = connectionChannelKey(channel);
+        const selected = id === String(state.connectionSelectionId ?? "");
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "connection-channel-row";
+        row.dataset.connectionChannelId = id;
+        row.classList.toggle("selected", selected);
+        row.setAttribute("aria-current", String(selected));
+        appendText(row, "strong", "connection-row-name", displayValue(channel.name));
+        appendText(row, "span", `connection-row-badge${channel.isBroadcasting ? " is-source" : ""}`, channel.purpose === "recording" ? "録画" : channel.isBroadcasting ? "配信" : "視聴 / リレー");
+        appendText(row, "span", "connection-row-state", displayValue(channel.status));
+        appendText(row, "span", "connection-row-counts", `視聴 ${counter(channel.listeners)}　リレー ${counter(channel.relays)}`);
+        list.append(row);
+      });
+    } else {
+      list.querySelectorAll("[data-connection-channel-id]").forEach((row) => {
+        const selected = row.dataset.connectionChannelId === String(state.connectionSelectionId ?? "");
+        row.classList.toggle("selected", selected);
+        row.setAttribute("aria-current", String(selected));
+      });
+    }
+    text("connections-count", String(channels.length));
+    renderConnectionDetails(channels.find((channel) => connectionChannelKey(channel) === String(state.connectionSelectionId)) || null);
+  }
+
+  function renderConnectionDetails(channel) {
+    const empty = byId("connections-empty");
+    const detail = byId("connections-detail");
+    if (empty) empty.hidden = Boolean(channel);
+    if (detail) detail.hidden = !channel;
+    if (!channel) return;
+
+    text("connections-channel-name", displayValue(channel.name));
+    text("connections-channel-status", displayValue(channel.status));
+    text("connections-channel-type", channel.purpose === "recording" ? "録画" : channel.isBroadcasting ? "配信" : "視聴 / リレー");
+
+    const network = channel.network || {};
+    const networkRoot = byId("connections-network-status");
+    if (networkRoot) {
+      networkRoot.replaceChildren();
+      const overall = networkOverallStatus(network);
+      appendText(networkRoot, "span", `network-state network-${overall}`, overall === "closed" ? "リレー不可 · ポート未開放" : networkStatusLabel(overall));
+      if (Number.isFinite(Number(network.relayPort)) && Number(network.relayPort) > 0) appendText(networkRoot, "span", "network-port", `ポート ${network.relayPort}`);
+      appendText(networkRoot, "span", "network-family", `IPv4 ${networkStatusLabel(network.ipv4)} · IPv6 ${networkStatusLabel(network.ipv6)}`);
+    }
+
+    const connections = Array.isArray(channel.connections) ? channel.connections : [];
+    const rowsRoot = byId("connection-rows");
+    if (rowsRoot) {
+      rowsRoot.replaceChildren();
+      if (!connections.length) appendText(rowsRoot, "p", "connection-empty", channel.available === false ? "接続の詳細情報を取得できませんでした。" : "接続先はありません。");
+      connections.forEach((connection) => {
+        const row = document.createElement("article");
+        row.className = "connection-row";
+        const header = document.createElement("div");
+        header.className = "connection-row-heading";
+        appendText(header, "strong", "", connectionKindLabel(connection.kind));
+        appendText(header, "span", `connection-state connection-${connection.status || "unknown"}`, connectionStateLabel(connection.status));
+        row.append(header);
+        appendText(row, "p", "connection-endpoint", displayValue(connection.endpoint));
+        const metrics = document.createElement("div");
+        metrics.className = "connection-row-metrics";
+        appendText(metrics, "span", "", `受信 ${connection.measurementsAvailable === false ? "—" : formatBytes(connection.receivedBytes)}`);
+        appendText(metrics, "span", "", `送信 ${connection.measurementsAvailable === false ? "—" : formatBytes(connection.sentBytes)}`);
+        appendText(metrics, "span", "", `ポート ${connectionPortLabel(connection.portOpen)}`);
+        appendText(metrics, "span", "", connection.measurementsAvailable === false ? "接続時間 —" : formatDuration(connection.uptimeSecs));
+        appendText(metrics, "span", "", `Agent ${displayValue(connection.agent)}`);
+        appendText(metrics, "span", "", `Session ${displayValue(connection.sessionId)}`);
+        row.append(metrics);
+        rowsRoot.append(row);
+      });
+    }
+
+    const metadata = byId("connections-metadata");
+    if (metadata) {
+      metadata.replaceChildren();
+      const values = [
+        ["チャンネルID", channel.id], ["セッションID", channel.sessionId], ["状態", channel.status], ["種別", channel.purpose === "recording" ? "録画" : channel.isBroadcasting ? "配信" : "視聴 / リレー"],
+        ["形式", channel.contentType], ["ジャンル", channel.genre], ["ビットレート", channel.bitrate == null ? null : `${counter(channel.bitrate)} kbps`],
+        ["視聴者", channel.listeners], ["リレー数", channel.relays], ["リレーポート", network.relayPort], ["観測IPv4", network.observedIpv4], ["観測IPv6", network.observedIpv6],
+        ["バッファ", channel.sessionId ? `${formatBytes(channel.bufferedBytes)} / ${counter(channel.bufferedPackets)} パケット` : null], ["稼働時間", formatDuration(channel.uptimeSecs)],
+        ["コンタクトURL", channel.contactUrl], ["コメント", channel.comment],
+      ];
+      values.forEach(([label, value]) => {
+        const wrapper = document.createElement("div");
+        appendText(wrapper, "dt", "", label);
+        appendText(wrapper, "dd", "", displayValue(value));
+        metadata.append(wrapper);
+      });
+      text("connections-description", displayValue(channel.description));
+    }
+
+    const tree = byId("connection-tree");
+    if (tree) {
+      tree.replaceChildren();
+      const root = document.createElement("div");
+      root.className = "connection-tree-root";
+      appendText(root, "strong", "", displayValue(channel.name));
+      appendText(root, "span", "", "このチャンネル");
+      appendText(root, "small", "", `Session ${displayValue(channel.sessionId)}`);
+      const rootPortState = networkOverallStatus(channel.network || {});
+      const rootPortLabel = rootPortState === "closed"
+        ? "× リレー不可 · ポート未開放"
+        : rootPortState === "open"
+          ? "✓ リレー可能"
+          : rootPortState === "unavailable" ? "利用不可" : "ポート未確認";
+      appendText(root, "span", `connection-port-state connection-port-${rootPortState}`, rootPortLabel);
+      tree.append(root);
+      const children = connections.filter((connection) => connection.kind === "relay");
+      children.forEach((connection) => {
+        const child = document.createElement("div");
+        child.className = "connection-tree-child";
+        appendText(child, "strong", "", displayValue(connection.agent || connection.endpoint));
+        appendText(child, "span", "", `${connectionKindLabel(connection.kind)} · ${connectionStateLabel(connection.status)}`);
+        appendText(child, "small", "", displayValue(connection.endpoint));
+        if (connection.sessionId) appendText(child, "small", "", `Session ${displayValue(connection.sessionId)}`);
+        const portState = connection.portOpen === false ? "closed" : connection.portOpen === true ? "open" : "unknown";
+        const portLabel = portState === "closed" ? "× ポート未開放" : portState === "open" ? "✓ ポート開放" : "ポート未確認";
+        appendText(child, "span", `connection-port-state connection-port-${portState}`, portLabel);
+        tree.append(child);
+      });
+      const sources = connections.filter((connection) => connection.kind === "source");
+      sources.forEach((connection) => {
+        const source = document.createElement("div");
+        source.className = "connection-tree-source";
+        appendText(source, "strong", "", connectionKindLabel(connection.kind));
+        appendText(source, "span", "", `${connectionStateLabel(connection.status)} · ${displayValue(connection.endpoint)}`);
+        tree.insertBefore(source, root);
+      });
+      if (!children.length && !sources.length) appendText(tree, "p", "connection-empty", "リレー接続はありません。");
+    }
+    activateConnectionTab(state.connectionTab);
+  }
+
+  function renderYpSourcesAndMaybeRefresh(changed) {
+    if (changed && state.ypLoaded) renderYpDirectory();
+  }
+
+  function renderChannels(snapshot) {
+    const root = byId("channels-list");
+    if (!root) return;
+    const channels = broadcastingChannels(snapshot);
+    const fingerprint = JSON.stringify(channels.map((channel) => [channel.id, channel.name, channel.status, channel.listeners, channel.relays, channel.isBroadcasting]));
+    if (fingerprint === state.channelFingerprint) {
+      syncChannelSelection();
+      if (state.detailKind === "channel") renderSelectedDetail();
+      return;
+    }
+    state.channelFingerprint = fingerprint;
+    if (state.channelSelectionId && !channels.some((channel) => channel.id === state.channelSelectionId)) {
+      state.channelSelectionId = null;
+      if (state.detailKind === "channel") {
+        state.detailKind = null;
+        renderSelectedDetail();
+      }
+    }
+    if (currentView() === "channels" && !state.channelSelectionId && channels.length) {
+      state.channelSelectionId = channels[0].id;
+      state.detailKind = "channel";
+      state.detailKey = state.channelSelectionId;
+    }
+    root.replaceChildren();
+    if (!channels.length) appendText(root, "p", "empty", "配信中のチャンネルはありません。");
+    channels.forEach((channel) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "channel-row";
+      row.dataset.channelId = String(channel.id || "");
+      row.classList.toggle("selected", channel.id === state.channelSelectionId);
+      appendText(row, "span", "channel-row-name", displayValue(channel.name));
+      const listeners = channel.listeners != null && Number.isFinite(Number(channel.listeners)) ? Number(channel.listeners) : "—";
+      const relays = channel.relays != null && Number.isFinite(Number(channel.relays)) ? Number(channel.relays) : "—";
+      appendText(row, "span", "channel-row-status", `${displayValue(channel.status)} · 視聴 ${listeners} · リレー ${relays}`);
+      root.append(row);
+    });
+    syncChannelSelection();
+    text("channel-count", String(channels.length));
+  }
+
+  function broadcastingChannels(snapshot) {
+    return Array.isArray(snapshot?.channels)
+      ? snapshot.channels.filter((channel) => isBroadcastingChannel(channel) && String(channel.id || "").toLowerCase() !== internalTestId)
+      : [];
+  }
+
+  function renderBroadcastDetail() {
+    const empty = byId("detail-empty");
+    const generic = byId("detail-content");
+    const detail = byId("broadcast-detail-content");
+    const channel = broadcastingChannels(state.snapshot).find((entry) => String(entry.id || "") === String(state.channelSelectionId || ""));
+    const broadcasts = Array.isArray(state.snapshot?.broadcasts) ? state.snapshot.broadcasts : [];
+    const broadcast = broadcasts.find((entry) => String(entry.channelId || "") === String(state.channelSelectionId || "")) || channel;
+    if (generic) generic.hidden = true;
+    if (!channel || !broadcast) {
+      if (detail) detail.hidden = true;
+      if (empty) empty.hidden = false;
+      const heading = empty?.querySelector("strong");
+      const description = empty?.querySelector("p");
+      if (heading) heading.textContent = "配信を選択";
+      if (description) description.textContent = "配信一覧からチャンネルを選ぶと、入力URLや掲載状態を確認できます。";
+      return;
+    }
+    if (empty) empty.hidden = true;
+    if (detail) detail.hidden = false;
+    text("broadcast-detail-name", displayValue(broadcast.name || channel.name));
+    text("broadcast-detail-status", displayValue(broadcast.status || channel.status));
+    text("broadcast-detail-manager", broadcast.managedByRt ? "Peercast RT" : (state.snapshot?.backendLabel || "PeerCastStation C#"));
+    text("broadcast-detail-input-url", displayValue(broadcast.inputUrl));
+    text("broadcast-detail-stream-url", displayValue(broadcast.streamUrl));
+    text("broadcast-detail-announcement", displayValue(broadcast.announcementStatus || "掲載していません"));
+    const stop = byId("broadcast-stop-button");
+    if (stop) stop.disabled = state.broadcastBusy || state.stoppingBroadcasts.has(String(broadcast.channelId || channel.id));
+  }
+
+  function updateBroadcastSourceFields() {
+    const push = byId("broadcast-source-mode")?.value !== "pull";
+    const ingest = byId("broadcast-ingest-field");
+    const source = byId("broadcast-source-field");
+    if (ingest) ingest.hidden = !push;
+    if (source) source.hidden = push;
+    const sourceUri = byId("broadcast-source-uri");
+    if (sourceUri) sourceUri.required = !push;
+  }
+
+  function restoreBroadcastForm(request) {
+    if (!request || state.broadcastFormDirty) return false;
+    const values = {
+      name: request.name,
+      contentType: request.contentType === "WMV" ? "WMV" : "FLV",
+      genre: request.genre,
+      description: request.description,
+      comment: request.comment,
+      contactUrl: request.contactUrl,
+      bitrate: request.bitrate,
+      sourceMode: request.sourceMode === "pull" ? "pull" : "push",
+      sourceUri: request.sourceUri,
+      ingestPort: request.ingestPort ?? 8080,
+      relayPort: request.relayPort ?? 7144,
+    };
+    for (const [name, value] of Object.entries(values)) {
+      const field = byId(`broadcast-${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`);
+      if (field && value != null) field.value = String(value);
+    }
+    const announceSp = byId("broadcast-announce-sp");
+    if (announceSp) announceSp.checked = request.announceSp === true;
+    updateBroadcastSourceFields();
+    return true;
+  }
+
+  function restoreLastBroadcastOnce(snapshot) {
+    if (state.broadcastFormInitialized) return false;
+    state.broadcastFormInitialized = true;
+    return restoreBroadcastForm(snapshot?.desktop?.lastBroadcast);
+  }
+
+  function updateBroadcastFormBusy() {
+    const form = byId("broadcast-start-form");
+    if (form) form.querySelectorAll("input, select, textarea, button").forEach((control) => { control.disabled = state.broadcastBusy; });
+    const start = byId("broadcast-start-button");
+    if (start) start.disabled = state.broadcastBusy;
+    updateBroadcastBackendFields();
+    renderBroadcastDetail();
+  }
+
+  function updateBroadcastBackendFields() {
+    const csharpBackend = state.snapshot?.backendKind === "csharp";
+    const relayPort = byId("broadcast-relay-port");
+    const note = byId("broadcast-relay-port-note");
+    if (relayPort) relayPort.disabled = state.broadcastBusy || csharpBackend;
+    if (note) {
+      note.hidden = !csharpBackend;
+      note.textContent = csharpBackend ? "C#版では既存のリレーポート設定を使用します。この値は適用されません。" : "";
+    }
+  }
+
+  function createBroadcastRequest(values) {
+    const sourceMode = values.sourceMode === "pull" ? "pull" : "push";
+    return {
+      name: String(values.name || "").trim(),
+      genre: String(values.genre || "").trim(),
+      description: String(values.description || "").trim(),
+      comment: String(values.comment || "").trim(),
+      contactUrl: String(values.contactUrl || "").trim(),
+      contentType: values.contentType === "WMV" ? "WMV" : "FLV",
+      bitrate: Number(values.bitrate),
+      sourceMode,
+      sourceUri: sourceMode === "pull" ? String(values.sourceUri || "").trim() : "",
+      ingestPort: values.ingestPort === "" || values.ingestPort == null ? 8080 : Number(values.ingestPort),
+      relayPort: values.relayPort === "" || values.relayPort == null ? 7144 : Number(values.relayPort),
+      announceSp: Boolean(values.announceSp),
+    };
+  }
+
+  function validateBroadcastRequest(request, isHttpUrl) {
+    if (!request.name) return "配信名を入力してください。";
+    if (!Number.isInteger(request.bitrate) || request.bitrate < 1 || request.bitrate > 1000000) return "ビットレートは1〜1000000 kbpsの整数で入力してください。";
+    if (!Number.isInteger(request.relayPort) || request.relayPort < 1 || request.relayPort > 65535) return "リレーポートは1〜65535で入力してください。";
+    if (request.sourceMode === "push" && (!Number.isInteger(request.ingestPort) || request.ingestPort < 1 || request.ingestPort > 65535)) return "受信ポートは1〜65535で入力してください。";
+    if (request.sourceMode === "pull" && !isHttpUrl(request.sourceUri)) return "入力URLはHTTPまたはHTTPSで入力してください。";
+    if (request.contactUrl && !isHttpUrl(request.contactUrl)) return "コンタクトURLはHTTPまたはHTTPSで入力してください。";
+    return "";
+  }
+
+  function beginBroadcastStart(state) {
+    if (state.broadcastBusy) return false;
+    state.broadcastBusy = true;
+    return true;
+  }
+  function endBroadcastStart(state) {
+    state.broadcastBusy = false;
+  }
+  function beginBroadcastStop(state, channelId) {
+    const id = String(channelId || "");
+    if (!id || state.broadcastBusy || state.stoppingBroadcasts.has(id)) return false;
+    state.stoppingBroadcasts.add(id);
+    return true;
+  }
+  function endBroadcastStop(state, channelId) {
+    state.stoppingBroadcasts.delete(String(channelId || ""));
+  }
+
+  async function startBroadcast(event) {
+    event.preventDefault();
+    if (state.broadcastBusy) return;
+    const form = byId("broadcast-start-form");
+    if (!form?.reportValidity()) return;
+    const value = (name) => String(form.elements.namedItem(name)?.value || "").trim();
+    const sourceMode = value("sourceMode") === "pull" ? "pull" : "push";
+    const sourceUri = value("sourceUri");
+    const contactUrl = value("contactUrl");
+    const request = createBroadcastRequest({
+      name: value("name"),
+      genre: value("genre"),
+      description: value("description"),
+      comment: value("comment"),
+      contactUrl,
+      contentType: value("contentType"),
+      bitrate: value("bitrate"),
+      sourceMode,
+      sourceUri,
+      ingestPort: value("ingestPort"),
+      relayPort: value("relayPort"),
+      announceSp: Boolean(byId("broadcast-announce-sp")?.checked),
+    });
+    const validationError = validateBroadcastRequest(request, (url) => Boolean(safeHttpUrl(url)));
+    if (validationError) {
+      setNotice(validationError, true);
+      return;
+    }
+    if (!beginBroadcastStart(state)) return;
+    const previousIds = new Set((state.snapshot?.broadcasts || []).map((broadcast) => String(broadcast.channelId || "")));
+    text("broadcast-form-status", "配信を開始しています…");
+    updateBroadcastFormBusy();
+    try {
+      const snapshot = await invoke("start_broadcast", { request });
+      const created = (snapshot.broadcasts || []).find((broadcast) => !previousIds.has(String(broadcast.channelId || "")));
+      if (created?.channelId) state.channelSelectionId = String(created.channelId);
+      state.detailKind = state.channelSelectionId ? "channel" : null;
+      state.detailKey = state.channelSelectionId;
+      renderSnapshot(snapshot);
+      state.broadcastFormDirty = false;
+      const details = byId("broadcast-form");
+      if (details) details.open = false;
+      setNotice("配信を開始しました。配信情報の入力URLへエンコーダーから送信してください。");
+      text("broadcast-form-status", "");
+    } catch (error) {
+      const message = errorText(error);
+      text("broadcast-form-status", message);
+      setNotice(`配信を開始できませんでした: ${message}`, true);
+    } finally {
+      endBroadcastStart(state);
+      updateBroadcastFormBusy();
+    }
+  }
+
+  async function stopBroadcast(channelId) {
+    const id = String(channelId || "");
+    if (!beginBroadcastStop(state, id)) return;
+    renderBroadcastDetail();
+    try {
+      renderSnapshot(await invoke("stop_broadcast", { channelId: id }));
+      setNotice("配信を停止しました。");
+    } catch (error) {
+      setNotice(`配信を停止できませんでした: ${errorText(error)}`, true);
+    } finally {
+      endBroadcastStop(state, id);
+      renderBroadcastDetail();
+    }
+  }
+
+  function syncChannelSelection() {
+    const root = byId("channels-list");
+    if (!root) return;
+    root.querySelectorAll("[data-channel-id]").forEach((row) => {
+      const selected = row.dataset.channelId === state.channelSelectionId;
+      row.classList.toggle("selected", selected);
+      if (selected) row.setAttribute("aria-current", "true");
+      else row.removeAttribute("aria-current");
+    });
+  }
+
+  const recordingStatusLabels = { queued: "待機中", connecting: "接続中", recording: "録画中", retrying: "再試行中", stopped: "停止", completed: "完了", failed: "失敗" };
+  function recordingMonitorLabel(snapshot) {
+    const config = snapshot?.desktop?.recording;
+    if (!config?.enabled) return "自動監視: 設定オフ";
+    if (!snapshot.running) return "自動監視: バックエンド停止中";
+    if (!config.allDay) {
+      const toMinutes = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || "")) ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5)) : null;
+      const start = toMinutes(config.watchStart), end = toMinutes(config.watchEnd);
+      const now = new Date(), current = now.getHours() * 60 + now.getMinutes();
+      if (start === null || end === null) return "自動監視: 時刻設定を確認してください";
+      const within = start <= end ? current >= start && current <= end : current >= start || current <= end;
+      if (!within) return "自動監視: 設定時間外";
+    }
+    return "自動監視: 監視中";
+  }
+  function renderRecordings(snapshot) {
+    const root = byId("recordings-list");
+    if (!root) return;
+    const jobs = Array.isArray(snapshot?.recordings) ? snapshot.recordings : [];
+    if (!jobs.some((job) => job.id === state.recordingSelectionId)) state.recordingSelectionId = jobs[0]?.id || null;
+    const fingerprint = JSON.stringify(jobs.map((job) => String(job.id)));
+    if (fingerprint !== state.recordingListFingerprint) {
+      state.recordingListFingerprint = fingerprint;
+      root.replaceChildren();
+      jobs.forEach((job) => {
+        const row = document.createElement("tr"); row.dataset.recordingId = String(job.id); row.tabIndex = 0; row.setAttribute("aria-selected", "false");
+        const status = document.createElement("td"); status.className = "recording-status-cell";
+        const channel = document.createElement("td"); channel.className = "recording-channel-cell";
+        const name = document.createElement("strong"); name.className = "recording-channel-name";
+        const source = document.createElement("small"); source.className = "recording-channel-source"; channel.append(name, source);
+        const bytes = document.createElement("td"); bytes.className = "recording-bytes-cell";
+        const segments = document.createElement("td"); segments.className = "recording-segments-cell";
+        const retries = document.createElement("td"); retries.className = "recording-retries-cell";
+        const file = document.createElement("td"); file.className = "recording-file-cell";
+        const error = document.createElement("td"); error.className = "recording-error-cell";
+        row.append(status, channel, bytes, segments, retries, file, error); root.append(row);
+      });
+    }
+    const rows = new Map([...root.querySelectorAll("tr[data-recording-id]")].map((row) => [row.dataset.recordingId, row]));
+    jobs.forEach((job) => {
+      const row = rows.get(String(job.id)); if (!row) return;
+      const status = Object.hasOwn(recordingStatusLabels, String(job.status || "")) ? String(job.status) : "unknown";
+      row.classList.toggle("selected", job.id === state.recordingSelectionId);
+      row.setAttribute("aria-selected", String(job.id === state.recordingSelectionId));
+      const statusCell = row.querySelector(".recording-status-cell");
+      statusCell.textContent = recordingStatusLabels[status] || displayValue(job.status);
+      statusCell.className = `recording-status-cell recording-status-${status}`;
+      row.querySelector(".recording-channel-name").textContent = displayValue(job.name);
+      row.querySelector(".recording-channel-source").textContent = `${displayValue(job.yellowPage)} · ${displayValue(job.channelId)}`;
+      row.querySelector(".recording-bytes-cell").textContent = formatBytes(job.bytesWritten);
+      row.querySelector(".recording-segments-cell").textContent = String(Number(job.segments) || 0);
+      row.querySelector(".recording-retries-cell").textContent = String(Number(job.retries) || 0);
+      row.querySelector(".recording-file-cell").textContent = displayValue(job.currentFile);
+      row.querySelector(".recording-error-cell").textContent = displayValue(job.error);
+    });
+    byId("recordings-empty").hidden = jobs.length > 0;
+    const monitoring = byId("recording-monitor-status");
+    if (monitoring) monitoring.textContent = recordingMonitorLabel(snapshot);
+    const selected = jobs.find((job) => job.id === state.recordingSelectionId);
+    const summary = byId("recording-selection-summary");
+    if (summary) {
+      if (!selected) summary.textContent = "録画を選択してください。";
+      else {
+        const started = Number.isFinite(Number(selected.startedAtMs)) && selected.startedAtMs !== null ? new Date(Number(selected.startedAtMs)).toLocaleString("ja-JP") : "未開始";
+        summary.textContent = `${recordingStatusLabels[selected.status] || displayValue(selected.status)} · 開始 ${started} · キープ ${selected.keep ? "オン" : "オフ"}${selected.currentFile ? ` · ${selected.currentFile}` : ""}${selected.error ? ` · ${selected.error}` : ""}`;
+      }
+    }
+    const keep = byId("recording-keep");
+    if (keep) keep.textContent = selected?.keep ? "キープ: オン" : "キープ: オフ";
+    updateRecordingControls();
+  }
+
+  function updateRecordingControls() {
+    const jobs = Array.isArray(state.snapshot?.recordings) ? state.snapshot.recordings : [];
+    const index = jobs.findIndex((job) => job.id === state.recordingSelectionId);
+    const job = index < 0 ? null : jobs[index];
+    const busy = state.busy || state.recordingBusy;
+    const active = job && ["queued", "connecting", "recording", "retrying"].includes(job.status);
+    const set = (id, disabled) => { const control = byId(id); if (control) control.disabled = Boolean(disabled); };
+    set("recording-start", busy || !state.snapshot?.running || !job || Boolean(active));
+    set("recording-stop", busy || !active);
+    set("recording-reconnect", busy || !state.snapshot?.running || !job);
+    set("recording-keep", busy || !job);
+    set("recording-up", busy || !job || index <= 0);
+    set("recording-down", busy || !job || index >= jobs.length - 1);
+    set("recording-remove", busy || !job);
+    set("open-recording-folder", busy);
+    const selectedChannel = currentSelectedDirectoryChannel();
+    set("selected-record", busy || state.ypBusy || !state.snapshot?.running || !selectedChannel?.yellowPage || !isPlayableYpChannel(selectedChannel));
+  }
+
+  async function controlRecording(action) {
+    const job = (state.snapshot?.recordings || []).find((entry) => entry.id === state.recordingSelectionId);
+    if (!job || state.recordingBusy || state.busy) return false;
+    state.recordingBusy = true; updateRecordingControls();
+    try {
+      const snapshot = await invoke("control_recording", { jobId: String(job.id), action });
+      renderSnapshot(snapshot);
+      return true;
+    } catch (error) { setNotice(`録画を操作できませんでした: ${errorText(error)}`, true); return false; }
+    finally { state.recordingBusy = false; updateRecordingControls(); }
+  }
+
+  async function enqueueSelectedRecording() {
+    const channel = currentSelectedDirectoryChannel();
+    if (!channel?.channelId || !channel.yellowPage || !isPlayableYpChannel(channel) || state.recordingBusy || state.busy) return;
+    state.recordingBusy = true; updateRecordingControls();
+    try {
+      const jobId = await invoke("enqueue_recording", { channelId: String(channel.channelId), yellowPage: String(channel.yellowPage), keep: false });
+      state.recordingSelectionId = String(jobId);
+      const snapshot = await invoke("snapshot");
+      renderSnapshot(snapshot);
+      setNotice(`${displayValue(channel.name)} を録画一覧に追加しました。`);
+      await requestView("recordings");
+    } catch (error) { setNotice(`録画を追加できませんでした: ${errorText(error)}`, true); }
+    finally { state.recordingBusy = false; updateRecordingControls(); }
+  }
+
+  async function openRecordingFolder() {
+    if (state.recordingBusy || state.busy) return;
+    state.recordingBusy = true; updateRecordingControls();
+    try { await invoke("open_recording_folder", { jobId: state.recordingSelectionId || null }); }
+    catch (error) { setNotice(`保存先を開けませんでした: ${errorText(error)}`, true); }
+    finally { state.recordingBusy = false; updateRecordingControls(); }
+  }
+
+  function renderLogs() {
+    if (currentView() !== "logs") return;
+    const root = byId("logs-list");
+    if (!root) return;
+    const entries = Array.isArray(state.snapshot?.logs) ? state.snapshot.logs : [];
+    const query = state.logQuery.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
+    const levelFilter = byId("log-level-filter")?.value || "all";
+    const filterRank = logRanks[levelFilter];
+    const visible = entries.filter((entry) => {
+      const rank = logRanks[String(entry.level || "info").toLowerCase()];
+      if (levelFilter !== "all" && (rank === undefined || rank > filterRank)) return false;
+      if (!query) return true;
+      return `${entry.target || ""} ${entry.message || ""}`.normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query);
+    });
+    const fingerprint = JSON.stringify([visible, state.logQuery, levelFilter, Boolean(byId("log-wrap")?.checked)]);
+    if (fingerprint === state.logFingerprint) return;
+    state.logFingerprint = fingerprint;
+    root.replaceChildren();
+    visible.forEach((entry) => {
+      const row = document.createElement("article");
+      row.className = "log-entry";
+      appendText(row, "time", "log-time", Number.isFinite(Number(entry.timestampMs)) ? new Date(Number(entry.timestampMs)).toLocaleTimeString("ja-JP") : "時刻不明");
+      appendText(row, "span", `log-level level-${String(entry.level || "info").toLowerCase()}`, displayValue(entry.level));
+      appendText(row, "span", "log-target", displayValue(entry.target));
+      appendText(row, "p", "log-message", displayValue(entry.message));
+      root.append(row);
+    });
+    root.classList.toggle("no-wrap", !Boolean(byId("log-wrap")?.checked));
+    if (!visible.length) appendText(root, "p", "empty", "該当するログはありません。");
+  }
+
+  function renderProbe(probe) {
+    const status = byId("probe-status");
+    if (status) {
+      status.className = `status-pill ${probe ? (probe.passed ? "status-live" : "status-fail") : "status-idle"}`;
+      status.textContent = probe ? (probe.passed ? "成功" : "失敗") : "未実行";
+    }
+    text("probe-bytes", probe ? formatBytes(probe.bytes) : "—");
+    text("probe-elapsed", probe ? `${Number(probe.elapsedMs || 0).toFixed(1)} ms` : "—");
+  }
+
+  function renderSnapshot(snapshot, { initial = false } = {}) {
+    if (!snapshot || typeof snapshot !== "object") throw new Error("snapshotの形式が正しくありません。");
+    state.snapshot = snapshot;
+    restoreLastBroadcastOnce(snapshot);
+    state.settingsView?.updateSnapshot(snapshot);
+    const running = Boolean(snapshot.running);
+    const dot = byId("state-dot");
+    if (dot) dot.className = `state-dot ${running ? "is-running" : "is-stopped"}`;
+    const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "Peercast RT");
+    text("state-label", `${backendLabel} ${running ? "稼働中" : "停止中"}`);
+    text("endpoint", snapshot.endpoint || "停止中");
+    text("uptime", running ? formatDuration(snapshot.uptimeSecs) : "停止中");
+    text("active-tasks", String(Number(snapshot.activeTasks) || 0));
+    text("last-updated", `最終更新 ${state.ypLastUpdatedAt === null ? "—" : new Date(state.ypLastUpdatedAt).toLocaleTimeString("ja-JP")}`);
+    text("limit-directs", String(Number(snapshot.limits?.maxDirects) || 0));
+    text("limit-relays", String(Number(snapshot.limits?.maxRelays) || 0));
+    text("limit-rate", `${Number(snapshot.limits?.maxUpstreamRate) || 0} kbps`);
+    const sourcesChanged = updateYpSources();
+    renderChannels(snapshot);
+    renderConnections(snapshot);
+    if (currentView() === "channels") text("yp-count", `${broadcastingChannels(snapshot).length} 件の配信`);
+    if (currentView() === "connections") text("yp-count", `${allRuntimeChannels(snapshot).length} 件の稼働チャンネル`);
+    if (currentView() === "logs") renderLogs();
+    renderProbe(snapshot.lastProbe || null);
+    const csharpBackend = snapshot.backendKind === "csharp";
+    updateBroadcastBackendFields();
+    const probeButton = byId("probe-button");
+    if (probeButton) {
+      probeButton.disabled = state.busy || csharpBackend;
+      probeButton.title = csharpBackend ? "C#版へテストデータを送らないため、この診断は利用できません" : "";
+    }
+    const backendActionsNote = byId("backend-actions-note");
+    if (backendActionsNote) {
+      backendActionsNote.hidden = !csharpBackend;
+      backendActionsNote.textContent = csharpBackend
+        ? "C#版へテストデータを送らないため、送受信診断は無効です。接続上限はC#版側で設定してください。"
+        : "";
+    }
+    renderRecordings(snapshot);
+    applyDirectoryPreferences(snapshot.desktop?.directory || {});
+    if (currentView() === "recordings") text("yp-count", `${Array.isArray(snapshot.recordings) ? snapshot.recordings.length : 0} 件の録画`);
+    if (state.detailKind === "channel") renderSelectedDetail();
+    else updateConnectionSummary(state.detailKind === "yp" ? runtimeChannelFor(currentYpChannel()?.channelId) : null);
+    updateDetailActions(currentSelectedDirectoryChannel());
+    updateYpControls();
+    renderYpSourcesAndMaybeRefresh(sourcesChanged);
+    if (initial && !state.ypStarted) {
+      state.ypStarted = true;
+      const activeView = document.querySelector("[data-view].active")?.dataset.view || "yp";
+      activateView(activeView);
+      activateDetailTab(state.detailTab);
+      fetchYpChannels(false);
+    }
+  }
+
+  async function action(label, command, args) {
+    if (state.busy) return;
+    setBusy(true);
+    setNotice(`${label}を実行中…`);
+    let succeeded = false;
+    try {
+      const result = await invoke(command, args);
+      renderSnapshot(result);
+      setNotice(`${label}が完了しました。`);
+      succeeded = true;
+      return true;
+    } catch (error) {
+      setNotice(`${label}に失敗しました: ${errorText(error)}`, true);
+      return false;
+    } finally {
+      setBusy(false);
+      if (command === "restart_backend" && succeeded) refreshYpAfterRuntimeChange();
+      else flushPendingYpRefresh();
+    }
+  }
+
+  async function refresh(showMessage = false) {
+    if (state.busy) return;
+    if (state.refreshing) {
+      if (showMessage) {
+        state.manualRefreshing = true;
+        updateRefreshControls();
+      }
+      return;
+    }
+    state.refreshing = true;
+    state.manualRefreshing = showMessage;
+    const startedAt = performance.now();
+    updateRefreshControls();
+    try {
+      renderSnapshot(await invoke("snapshot"), { initial: !state.snapshot });
+      if (state.manualRefreshing) setNotice("状態を更新しました。");
+    } catch (error) {
+      setNotice(`状態の取得に失敗しました: ${errorText(error)}`, true);
+    } finally {
+      if (state.manualRefreshing) await finishRefreshFeedback(startedAt);
+      state.manualRefreshing = false;
+      state.refreshing = false;
+      updateRefreshControls();
+    }
+  }
+
+  async function playYpChannel(channel) {
+    if (!state.snapshot?.running || !channel || state.busy || state.ypBusy || !isPlayableYpChannel(channel)) return;
+    state.ypBusy = true;
+    updateYpControls();
+    setNotice(`${displayValue(channel.name)} の配信元に接続しています…`);
+    try {
+      await invoke("play_yp_channel", { channelId: String(channel.channelId), yellowPage: String(channel.yellowPage || "") });
+      setNotice("設定したプレイヤーを起動しました。");
+      await refresh(false);
+    } catch (error) {
+      setNotice(`再生を開始できませんでした: ${errorText(error)}`, true);
+    } finally {
+      state.ypBusy = false;
+      updateYpControls();
+      flushPendingYpRefresh();
+    }
+  }
+
+  async function copyText(value, label) {
+    if (!value) {
+      setNotice(`${label}を利用できません。`, true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice(`${label}をコピーしました。`);
+    } catch (error) {
+      setNotice(`${label}をコピーできませんでした: ${errorText(error)}`, true);
+    }
+  }
+
+  function selectChannel(id) {
+    state.channelSelectionId = id;
+    state.detailKind = "channel";
+    state.detailKey = id;
+    renderChannels(state.snapshot || { channels: [] });
+    renderSelectedDetail();
+  }
+
+  function bind(id, event, handler) {
+    const element = byId(id);
+    if (element) element.addEventListener(event, handler);
+  }
+
+  async function toggleMainWindowMaximize() {
+    try {
+      const maximized = await invoke("toggle_main_window_maximize");
+      const button = byId("window-maximize");
+      const icon = button?.querySelector(".icon");
+      if (icon) icon.className = `icon ${maximized ? "icon-copy" : "icon-square"}`;
+      if (button) {
+        button.setAttribute("aria-label", maximized ? "元のサイズに戻す" : "最大化");
+        button.title = maximized ? "元のサイズに戻す" : "最大化";
+      }
+    } catch (error) {
+      setNotice(`ウィンドウサイズを変更できませんでした: ${errorText(error)}`, true);
+    }
+  }
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => requestView(button.dataset.view));
+  });
+  document.querySelectorAll("[data-detail-tab]").forEach((button) => {
+    button.addEventListener("click", () => activateDetailTab(button.dataset.detailTab));
+    button.addEventListener("keydown", (event) => {
+      const tabs = [...document.querySelectorAll("[data-detail-tab]")];
+      const index = tabs.indexOf(button);
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      tabs[next].focus();
+      activateDetailTab(tabs[next].dataset.detailTab);
+    });
+  });
+  document.querySelectorAll("[data-connection-tab]").forEach((button) => {
+    button.addEventListener("click", () => activateConnectionTab(button.dataset.connectionTab));
+    button.addEventListener("keydown", (event) => {
+      const tabs = [...document.querySelectorAll("[data-connection-tab]")];
+      const index = tabs.indexOf(button);
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      tabs[next].focus();
+      activateConnectionTab(tabs[next].dataset.connectionTab);
+    });
+  });
+  bind("about-button", "click", () => byId("about-dialog")?.showModal());
+  bind("close-about", "click", () => byId("about-dialog")?.close());
+  bind("about-dialog", "click", (event) => {
+    const dialog = byId("about-dialog");
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+  });
+  bind("quit-button", "click", () => closeMainWindow());
+  bind("window-minimize", "click", async () => {
+    try { await invoke("minimize_main_window"); }
+    catch (error) { setNotice(`ウィンドウを最小化できませんでした: ${errorText(error)}`, true); }
+  });
+  bind("window-maximize", "click", toggleMainWindowMaximize);
+  bind("window-close", "click", () => closeMainWindow());
+  bind("titlebar", "mousedown", (event) => {
+    if (event.button !== 0 || event.target.closest(".window-controls")) return;
+    event.preventDefault();
+    if (event.detail === 2) {
+      void toggleMainWindowMaximize();
+      return;
+    }
+    invoke("start_main_window_drag").catch((error) => {
+      setNotice(`ウィンドウを移動できませんでした: ${errorText(error)}`, true);
+    });
+  });
+  bind("refresh-button", "click", () => refresh(true));
+  bind("probe-button", "click", () => action("ローカル送受信テスト", "run_probe"));
+  bind("restart-button", "click", () => action("バックエンド再起動", "restart_backend"));
+  bind("stop-button", "click", () => action("バックエンド停止", "stop_backend"));
+  bind("header-broadcast", "click", async () => {
+    if (currentView() !== "channels" && !(await requestView("channels"))) return;
+    const form = byId("broadcast-form");
+    if (form) form.open = true;
+    byId("broadcast-name")?.focus();
+  });
+  bind("broadcast-start-form", "submit", startBroadcast);
+  const broadcastForm = byId("broadcast-start-form");
+  if (broadcastForm) {
+    broadcastForm.addEventListener("input", () => { state.broadcastFormDirty = true; });
+    broadcastForm.addEventListener("change", () => { state.broadcastFormDirty = true; });
+  }
+  bind("broadcast-source-mode", "change", updateBroadcastSourceFields);
+  bind("broadcast-stop-button", "click", () => stopBroadcast(state.channelSelectionId));
+  updateBroadcastSourceFields();
+
+  bind("yp-search", "input", () => {
+    state.ypQuery = byId("yp-search").value;
+    renderYpDirectory();
+  });
+  bind("yp-source", "change", () => {
+    state.ypSource = byId("yp-source").value || "all";
+    renderYpDirectory();
+  });
+  bind("yp-scope", "change", () => { state.ypScope = byId("yp-scope").value || "normal"; renderYpDirectory(); });
+  bind("yp-refresh", "click", () => fetchYpChannels(true, true));
+  bind("yp-refresh-save", "click", saveDirectoryPreferences);
+  document.querySelectorAll('input[name="yp-refresh-mode"]').forEach((input) => input.addEventListener("change", () => { state.ypDirectoryDirty = true; }));
+  bind("yp-refresh-interval", "input", () => { state.ypDirectoryDirty = true; });
+  const ypRoot = byId("yp-results");
+  if (ypRoot) ypRoot.addEventListener("click", (event) => {
+    const row = event.target.closest(".yp-row");
+    if (!row) return;
+    const channel = state.ypChannels[Number(row.dataset.ypIndex)];
+    if (!channel) return;
+    if (event.target.closest(".yp-play-button")) {
+      event.stopPropagation();
+      playYpChannel(channel);
+    } else {
+      selectYpChannel(channel);
+    }
+  });
+  const channelsRoot = byId("channels-list");
+  if (channelsRoot) channelsRoot.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-channel-id]");
+    if (row) selectChannel(row.dataset.channelId);
+  });
+  const connectionList = byId("connections-channel-list");
+  if (connectionList) connectionList.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-connection-channel-id]");
+    if (!row) return;
+    state.connectionSelectionId = row.dataset.connectionChannelId;
+    renderConnections(state.snapshot || { channels: [] });
+  });
+  bind("selected-play", "click", () => playYpChannel(currentSelectedDirectoryChannel()));
+  bind("selected-record", "click", () => { void enqueueSelectedRecording(); });
+  async function addSelectedChannelRule(kind) {
+    const channel = currentSelectedDirectoryChannel();
+    if (!channel?.name) return;
+    const moved = await requestView("settings");
+    if (moved || currentView() === "settings") state.settingsView?.addChannelRule(channel, kind);
+  }
+  bind("add-favorite-rule", "click", () => { void addSelectedChannelRule("favorite"); });
+  bind("add-ng-rule", "click", () => { void addSelectedChannelRule("ng"); });
+  bind("open-recording-folder", "click", () => { void openRecordingFolder(); });
+  bind("recording-start", "click", () => { void controlRecording("start"); });
+  bind("recording-stop", "click", () => { void controlRecording("stop"); });
+  bind("recording-reconnect", "click", () => { void controlRecording("reconnect"); });
+  bind("recording-keep", "click", () => { void controlRecording("toggle_keep"); });
+  bind("recording-up", "click", () => { void controlRecording("up"); });
+  bind("recording-down", "click", () => { void controlRecording("down"); });
+  bind("recording-remove", "click", () => {
+    if (!state.recordingSelectionId || state.recordingBusy || state.busy) return;
+    state.pendingRecordingRemoval = state.recordingSelectionId;
+    try { byId("remove-recording-dialog").showModal(); }
+    catch (error) { state.pendingRecordingRemoval = null; setNotice(`確認画面を表示できませんでした: ${errorText(error)}`, true); }
+  });
+  bind("cancel-remove-recording", "click", () => byId("remove-recording-dialog")?.close());
+  bind("confirm-remove-recording", "click", () => {
+    const id = state.pendingRecordingRemoval; state.pendingRecordingRemoval = null;
+    if (!id) return;
+    state.recordingSelectionId = id;
+    byId("remove-recording-dialog")?.close();
+    void controlRecording("remove");
+  });
+  bind("remove-recording-dialog", "close", () => { state.pendingRecordingRemoval = null; });
+  const recordingsRoot = byId("recordings-list");
+  if (recordingsRoot) {
+    recordingsRoot.addEventListener("click", (event) => {
+      const row = event.target.closest("tr[data-recording-id]"); if (!row) return;
+      state.recordingSelectionId = row.dataset.recordingId; renderRecordings(state.snapshot || { recordings: [] });
+    });
+    recordingsRoot.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const row = event.target.closest("tr[data-recording-id]"); if (!row) return;
+      event.preventDefault(); state.recordingSelectionId = row.dataset.recordingId; renderRecordings(state.snapshot || { recordings: [] });
+    });
+  }
+  bind("copy-contact", "click", () => copyText(safeHttpUrl(currentSelectedDirectoryChannel()?.contactUrl), "コンタクトURL"));
+  bind("copy-stream", "click", () => {
+    const channel = state.detailKind === "yp" ? currentYpChannel() : runtimeChannelFor(state.channelSelectionId);
+    const id = channel?.channelId || state.channelSelectionId;
+    const endpoint = String(state.snapshot?.endpoint || "").replace(/\/$/, "");
+    const localChannel = runtimeChannelFor(id);
+    copyText(state.snapshot?.running && localChannel && endpoint ? `${endpoint}/stream/${encodeURIComponent(id)}` : "", "ストリームURL");
+  });
+  bind("log-search", "input", () => { state.logQuery = byId("log-search").value; renderLogs(); });
+  bind("log-level-filter", "change", renderLogs);
+  bind("log-wrap", "change", renderLogs);
+
+  refresh();
+  window.setInterval(() => refresh(false), 1000);
+})();

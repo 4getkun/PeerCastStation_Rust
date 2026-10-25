@@ -19,7 +19,10 @@ fn test_p44_all_58_requirements_covered_and_verified() {
     assert!(spec_path.exists(), "docs/SPECIFICATION.md must exist");
 
     let worklog_path = root.join("docs").join("WORKLOG_AND_DECISIONS.md");
-    assert!(worklog_path.exists(), "docs/WORKLOG_AND_DECISIONS.md must exist");
+    assert!(
+        worklog_path.exists(),
+        "docs/WORKLOG_AND_DECISIONS.md must exist"
+    );
 
     let worklog = fs::read_to_string(&worklog_path).expect("failed to read worklog");
 
@@ -54,11 +57,10 @@ fn test_p44_all_50_tasks_executed_and_evidenced() {
     let worklog = fs::read_to_string(root.join("docs").join("WORKLOG_AND_DECISIONS.md")).unwrap();
 
     let tasks = [
-        "P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10",
-        "P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P20",
-        "P21", "P22", "P23", "P24", "P25", "P26", "P27", "P28", "P29", "P30",
-        "P31", "P32", "P33", "P34", "P35", "P36", "P37", "P37A", "P37B", "P37C",
-        "P37D", "P37E", "P37F", "P38", "P39", "P40", "P41", "P42", "P43", "P44",
+        "P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12", "P13",
+        "P14", "P15", "P16", "P17", "P18", "P19", "P20", "P21", "P22", "P23", "P24", "P25", "P26",
+        "P27", "P28", "P29", "P30", "P31", "P32", "P33", "P34", "P35", "P36", "P37", "P37A",
+        "P37B", "P37C", "P37D", "P37E", "P37F", "P38", "P39", "P40", "P41", "P42", "P43", "P44",
     ];
 
     assert_eq!(tasks.len(), 50, "Must verify exactly 50 tasks in DAG");
@@ -69,7 +71,10 @@ fn test_p44_all_50_tasks_executed_and_evidenced() {
         let pattern3 = format!("Task {} —", task);
         let pattern4 = format!("Task {} ", task);
         assert!(
-            worklog.contains(&pattern1) || worklog.contains(&pattern2) || worklog.contains(&pattern3) || worklog.contains(&pattern4),
+            worklog.contains(&pattern1)
+                || worklog.contains(&pattern2)
+                || worklog.contains(&pattern3)
+                || worklog.contains(&pattern4),
             "Task {} must be recorded in worklog",
             task
         );
@@ -97,9 +102,17 @@ fn test_p44_release_documentation_completeness() {
 
     for doc in required_docs {
         let path = root.join(doc);
-        assert!(path.exists(), "Required release document must exist: {}", doc);
+        assert!(
+            path.exists(),
+            "Required release document must exist: {}",
+            doc
+        );
         let content = fs::read_to_string(&path).unwrap();
-        assert!(!content.trim().is_empty(), "Document must not be empty: {}", doc);
+        assert!(
+            !content.trim().is_empty(),
+            "Document must not be empty: {}",
+            doc
+        );
     }
 }
 

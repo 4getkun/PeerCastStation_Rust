@@ -1,7 +1,7 @@
+use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use serde_json::json;
 use tokio::sync::Notify;
 
 use peercast_rpc::{
@@ -18,7 +18,7 @@ async fn test_p37c_index_controller_lifecycle() {
     mock.register_success(
         "getVersionInfo",
         json!({
-            "agentName": "PeerCastStation/1.0",
+            "agentName": concat!("PeerCastStation/", env!("CARGO_PKG_VERSION")),
             "apiVersion": "1.0.0",
             "jsonrpc": "2.0"
         }),
@@ -62,7 +62,10 @@ async fn test_p37c_index_controller_lifecycle() {
     let state = controller.state().await;
     assert!(state.is_loaded());
     let data = state.data().expect("screen data must be present");
-    assert_eq!(data.version.agent_name, "PeerCastStation/1.0");
+    assert_eq!(
+        data.version.agent_name,
+        concat!("PeerCastStation/", env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(data.status.uptime_formatted, "00:02:00");
     assert_eq!(data.plugins.len(), 1);
     assert_eq!(data.plugins[0].name, "PCP");
@@ -76,7 +79,7 @@ async fn test_p37c_index_controller_unauthorized() {
     mock.register_success(
         "getVersionInfo",
         json!({
-            "agentName": "PeerCastStation/1.0",
+            "agentName": concat!("PeerCastStation/", env!("CARGO_PKG_VERSION")),
             "apiVersion": "1.0.0",
             "jsonrpc": "2.0"
         }),
@@ -117,7 +120,10 @@ async fn test_p37c_index_controller_disconnected() {
     let controller = IndexController::new(client);
 
     let err = controller.refresh().await.unwrap_err();
-    assert!(matches!(err, ControllerError::Client(ClientRpcError::Transport(_))));
+    assert!(matches!(
+        err,
+        ControllerError::Client(ClientRpcError::Transport(_))
+    ));
     assert_eq!(controller.state().await, ScreenState::Disconnected);
 }
 

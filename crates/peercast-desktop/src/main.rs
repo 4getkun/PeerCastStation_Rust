@@ -1,0 +1,410 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use peercast_desktop::backend::{DesktopBackend, Limits, Snapshot, YellowPageEntry};
+use peercast_desktop::player::PlayerLaunch;
+use peercast_desktop::updater::{self, UpdateManager};
+use peercast_desktop::{
+    preferences::DesktopPreferences,
+    recording_config::RecordingFilter,
+    rules::{ChannelRule, RulePreview},
+};
+use std::sync::Arc;
+use tauri::{Manager, State};
+use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
+
+type Backend = Arc<DesktopBackend>;
+
+#[tauri::command]
+async fn start_broadcast(
+    backend: State<'_, Backend>,
+    request: peercast_desktop::broadcast::BroadcastRequest,
+) -> Result<Snapshot, String> {
+    backend.start_broadcast(request).await
+}
+
+#[tauri::command]
+async fn stop_broadcast(
+    backend: State<'_, Backend>,
+    channel_id: String,
+) -> Result<Snapshot, String> {
+    backend.stop_broadcast(&channel_id).await
+}
+
+#[tauri::command]
+async fn apply_preferences(
+    app: tauri::AppHandle,
+    backend: State<'_, Backend>,
+    limits: Limits,
+    yellow_pages: Vec<YellowPageEntry>,
+    desktop: Option<DesktopPreferences>,
+) -> Result<Snapshot, String> {
+    let before = backend.snapshot().await?;
+    let next = desktop.map(DesktopPreferences::normalize).transpose()?;
+    let startup_changed = next.as_ref().is_some_and(|settings| {
+        settings.window.launch_at_startup != before.desktop.window.launch_at_startup
+    });
+    let startup_before = if startup_changed {
+        Some(
+            app.autolaunch()
+                .is_enabled()
+                .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
+    };
+    if startup_changed {
+        set_startup(&app, next.as_ref().unwrap().window.launch_at_startup)?;
+    }
+    let result = match next {
+        Some(desktop) => {
+            backend
+                .apply_desktop_preferences(limits, yellow_pages, desktop)
+                .await
+        }
+        None => backend.apply_preferences(limits, yellow_pages).await,
+    };
+    match result {
+        Ok(saved) => {
+            let changed = before.desktop.window.width != saved.desktop.window.width
+                || before.desktop.window.height != saved.desktop.window.height;
+            peercast_desktop::native_window::apply(&app, &saved.desktop.window, changed)?;
+            Ok(saved)
+        }
+        Err(error) => {
+            if let Some(previous) = startup_before {
+                let _ = set_startup(&app, previous);
+            }
+            Err(error)
+        }
+    }
+}
+
+fn set_startup(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    }
+    .map_err(|error| format!("スタートアップ設定を変更できません: {error}"))
+}
+
+#[tauri::command]
+async fn choose_file(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    kind: String,
+) -> Result<Option<String>, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から実行してください".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let picker = app.dialog().file().set_parent(&window);
+        let selected = match kind.as_str() {
+            "player" => picker
+                .set_title("プレイヤーを選択")
+                .add_filter("実行ファイル", &["exe"])
+                .blocking_pick_file(),
+            "sound" => picker
+                .set_title("通知音を選択")
+                .add_filter("WAVファイル", &["wav"])
+                .blocking_pick_file(),
+            "directory" => picker
+                .set_title("録画の保存先を選択")
+                .blocking_pick_folder(),
+            _ => return Err("選択するファイルの種類が正しくありません".into()),
+        };
+        selected
+            .map(|path| {
+                path.into_path()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .map_err(|error| error.to_string())
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn preview_channel_rules(
+    backend: State<'_, Backend>,
+    rules: Vec<ChannelRule>,
+) -> Result<RulePreview, String> {
+    backend.preview_channel_rules(rules).await
+}
+
+#[tauri::command]
+async fn preview_recording_rules(
+    backend: State<'_, Backend>,
+    rules: Vec<RecordingFilter>,
+) -> Result<RulePreview, String> {
+    backend
+        .preview_channel_rules(rules.iter().map(RecordingFilter::as_channel_rule).collect())
+        .await
+}
+
+#[tauri::command]
+async fn preview_sound(path: String) -> Result<(), String> {
+    peercast_desktop::audio::play_sound(path).await
+}
+
+#[tauri::command]
+async fn play_rule_sound(backend: State<'_, Backend>, rule_id: String) -> Result<(), String> {
+    if let Some(path) = backend.rule_sound_path(&rule_id).await? {
+        peercast_desktop::audio::play_sound(path).await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn enqueue_recording(
+    backend: State<'_, Backend>,
+    channel_id: String,
+    yellow_page: String,
+    keep: bool,
+) -> Result<String, String> {
+    backend
+        .enqueue_recording(channel_id, yellow_page, keep)
+        .await
+}
+
+#[tauri::command]
+async fn control_recording(
+    backend: State<'_, Backend>,
+    job_id: String,
+    action: String,
+) -> Result<Snapshot, String> {
+    backend.control_recording(&job_id, &action).await?;
+    backend.snapshot().await
+}
+
+#[tauri::command]
+async fn open_recording_folder(
+    backend: State<'_, Backend>,
+    job_id: Option<String>,
+) -> Result<(), String> {
+    let path = if let Some(job_id) = job_id {
+        backend
+            .snapshot()
+            .await?
+            .recordings
+            .into_iter()
+            .find(|job| job.id == job_id)
+            .and_then(|job| job.current_file)
+            .and_then(|path| {
+                std::path::PathBuf::from(path)
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+            })
+            .ok_or("録画ファイルの保存先がまだありません")?
+    } else {
+        let settings = backend.recording_settings().await?;
+        let path = std::path::PathBuf::from(settings.directory);
+        if path.is_absolute() {
+            path
+        } else {
+            std::env::current_exe()
+                .map_err(|error| error.to_string())?
+                .parent()
+                .ok_or("アプリの配置先を取得できません")?
+                .join(path)
+        }
+    };
+    std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+    let explorer = std::path::PathBuf::from(
+        std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
+    )
+    .join("explorer.exe");
+    std::process::Command::new(explorer)
+        .arg({
+            let value = path.to_string_lossy();
+            if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
+                format!(r"\\{unc}")
+            } else {
+                value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
+            }
+        })
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_yp_channels(
+    backend: State<'_, Backend>,
+    refresh: bool,
+) -> Result<serde_json::Value, String> {
+    backend.get_yp_channels(refresh).await
+}
+
+#[tauri::command]
+async fn play_yp_channel(
+    backend: State<'_, Backend>,
+    channel_id: String,
+    yellow_page: String,
+) -> Result<PlayerLaunch, String> {
+    backend.play_yp_channel(&channel_id, &yellow_page).await
+}
+
+#[tauri::command]
+async fn snapshot(backend: State<'_, Backend>) -> Result<Snapshot, String> {
+    backend.snapshot().await
+}
+
+#[tauri::command]
+async fn apply_limits(backend: State<'_, Backend>, limits: Limits) -> Result<Snapshot, String> {
+    backend.apply_limits(limits).await
+}
+
+#[tauri::command]
+async fn apply_yellow_pages(
+    backend: State<'_, Backend>,
+    yellow_pages: Vec<YellowPageEntry>,
+) -> Result<Snapshot, String> {
+    backend.apply_yellow_pages(yellow_pages).await
+}
+
+#[tauri::command]
+async fn run_probe(backend: State<'_, Backend>) -> Result<Snapshot, String> {
+    backend.run_probe().await
+}
+
+#[tauri::command]
+async fn restart_backend(backend: State<'_, Backend>) -> Result<Snapshot, String> {
+    backend.restart().await
+}
+
+#[tauri::command]
+async fn stop_backend(backend: State<'_, Backend>) -> Result<Snapshot, String> {
+    backend.stop().await
+}
+
+#[tauri::command]
+fn start_main_window_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メインウィンドウ以外は操作できません".to_string());
+    }
+    window.start_dragging().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn minimize_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メインウィンドウ以外は操作できません".to_string());
+    }
+    window.minimize().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn toggle_main_window_maximize(window: tauri::WebviewWindow) -> Result<bool, String> {
+    if window.label() != "main" {
+        return Err("メインウィンドウ以外は操作できません".to_string());
+    }
+    if window.is_maximized().map_err(|error| error.to_string())? {
+        window.unmaximize().map_err(|error| error.to_string())?;
+        Ok(false)
+    } else {
+        window.maximize().map_err(|error| error.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+async fn close_window(app: tauri::AppHandle, backend: State<'_, Backend>) -> Result<(), String> {
+    if backend.begin_close() || app.state::<UpdateManager>().close_after_update_error() {
+        let result = backend.close().await;
+        app.exit(if result.is_ok() { 0 } else { 1 });
+        result
+    } else {
+        Ok(())
+    }
+}
+
+fn main() {
+    tauri::Builder::default()
+        .manage(UpdateManager::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            peercast_desktop::native_window::restore_main(app);
+        }))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::Builder::new().app_name("Peercast RT").build())
+        .setup(|app| {
+            let mut path = app.path().app_local_data_dir()?.join("tauri-test.json");
+            let mut arguments = std::env::args_os().skip(1);
+            while let Some(argument) = arguments.next() {
+                if argument == "--settings" {
+                    path = arguments.next().ok_or_else(|| {
+                        std::io::Error::other("--settings には設定ファイルのパスが必要です")
+                    })?.into();
+                }
+            }
+            let backend = tauri::async_runtime::block_on(DesktopBackend::open_detecting(path))
+                .map_err(std::io::Error::other)?;
+            let saved = tauri::async_runtime::block_on(backend.snapshot()).map_err(std::io::Error::other)?;
+            peercast_desktop::native_window::setup(app.handle()).map_err(std::io::Error::other)?;
+            peercast_desktop::native_window::apply(app.handle(), &saved.desktop.window, true).map_err(std::io::Error::other)?;
+            if saved.desktop.window.launch_at_startup {
+                set_startup(app.handle(), true).map_err(std::io::Error::other)?;
+            }
+            app.manage(backend);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            updater::update_status,
+            updater::check_update,
+            updater::download_update,
+            updater::cancel_update_download,
+            updater::install_update,
+            snapshot,
+            start_broadcast,
+            stop_broadcast,
+            get_yp_channels,
+            play_yp_channel,
+            apply_limits,
+            apply_yellow_pages,
+            apply_preferences,
+            choose_file,
+            preview_channel_rules,
+            preview_recording_rules,
+            preview_sound,
+            play_rule_sound,
+            enqueue_recording,
+            control_recording,
+            open_recording_folder,
+            run_probe,
+            restart_backend,
+            stop_backend,
+            start_main_window_drag,
+            minimize_main_window,
+            toggle_main_window_maximize,
+            close_window
+        ])
+        .on_window_event(|window, event| {
+            peercast_desktop::native_window::handle_window_event(window, event);
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    return;
+                }
+                api.prevent_close();
+                if window.app_handle().get_webview_window("main").is_some_and(|view| {
+                    view.eval("if (typeof window.requestMainClose === 'function') { window.requestMainClose(); } else { window.__TAURI__.core.invoke('close_window'); }").is_ok()
+                })
+                {
+                    return;
+                }
+                let app = window.app_handle().clone();
+                let backend = Arc::clone(&app.state::<Backend>());
+                if backend.begin_close() {
+                    tauri::async_runtime::spawn(async move {
+                        let exit_code = if backend.close().await.is_ok() { 0 } else { 1 };
+                        app.exit(exit_code);
+                    });
+                }
+            }
+        })
+        .run(tauri::generate_context!())
+        .expect("failed to run Peercast RT");
+}

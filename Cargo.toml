@@ -6,6 +6,7 @@ members = [
     "crates/peercast-http",
     "crates/peercast-rpc",
     "crates/peercast-app",
+    "crates/peercast-desktop",
 ]
 resolver = "2"
 
@@ -23,3 +24,17 @@ md-5 = "0.10"
 tokio = "1.43"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[profile.release]
+# Preserve vectorization while favoring a compact I/O-bound server binary.
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[profile.win11-x64]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

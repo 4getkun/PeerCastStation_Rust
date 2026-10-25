@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Peercast RT</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="settings.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<div class="app-shell">
+  <header id="titlebar" class="titlebar" aria-label="ウィンドウタイトルバー">
+    <div class="titlebar-brand"><img src="assets/peer-loop.png" alt=""><strong>Peercast RT</strong></div>
+    <span class="titlebar-divider" aria-hidden="true"></span>
+    <span id="titlebar-view" class="titlebar-view">チャンネル</span>
+    <div class="titlebar-drag-region" aria-hidden="true"></div>
+    <div class="window-controls">
+      <button type="button" id="window-minimize" class="window-control" aria-label="最小化" title="最小化"><span class="icon icon-minus" aria-hidden="true"></span></button>
+      <button type="button" id="window-maximize" class="window-control" aria-label="最大化" title="最大化"><span class="icon icon-square" aria-hidden="true"></span></button>
+      <button type="button" id="window-close" class="window-control window-control-close" aria-label="閉じる" title="閉じる"><span class="icon icon-x" aria-hidden="true"></span></button>
+    </div>
+  </header>
+  <aside class="rail" aria-label="アプリケーション">
+    <div class="brand"><img src="assets/peer-loop.png" class="brand-logo" alt=""><strong>Peercast RT</strong></div>
+    <nav class="rail-nav" aria-label="メインメニュー">
+      <button type="button" class="nav-item active" data-view="yp" aria-current="page"><span class="icon icon-world" aria-hidden="true"></span>チャンネル</button>
+      <button type="button" class="nav-item" data-view="channels"><span class="icon icon-broadcast" aria-hidden="true"></span>配信</button>
+      <button type="button" class="nav-item" data-view="connections"><span class="icon icon-antenna" aria-hidden="true"></span>接続</button>
+      <button type="button" class="nav-item" data-view="recordings"><span class="icon icon-download" aria-hidden="true"></span>録画</button>
+      <button type="button" class="nav-item" data-view="logs"><span class="icon icon-file-text" aria-hidden="true"></span>ログ</button>
+      <button type="button" id="settings-button" class="nav-item" data-view="settings"><span class="icon icon-settings" aria-hidden="true"></span>設定</button>
+    </nav>
+    <div class="rail-bottom"><button type="button" id="about-button" class="rail-link"><span class="icon icon-info-circle" aria-hidden="true"></span>Peercast RTについて</button><button type="button" id="quit-button" class="rail-link"><span class="icon icon-logout" aria-hidden="true"></span>終了</button></div>
+  </aside>
+  <main class="main-pane">
+    <header class="page-header">
+      <h1 id="view-title">チャンネル</h1>
+      <div class="directory-tools" id="directory-tools">
+        <label class="source-select"><span class="icon icon-world" aria-hidden="true"></span><select id="yp-source" aria-label="イエローページを選択"><option value="">すべてのYP</option></select></label>
+        <label class="search-field"><span class="icon icon-search" aria-hidden="true"></span><input id="yp-search" type="search" placeholder="チャンネル名・内容で検索…" aria-label="チャンネルを検索"></label>
+      </div>
+      <button type="button" id="header-broadcast" class="button button-coral"><span class="icon icon-broadcast" aria-hidden="true"></span>配信を開始</button>
+      <div class="refresh-group"><button type="button" id="yp-refresh" class="button button-outline" aria-busy="false"><span class="icon icon-refresh" aria-hidden="true"></span><span class="refresh-label">更新</span></button><button type="button" id="refresh-button" class="button button-outline" aria-busy="false" hidden><span class="icon icon-refresh" aria-hidden="true"></span><span class="refresh-label">更新</span></button></div>
+    </header>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <div class="workspace">
+      <section id="view-yp" class="list-pane" aria-label="イエローページ">
+        <div class="list-heading"><span>チャンネル</span><span>視聴 / リレー</span><span>配信情報</span></div>
+        <div class="list-context"><span id="yp-status" role="status" aria-live="polite">チャンネルを取得しています…</span><label class="yp-scope-label" for="yp-scope">表示<select id="yp-scope"><option value="normal">すべて</option><option value="favorite">お気に入り</option><option value="all">NGを含める</option></select></label><span class="sort-label"><span class="icon icon-arrow-down" aria-hidden="true"></span>視聴者数の多い順</span></div>
+        <div class="list-context yp-refresh-settings"><fieldset><legend>一覧の更新</legend><label><input type="radio" name="yp-refresh-mode" value="manual"> 手動</label><label><input type="radio" name="yp-refresh-mode" value="auto"> 自動</label><label for="yp-refresh-interval">間隔（分）</label><input id="yp-refresh-interval" type="number" min="1" max="60" step="1" value="5"><button id="yp-refresh-save" type="button" class="button button-secondary">保存</button></fieldset></div>
+        <div id="yp-empty" class="empty-state" hidden></div>
+        <div id="yp-results" class="yp-results" aria-label="チャンネル一覧"></div>
+      </section>
+      <section id="view-channels" class="list-pane" aria-label="配信" hidden>
+        <div class="list-heading channels-heading"><span>配信チャンネル</span><span>状態</span></div>
+        <div class="list-context">RT配信と接続中の配信を表示します。入力URLはHTTP形式に対応しています（RTMP入力には未対応です）。</div>
+        <details id="broadcast-form" class="broadcast-form">
+          <summary><span class="icon icon-plus" aria-hidden="true"></span>新しい配信を設定</summary>
+          <form id="broadcast-start-form" class="broadcast-form-grid">
+            <label for="broadcast-name"><span class="broadcast-label-heading">配信名 <span class="required-mark">必須</span></span><input id="broadcast-name" name="name" type="text" maxlength="80" required autocomplete="off"></label>
+            <label for="broadcast-content-type"><span class="broadcast-label-heading">形式</span><select id="broadcast-content-type" name="contentType"><option value="FLV">FLV</option><option value="WMV">WMV</option></select></label>
+            <label for="broadcast-genre">ジャンル<input id="broadcast-genre" name="genre" type="text" maxlength="120"></label>
+            <label for="broadcast-bitrate">ビットレート（kbps）<input id="broadcast-bitrate" name="bitrate" type="number" min="1" max="1000000" step="1" required></label>
+            <label for="broadcast-description" class="broadcast-form-wide">説明<textarea id="broadcast-description" name="description" rows="2" maxlength="2048"></textarea></label>
+            <label for="broadcast-comment" class="broadcast-form-wide">コメント<textarea id="broadcast-comment" name="comment" rows="2" maxlength="2048"></textarea></label>
+            <label for="broadcast-contact-url" class="broadcast-form-wide">コンタクトURL<input id="broadcast-contact-url" name="contactUrl" type="url" maxlength="2048" placeholder="https://"></label>
+            <label for="broadcast-source-mode">入力方式<select id="broadcast-source-mode" name="sourceMode"><option value="push">HTTP POSTを受信</option><option value="pull">HTTP URLから取得</option></select></label>
+            <label for="broadcast-ingest-port" id="broadcast-ingest-field">受信ポート<input id="broadcast-ingest-port" name="ingestPort" type="number" min="1" max="65535" step="1" value="8080"><span>エンコーダーから localhost へPOSTします。</span></label>
+            <label for="broadcast-source-uri" id="broadcast-source-field" class="broadcast-form-wide" hidden>入力URL<input id="broadcast-source-uri" name="sourceUri" type="url" maxlength="2048" placeholder="http:// または https://"><span>HTTP/HTTPSのみ対応しています。RTMP入力には未対応です。</span></label>
+            <label for="broadcast-relay-port">リレーポート<input id="broadcast-relay-port" name="relayPort" type="number" min="1" max="65535" step="1" value="7144"><span id="broadcast-relay-port-note" hidden></span></label>
+            <label class="broadcast-announce-option"><input id="broadcast-announce-sp" name="announceSp" type="checkbox"><span>SPに配信を掲載する</span></label>
+            <div class="broadcast-form-wide broadcast-form-actions"><button id="broadcast-start-button" type="submit" class="button button-coral">配信を開始</button><span id="broadcast-form-status" role="status" aria-live="polite"></span></div>
+          </form>
+        </details>
+        <div id="channels-list" class="channels-list"></div>
+      </section>
+      <section id="view-connections" class="connections-view" aria-label="接続" hidden>
+        <section class="connections-list-pane" aria-label="稼働中のチャンネル">
+          <div class="connections-list-heading"><h2>稼働中のチャンネル</h2><span id="connections-count">0</span></div>
+          <div id="connections-channel-list" class="connections-channel-list"></div>
+        </section>
+        <section class="connections-detail-pane" aria-label="チャンネル接続情報">
+          <div id="connections-empty" class="connections-empty"><span class="icon icon-antenna" aria-hidden="true"></span><strong>チャンネルを選択</strong><p>一覧からチャンネルを選ぶと、接続先とネットワーク情報を表示します。</p></div>
+          <div id="connections-detail" hidden>
+            <header class="connections-channel-heading"><div><h2 id="connections-channel-name"></h2><p id="connections-channel-status"></p></div><span id="connections-channel-type" class="connection-type-pill"></span></header>
+            <nav class="connection-tabs" role="tablist" aria-label="接続情報"><button type="button" class="active" data-connection-tab="connections" role="tab" aria-selected="true" aria-controls="connections-panel">接続一覧</button><button type="button" data-connection-tab="info" role="tab" aria-selected="false" aria-controls="connections-info-panel">チャンネル情報</button><button type="button" data-connection-tab="tree" role="tab" aria-selected="false" aria-controls="connections-tree-panel">リレーツリー</button></nav>
+            <div id="connections-panel" class="connection-tab-panel" role="tabpanel">
+              <div class="connection-network-summary"><strong>自分のリレーポート</strong><span id="connections-network-status"></span></div>
+              <div id="connection-rows" class="connection-rows"></div>
+            </div>
+            <div id="connections-info-panel" class="connection-tab-panel" role="tabpanel" hidden><p id="connections-description" class="connection-description"></p><dl id="connections-metadata" class="metadata connection-metadata"></dl></div>
+            <div id="connections-tree-panel" class="connection-tab-panel" role="tabpanel" hidden><div id="connection-tree" class="connection-tree"></div></div>
+          </div>
+        </section>
+      </section>
+      <section id="view-recordings" class="recordings-pane" aria-label="録画" hidden>
+        <div class="recordings-heading"><div><h2>録画一覧</h2><p id="recording-monitor-status" role="status">自動監視: オフ</p></div><button type="button" id="open-recording-folder" class="button button-outline"><span class="icon icon-folder" aria-hidden="true"></span>保存先を開く</button></div>
+        <div class="recordings-table-wrap"><table class="recordings-table"><thead><tr><th>状態</th><th>チャンネル</th><th>保存量</th><th>ファイル数</th><th>再試行</th><th>現在のファイル</th><th>エラー</th></tr></thead><tbody id="recordings-list"></tbody></table><p id="recordings-empty" class="empty" hidden>録画はありません。イエローページの詳細から録画を追加できます。</p></div>
+        <div class="recording-controls" aria-label="選択した録画の操作"><button type="button" id="recording-start" class="button button-outline" disabled>開始</button><button type="button" id="recording-stop" class="button button-outline" disabled><span class="icon icon-player-stop" aria-hidden="true"></span>停止</button><button type="button" id="recording-reconnect" class="button button-outline" disabled>再接続</button><button type="button" id="recording-keep" class="button button-outline" disabled title="配信が途切れても再試行を続ける">キープ</button><button type="button" id="recording-up" class="button button-outline" disabled>上へ</button><button type="button" id="recording-down" class="button button-outline" disabled>下へ</button><button type="button" id="recording-remove" class="button button-outline" disabled>一覧から削除</button></div>
+        <p id="recording-selection-summary" class="recording-selection-summary">録画を選択してください。</p>
+      </section>
+      <section id="view-logs" class="logs-pane" aria-label="ログ" hidden>
+        <div class="log-filters"><label class="search-field"><span class="icon icon-search" aria-hidden="true"></span><input id="log-search" type="search" placeholder="メッセージ・分類で検索" aria-label="ログを検索"></label><select id="log-level-filter" aria-label="ログの表示レベル"><option value="all">すべてのレベル</option><option value="error">Error以上</option><option value="warn">Warn以上</option><option value="info">Info以上</option><option value="debug">Debug以上</option><option value="trace">Trace以上</option></select><label class="wrap-label"><input type="checkbox" id="log-wrap" checked>折り返す</label></div>
+        <div id="logs-list" class="logs-list"></div>
+        <details class="diagnostics"><summary>診断と稼働情報</summary><p>再起動・停止はPeercast RTの接続だけを操作します。接続先のPeerCastStation C#版は終了しません。</p><p id="backend-actions-note" hidden></p><dl><div><dt>稼働時間</dt><dd id="uptime">—</dd></div><div><dt>アクティブタスク</dt><dd id="active-tasks">—</dd></div><div><dt>ローカル待受</dt><dd id="endpoint">—</dd></div><div><dt>送受信診断</dt><dd><span id="probe-status">未実行</span> <span id="probe-bytes">—</span> <span id="probe-elapsed">—</span></dd></div></dl><div class="diagnostic-actions"><button id="probe-button" type="button" class="button button-outline">送受信を診断</button><button id="restart-button" type="button" class="button button-outline">RT接続を再起動</button><button id="stop-button" type="button" class="button button-outline">RT接続を停止</button></div></details>
+      </section>
+      <aside class="detail-pane" aria-label="選択したチャンネルの詳細">
+        <div id="detail-empty" class="empty-state"><span class="icon icon-broadcast" aria-hidden="true"></span><strong>チャンネルを選択</strong><p>一覧から配信を選ぶと情報を表示します。</p></div>
+        <div id="broadcast-detail-content" class="broadcast-detail-content" hidden>
+          <section class="detail-overview">
+            <div class="detail-heading"><div><h2 id="broadcast-detail-name"></h2><p id="broadcast-detail-status" class="detail-source"></p></div></div>
+            <dl class="metadata broadcast-metadata"><div><dt>管理元</dt><dd id="broadcast-detail-manager"></dd></div><div><dt>入力URL</dt><dd id="broadcast-detail-input-url" class="broadcast-url"></dd></div><div><dt>ストリームURL</dt><dd id="broadcast-detail-stream-url" class="broadcast-url"></dd></div><div><dt>掲載状態</dt><dd id="broadcast-detail-announcement"></dd></div></dl>
+            <button id="broadcast-stop-button" type="button" class="button button-outline broadcast-stop-button" disabled><span class="icon icon-player-stop" aria-hidden="true"></span>この配信を停止</button>
+          </section>
+        </div>
+        <div id="detail-content" hidden>
+          <section class="detail-overview">
+            <div class="detail-heading"><div><h2 id="detail-title"></h2><p id="detail-source" class="detail-source"></p></div><div class="detail-primary-actions"><button id="selected-play" type="button" class="button button-coral yp-play-button" disabled><span class="icon icon-player-play" aria-hidden="true"></span>視聴する</button><button id="selected-record" type="button" class="button button-outline" disabled><span class="icon icon-download" aria-hidden="true"></span>録画する</button></div></div>
+            <p id="detail-genre" class="detail-genre"></p><p id="detail-description" class="detail-description"></p><p id="detail-comment" class="detail-comment"></p>
+            <dl id="detail-metadata" class="metadata"></dl>
+            <button type="button" id="copy-contact" class="button button-outline contact-button" disabled><span class="icon icon-clipboard" aria-hidden="true"></span>コンタクトURLをコピー</button>
+          </section>
+          <nav class="detail-tabs" role="tablist" aria-label="チャンネルの詳細"><button type="button" id="detail-tab-info" class="active" data-detail-tab="info" role="tab" aria-selected="true" aria-controls="detail-info">情報</button><button type="button" id="detail-tab-connections" data-detail-tab="connections" role="tab" aria-selected="false" aria-controls="detail-connections">接続</button><button type="button" id="detail-tab-tree" data-detail-tab="tree" role="tab" aria-selected="false" aria-controls="detail-tree">ツリー</button></nav>
+          <div id="detail-info" class="detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-info"><dl id="detail-extra-metadata" class="metadata extra-metadata"></dl><div class="rule-shortcuts"><button type="button" id="add-favorite-rule" class="button button-outline" disabled>お気に入り条件を追加</button><button type="button" id="add-ng-rule" class="button button-outline" disabled>NG条件を追加</button></div><div class="info-note"><span class="icon icon-info-circle" aria-hidden="true"></span><p>掲載情報は各イエローページから取得しています。視聴すると設定済みプレイヤーを開きます。</p></div><button type="button" id="copy-stream" class="button button-outline" disabled><span class="icon icon-clipboard" aria-hidden="true"></span>ストリームURLをコピー</button></div>
+          <div id="detail-connections" class="detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-connections" hidden><dl id="connection-summary" class="metadata"></dl><p class="muted-note">接続先ごとの明細は、この版では取得できません。</p></div>
+          <div id="detail-tree" class="detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-tree" hidden><div class="info-note"><span class="icon icon-info-circle" aria-hidden="true"></span><p>リレーツリーの取得は、この版ではまだ対応していません。</p></div></div>
+        </div>
+      </aside>
+    </div>
+    <section id="view-settings" class="settings-view" aria-label="設定" hidden><div id="settings-host"></div></section>
+    <footer class="statusbar"><div class="engine-status"><span id="state-dot" class="state-dot"></span><span id="state-label">起動中</span></div><span class="status-divider"></span><span id="yp-count">0件のチャンネル</span><span id="last-updated" class="last-updated">—</span></footer>
+  </main>
+</div>
+<dialog id="remove-recording-dialog" aria-labelledby="remove-recording-title"><h2 id="remove-recording-title">録画を一覧から削除しますか？</h2><p>一覧から外します。保存済みファイルは残ります。</p><div class="recording-dialog-actions"><button type="button" id="cancel-remove-recording" class="button button-outline">キャンセル</button><button type="button" id="confirm-remove-recording" class="button button-coral">一覧から削除</button></div></dialog>
+<dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-heading"><img src="assets/peer-loop.png" alt="" width="76" height="52"><h2 id="about-title">Peercast RT</h2><button type="button" id="close-about" class="icon-button" aria-label="閉じる"><span class="icon icon-x" aria-hidden="true"></span></button></div><p>バージョン 1.0.0</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーションです。</p><p>PCRPlayer v0.2.7 / GPL-3.0<br>日本語フォント: Noto Sans JP / SIL Open Font License 1.1<br>アイコン: Tabler Icons / MIT</p><details class="font-license"><summary>フォントのライセンス</summary><pre>Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+&quot;Font Software&quot; refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+&quot;Reserved Font Name&quot; refers to any names specified as such after the
+copyright statement(s).
+
+&quot;Original Version&quot; refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+&quot;Modified Version&quot; refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+&quot;Author&quot; refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION &amp; CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+</pre></details></dialog>
+</body>
+</html>

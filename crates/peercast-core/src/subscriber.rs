@@ -131,9 +131,7 @@ impl SubscriberSink {
                     max: self.limits.max_count,
                 })
             }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                Err(SubscriberDropReason::ChannelClosed)
-            }
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(SubscriberDropReason::ChannelClosed),
         }
     }
 }

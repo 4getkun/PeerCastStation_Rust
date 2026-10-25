@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PeerCast RT",
+  "version": "1.0.0",
+  "mainBinaryName": "PeerCast-RT",
+  "identifier": "com.fourgetkun.peercast-rt",
+  "build": {
+    "frontendDist": "frontend"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Peercast RT",
+        "decorations": false,
+        "width": 1600,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 720
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://peercast-rt-downloads.fourgetkun.com/updates/stable/windows-x64/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZDMzk2RDFBRDk2MkJDNjcKUldSbnZHTFpHbTA1YlB1bkViTzVYYXdoWHdJc0dCY2NzU3VRTFJsbUhEa0xheHRpcVo4SVpLeWkK",
+      "requireSignedVersion": true,
+      "allowDowngrades": false,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

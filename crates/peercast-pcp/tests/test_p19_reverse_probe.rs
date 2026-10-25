@@ -63,7 +63,10 @@ async fn test_p19_probe_success_matching_sid() {
             ID4::PCP_OLEH,
             vec![
                 Atom::new_string(ID4::HELO_AGENT, "MockClient/1.0"),
-                Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::copy_from_slice(client_sid.as_bytes())),
+                Atom::new_leaf(
+                    ID4::HELO_SESSIONID,
+                    Bytes::copy_from_slice(client_sid.as_bytes()),
+                ),
                 Atom::new_u32_le(ID4::HELO_VERSION, 1),
             ],
         );
@@ -126,9 +129,10 @@ async fn test_p19_probe_mismatched_sid() {
         // Peer sends oleh with WRONG session ID
         let oleh = Atom::new_parent(
             ID4::PCP_OLEH,
-            vec![
-                Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::copy_from_slice(mismatched_sid.as_bytes())),
-            ],
+            vec![Atom::new_leaf(
+                ID4::HELO_SESSIONID,
+                Bytes::copy_from_slice(mismatched_sid.as_bytes()),
+            )],
         );
         let _ = socket.write_all(&oleh.to_bytes().unwrap()).await;
     });
@@ -182,7 +186,10 @@ async fn test_p19_probe_refused_connection() {
     .unwrap();
 
     match res {
-        ProbeResult::Unreachable { target_addr, reason } => {
+        ProbeResult::Unreachable {
+            target_addr,
+            reason,
+        } => {
             assert_eq!(target_addr, SocketAddr::new(loopback_ip, port));
             assert!(reason.contains("Connection failed"));
         }
@@ -225,7 +232,10 @@ async fn test_p19_probe_stalled_connection_timeout() {
     .unwrap();
 
     match res {
-        ProbeResult::Unreachable { target_addr, reason } => {
+        ProbeResult::Unreachable {
+            target_addr,
+            reason,
+        } => {
             assert_eq!(target_addr, SocketAddr::new(loopback_ip, port));
             assert!(reason.contains("Exchange timeout exceeded"));
         }
@@ -245,7 +255,10 @@ async fn test_p19_security_guards_forbid_arbitrary_ip() {
     let arbitrary_target_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
 
     // Caller attempts to probe a target IP different from the observed remote IP
-    let err = limiter.acquire(arbitrary_target_ip, observed_ip).await.unwrap_err();
+    let err = limiter
+        .acquire(arbitrary_target_ip, observed_ip)
+        .await
+        .unwrap_err();
     assert_eq!(
         err,
         ProbeError::ForbiddenTarget {

@@ -1,6 +1,6 @@
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use sha2::{Digest, Sha256};
 
 use peercast_rpc::{
     ChannelsController, IndexController, MockRpcTransport, PeerCastRpcClient, ScreenState,
@@ -33,7 +33,10 @@ pub fn check_boundary_violations(root: &Path) -> Vec<BoundaryViolation> {
         // Scan UI files
         for entry in walkdir(ui_dir) {
             let path_str = entry.to_string_lossy();
-            if path_str.ends_with(".html") || path_str.ends_with(".css") || path_str.ends_with(".js") {
+            if path_str.ends_with(".html")
+                || path_str.ends_with(".css")
+                || path_str.ends_with(".js")
+            {
                 if let Ok(content) = fs::read_to_string(&entry) {
                     for forbidden in ["fetch(", "$.ajax(", "new XMLHttpRequest", "axios."] {
                         if content.contains(forbidden) {
@@ -228,7 +231,7 @@ async fn test_p37e_controller_interactions_functionally_equivalent() {
     mock.register_success(
         "getVersionInfo",
         serde_json::json!({
-            "agentName": "PeerCastStation/1.0",
+            "agentName": concat!("PeerCastStation/", env!("CARGO_PKG_VERSION")),
             "apiVersion": "1.0.0",
             "jsonrpc": "2.0"
         }),
@@ -244,10 +247,15 @@ async fn test_p37e_controller_interactions_functionally_equivalent() {
         }),
     )
     .await;
-    mock.register_success("getPlugins", serde_json::json!([])).await;
-    mock.register_success("getChannels", serde_json::json!([])).await;
-    mock.register_success("getSettings", serde_json::to_value(ServentSettings::default()).unwrap())
+    mock.register_success("getPlugins", serde_json::json!([]))
         .await;
+    mock.register_success("getChannels", serde_json::json!([]))
+        .await;
+    mock.register_success(
+        "getSettings",
+        serde_json::to_value(ServentSettings::default()).unwrap(),
+    )
+    .await;
     mock.register_success("setSettings", serde_json::json!(true))
         .await;
 
@@ -276,5 +284,8 @@ async fn test_p37e_controller_interactions_functionally_equivalent() {
         })
         .await
         .unwrap();
-    assert_eq!(settings_ctrl.view_state().await.data().unwrap().max_relays, 32);
+    assert_eq!(
+        settings_ctrl.view_state().await.data().unwrap().max_relays,
+        32
+    );
 }

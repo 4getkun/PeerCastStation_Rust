@@ -1,7 +1,12 @@
 use serde_json::Value;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 use peercast_core::channel_id::ChannelId;
-use peercast_rpc::{rpc_code, AccessLevel, ChannelSummary, RpcDispatcher, RpcState};
+use peercast_rpc::{
+    rpc_code, AccessLevel, ChannelSummary, RpcDispatcher, RpcState, YellowPageDirectory,
+};
 
 fn sample_cid() -> ChannelId {
     ChannelId::from_hex("0123456789ABCDEF0123456789ABCDEF").unwrap()
@@ -28,15 +33,30 @@ async fn test_p37_core_query_methods() {
 
     // 1. getVersionInfo
     let req1 = r#"{"jsonrpc": "2.0", "method": "getVersionInfo", "id": 1}"#;
-    let res1: Value = serde_json::from_str(&dispatcher.handle_request_str(req1, AccessLevel::Playback).await.unwrap()).unwrap();
+    let res1: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req1, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res1["id"], 1);
-    assert_eq!(res1["result"]["agentName"], "PeerCastStation/1.0");
+    assert_eq!(
+        res1["result"]["agentName"],
+        concat!("PeerCastStation/", env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(res1["result"]["apiVersion"], "1.0.0");
     assert_eq!(res1["result"]["jsonrpc"], "2.0");
 
     // 2. getStatus
     let req2 = r#"{"jsonrpc": "2.0", "method": "getStatus", "id": 2}"#;
-    let res2: Value = serde_json::from_str(&dispatcher.handle_request_str(req2, AccessLevel::Playback).await.unwrap()).unwrap();
+    let res2: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req2, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res2["id"], 2);
     assert_eq!(res2["result"]["uptime"], 3600);
     assert_eq!(res2["result"]["localRelayEndPoint"][0], "127.0.0.1");
@@ -44,7 +64,13 @@ async fn test_p37_core_query_methods() {
 
     // 3. getChannels
     let req3 = r#"{"jsonrpc": "2.0", "method": "getChannels", "id": 3}"#;
-    let res3: Value = serde_json::from_str(&dispatcher.handle_request_str(req3, AccessLevel::Playback).await.unwrap()).unwrap();
+    let res3: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req3, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res3["id"], 3);
     let channels = res3["result"].as_array().unwrap();
     assert_eq!(channels.len(), 1);
@@ -53,8 +79,97 @@ async fn test_p37_core_query_methods() {
 
     // 4. getAuthToken
     let req4 = r#"{"jsonrpc": "2.0", "method": "getAuthToken", "id": 4}"#;
-    let res4: Value = serde_json::from_str(&dispatcher.handle_request_str(req4, AccessLevel::Playback).await.unwrap()).unwrap();
+    let res4: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req4, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res4["result"], "secret-token-xyz");
+}
+
+#[derive(Debug, Default)]
+struct StubDirectory {
+    refreshes: Mutex<Vec<bool>>,
+    fail: bool,
+}
+
+impl YellowPageDirectory for StubDirectory {
+    fn channels(
+        &self,
+        refresh: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<Value, String>> + Send + '_>> {
+        Box::pin(async move {
+            self.refreshes.lock().unwrap().push(refresh);
+            if self.fail {
+                Err("directory fetch failed".to_string())
+            } else {
+                Ok(serde_json::json!([{ "name": "test" }]))
+            }
+        })
+    }
+}
+
+#[tokio::test]
+async fn yp_directory_rpc_uses_provider_refresh_and_reports_provider_errors() {
+    let without_provider = RpcDispatcher::default();
+    for method in ["getYPChannels", "updateYPChannels"] {
+        let request = format!(r#"{{"jsonrpc":"2.0","method":"{method}","id":1}}"#);
+        let response: Value = serde_json::from_str(
+            &without_provider
+                .handle_request_str(&request, AccessLevel::Admin)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response["error"]["code"], rpc_code::UNSUPPORTED_METHOD);
+    }
+
+    let provider = Arc::new(StubDirectory::default());
+    let dispatcher = RpcDispatcher::default().with_yellow_page_directory(provider.clone());
+    for method in ["getYPChannels", "updateYPChannels"] {
+        let request = format!(r#"{{"jsonrpc":"2.0","method":"{method}","id":9}}"#);
+        let response: Value = serde_json::from_str(
+            &dispatcher
+                .handle_request_str(&request, AccessLevel::Playback)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response["error"]["code"], rpc_code::UNAUTHORIZED);
+    }
+    for (method, refresh) in [("getYPChannels", false), ("updateYPChannels", true)] {
+        let request = format!(r#"{{"jsonrpc":"2.0","method":"{method}","id":2}}"#);
+        let response: Value = serde_json::from_str(
+            &dispatcher
+                .handle_request_str(&request, AccessLevel::Admin)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response["result"][0]["name"], "test");
+        assert!(response["error"].is_null());
+        assert_eq!(*provider.refreshes.lock().unwrap().last().unwrap(), refresh);
+    }
+
+    let failing = Arc::new(StubDirectory {
+        refreshes: Mutex::new(Vec::new()),
+        fail: true,
+    });
+    let dispatcher = RpcDispatcher::default().with_yellow_page_directory(failing);
+    let response: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(
+                r#"{"jsonrpc":"2.0","method":"getYPChannels","id":3}"#,
+                AccessLevel::Admin,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(response["error"]["code"], rpc_code::INTERNAL_ERROR);
+    assert_eq!(response["error"]["message"], "directory fetch failed");
 }
 
 /// Acceptance criterion 2:
@@ -65,20 +180,38 @@ async fn test_p37_settings_read_and_mutation() {
 
     // 1. Initial settings read under Admin access
     let req1 = r#"{"jsonrpc": "2.0", "method": "getSettings", "id": 10}"#;
-    let res1: Value = serde_json::from_str(&dispatcher.handle_request_str(req1, AccessLevel::Admin).await.unwrap()).unwrap();
+    let res1: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req1, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res1["id"], 10);
     assert_eq!(res1["result"]["maxRelays"], 16);
     assert_eq!(res1["result"]["maxDirects"], 8);
 
     // 2. Mutation under Admin access
     let req2 = r#"{"jsonrpc": "2.0", "method": "setSettings", "params": {"maxRelays": 32, "maxDirects": 16}, "id": 11}"#;
-    let res2: Value = serde_json::from_str(&dispatcher.handle_request_str(req2, AccessLevel::Admin).await.unwrap()).unwrap();
+    let res2: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req2, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res2["id"], 11);
     assert_eq!(res2["result"], true);
 
     // 3. Verify settings updated in dispatcher state
     let req3 = r#"{"jsonrpc": "2.0", "method": "getSettings", "id": 12}"#;
-    let res3: Value = serde_json::from_str(&dispatcher.handle_request_str(req3, AccessLevel::Admin).await.unwrap()).unwrap();
+    let res3: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req3, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res3["result"]["maxRelays"], 32);
     assert_eq!(res3["result"]["maxDirects"], 16);
 }
@@ -91,20 +224,39 @@ async fn test_p37_access_control_enforcement() {
 
     // 1. Playback caller attempts to read settings -> REJECTED (Unauthorized)
     let req1 = r#"{"jsonrpc": "2.0", "method": "getSettings", "id": 1}"#;
-    let res1: Value = serde_json::from_str(&dispatcher.handle_request_str(req1, AccessLevel::Playback).await.unwrap()).unwrap();
+    let res1: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req1, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res1["id"], 1);
     assert_eq!(res1["error"]["code"], rpc_code::UNAUTHORIZED);
     assert!(res1["result"].is_null());
 
     // 2. Playback caller attempts to modify settings -> REJECTED (Unauthorized)
-    let req2 = r#"{"jsonrpc": "2.0", "method": "setSettings", "params": {"maxRelays": 100}, "id": 2}"#;
-    let res2: Value = serde_json::from_str(&dispatcher.handle_request_str(req2, AccessLevel::Playback).await.unwrap()).unwrap();
+    let req2 =
+        r#"{"jsonrpc": "2.0", "method": "setSettings", "params": {"maxRelays": 100}, "id": 2}"#;
+    let res2: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req2, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res2["id"], 2);
     assert_eq!(res2["error"]["code"], rpc_code::UNAUTHORIZED);
 
     // 3. Playback caller calls Playback-permitted method -> ACCEPTED
     let req3 = r#"{"jsonrpc": "2.0", "method": "getVersionInfo", "id": 3}"#;
-    let res3: Value = serde_json::from_str(&dispatcher.handle_request_str(req3, AccessLevel::Playback).await.unwrap()).unwrap();
+    let res3: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req3, AccessLevel::Playback)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res3["id"], 3);
     assert!(res3["error"].is_null());
     assert_eq!(res3["result"]["apiVersion"], "1.0.0");
@@ -132,8 +284,15 @@ async fn test_p37_deferred_methods_report_unsupported_capability() {
     ];
 
     for (i, (method, capability)) in deferred_calls.iter().enumerate() {
-        let req = format!(r#"{{"jsonrpc": "2.0", "method": "{}", "id": {}}}"#, method, i + 1);
-        let raw_res = dispatcher.handle_request_str(&req, AccessLevel::Admin).await.unwrap();
+        let req = format!(
+            r#"{{"jsonrpc": "2.0", "method": "{}", "id": {}}}"#,
+            method,
+            i + 1
+        );
+        let raw_res = dispatcher
+            .handle_request_str(&req, AccessLevel::Admin)
+            .await
+            .unwrap();
         let res: Value = serde_json::from_str(&raw_res).unwrap();
 
         assert_eq!(res["id"], i + 1);
@@ -157,11 +316,20 @@ async fn test_p37_unknown_method_returns_method_not_found() {
     let dispatcher = RpcDispatcher::default();
 
     let req = r#"{"jsonrpc": "2.0", "method": "nonExistentMethodXYZ", "id": 42}"#;
-    let res: Value = serde_json::from_str(&dispatcher.handle_request_str(req, AccessLevel::Admin).await.unwrap()).unwrap();
+    let res: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(req, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
 
     assert_eq!(res["id"], 42);
     assert_eq!(res["error"]["code"], rpc_code::METHOD_NOT_FOUND);
-    assert!(res["error"]["message"].as_str().unwrap().contains("nonExistentMethodXYZ"));
+    assert!(res["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("nonExistentMethodXYZ"));
 }
 
 /// Acceptance criterion 6:
@@ -177,7 +345,10 @@ async fn test_p37_batch_requests() {
         {"jsonrpc": "2.0", "method": "unknownBar", "id": 103}
     ]"#;
 
-    let raw_res = dispatcher.handle_request_str(batch, AccessLevel::Admin).await.unwrap();
+    let raw_res = dispatcher
+        .handle_request_str(batch, AccessLevel::Admin)
+        .await
+        .unwrap();
     let res: Value = serde_json::from_str(&raw_res).unwrap();
     let arr = res.as_array().unwrap();
     assert_eq!(arr.len(), 3);
@@ -196,7 +367,13 @@ async fn test_p37_batch_requests() {
 
     // Empty batch array returns INVALID_REQUEST
     let empty_batch = "[]";
-    let empty_res: Value = serde_json::from_str(&dispatcher.handle_request_str(empty_batch, AccessLevel::Admin).await.unwrap()).unwrap();
+    let empty_res: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(empty_batch, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(empty_res["error"]["code"], rpc_code::INVALID_REQUEST);
 }
 
@@ -208,8 +385,13 @@ async fn test_p37_notification_semantics() {
 
     // 1. Single notification (setSettings without id)
     let notif = r#"{"jsonrpc": "2.0", "method": "setSettings", "params": {"maxRelays": 48}}"#;
-    let res = dispatcher.handle_request_str(notif, AccessLevel::Admin).await;
-    assert!(res.is_none(), "Single notification must return None (HTTP 204 No Content)");
+    let res = dispatcher
+        .handle_request_str(notif, AccessLevel::Admin)
+        .await;
+    assert!(
+        res.is_none(),
+        "Single notification must return None (HTTP 204 No Content)"
+    );
 
     // Verify settings mutation actually took effect
     let st = dispatcher.state().read().await;
@@ -221,8 +403,13 @@ async fn test_p37_notification_semantics() {
         {"jsonrpc": "2.0", "method": "setSettings", "params": {"maxDirects": 24}},
         {"jsonrpc": "2.0", "method": "setSettings", "params": {"maxUpstreamRate": 20000}}
     ]"#;
-    let batch_res = dispatcher.handle_request_str(batch_notifs, AccessLevel::Admin).await;
-    assert!(batch_res.is_none(), "Batch of pure notifications must return None (HTTP 204)");
+    let batch_res = dispatcher
+        .handle_request_str(batch_notifs, AccessLevel::Admin)
+        .await;
+    assert!(
+        batch_res.is_none(),
+        "Batch of pure notifications must return None (HTTP 204)"
+    );
 
     let st2 = dispatcher.state().read().await;
     assert_eq!(st2.settings.max_directs, 24);
@@ -237,7 +424,13 @@ async fn test_p37_malformed_json_and_size_limits() {
 
     // 1. Invalid JSON syntax returns PARSE_ERROR (-32700)
     let bad_json = r#"{"jsonrpc": "2.0", "method": "getVersionInfo", "id": 1, Broken"#;
-    let res1: Value = serde_json::from_str(&dispatcher.handle_request_str(bad_json, AccessLevel::Admin).await.unwrap()).unwrap();
+    let res1: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(bad_json, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res1["error"]["code"], rpc_code::PARSE_ERROR);
 
     // 2. Request body exceeding max_request_bytes returns INVALID_REQUEST (-32600)
@@ -245,6 +438,12 @@ async fn test_p37_malformed_json_and_size_limits() {
         r#"{{"jsonrpc": "2.0", "method": "getVersionInfo", "id": 1, "padding": "{}"}}"#,
         "X".repeat(200)
     );
-    let res2: Value = serde_json::from_str(&dispatcher.handle_request_str(&huge_req, AccessLevel::Admin).await.unwrap()).unwrap();
+    let res2: Value = serde_json::from_str(
+        &dispatcher
+            .handle_request_str(&huge_req, AccessLevel::Admin)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(res2["error"]["code"], rpc_code::INVALID_REQUEST);
 }

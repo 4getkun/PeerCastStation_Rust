@@ -404,7 +404,13 @@ fn test_p23_oversized_tag_rejection() {
     parser.feed(&oversized_hdr);
     let res = parser.next_event();
     assert!(
-        matches!(res, Err(FlvParseError::TagTooLarge { actual: 5000, max: 1024 })),
+        matches!(
+            res,
+            Err(FlvParseError::TagTooLarge {
+                actual: 5000,
+                max: 1024
+            })
+        ),
         "Oversized tag must be rejected with TagTooLarge error"
     );
 
@@ -489,9 +495,13 @@ fn test_p23_stop_block_extended_tags_rejected_not_silently_accepted() {
 
 #[test]
 fn test_p23_upstream_test_flv_real_file_parse() {
-    let path = Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestFLV\fixtures\test.flv");
+    let path =
+        Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestFLV\fixtures\test.flv");
     if !path.exists() {
-        eprintln!("Skipping test_flv real file test: fixture not found at {:?}", path);
+        eprintln!(
+            "Skipping test_flv real file test: fixture not found at {:?}",
+            path
+        );
         return;
     }
 
@@ -509,11 +519,21 @@ fn test_p23_upstream_test_flv_real_file_parse() {
         if let FlvParserEvent::Tag(t) = ev {
             if t.header.tag_type == FlvTagType::Video && !first_video_printed {
                 first_video_printed = true;
-                eprintln!("test.flv first video tag: body[0]=0x{:02x}, body[1]=0x{:02x}, len={}", t.body[0], t.body.get(1).copied().unwrap_or(0), t.body.len());
+                eprintln!(
+                    "test.flv first video tag: body[0]=0x{:02x}, body[1]=0x{:02x}, len={}",
+                    t.body[0],
+                    t.body.get(1).copied().unwrap_or(0),
+                    t.body.len()
+                );
             }
             if t.header.tag_type == FlvTagType::Audio && !first_audio_printed {
                 first_audio_printed = true;
-                eprintln!("test.flv first audio tag: body[0]=0x{:02x}, body[1]=0x{:02x}, len={}", t.body[0], t.body.get(1).copied().unwrap_or(0), t.body.len());
+                eprintln!(
+                    "test.flv first audio tag: body[0]=0x{:02x}, body[1]=0x{:02x}, len={}",
+                    t.body[0],
+                    t.body.get(1).copied().unwrap_or(0),
+                    t.body.len()
+                );
             }
         }
     }
@@ -522,7 +542,10 @@ fn test_p23_upstream_test_flv_real_file_parse() {
     let mut total_content_tags = 0;
     let mut last_snapshot = None;
 
-    while let Some(out) = demuxer.next_output().expect("Parsing test.flv should succeed") {
+    while let Some(out) = demuxer
+        .next_output()
+        .expect("Parsing test.flv should succeed")
+    {
         match out {
             FlvDemuxOutput::HeaderChanged(s) => {
                 snapshot_count += 1;
@@ -535,11 +558,20 @@ fn test_p23_upstream_test_flv_real_file_parse() {
         }
     }
 
-    assert!(snapshot_count >= 1, "Must generate at least one header snapshot");
-    assert!(total_content_tags > 50, "test.flv has many media tags, got {}", total_content_tags);
+    assert!(
+        snapshot_count >= 1,
+        "Must generate at least one header snapshot"
+    );
+    assert!(
+        total_content_tags > 50,
+        "test.flv has many media tags, got {}",
+        total_content_tags
+    );
 
     let meta = demuxer.metadata().expect("test.flv must have metadata");
-    assert!(meta.videodatarate.is_some() || meta.audiodatarate.is_some() || meta.bitrate_kbps.is_some());
+    assert!(
+        meta.videodatarate.is_some() || meta.audiodatarate.is_some() || meta.bitrate_kbps.is_some()
+    );
 
     // Verify final snapshot parses cleanly in a fresh parser
     let final_snapshot = last_snapshot.unwrap();
@@ -550,13 +582,23 @@ fn test_p23_upstream_test_flv_real_file_parse() {
     let mut verifier = FlvStreamParser::default();
     verifier.feed(&final_snapshot.data);
     let mut verified_tags = 0;
-    while let Some(ev) = verifier.next_event().expect("Snapshot from test.flv must verify") {
+    while let Some(ev) = verifier
+        .next_event()
+        .expect("Snapshot from test.flv must verify")
+    {
         if let FlvParserEvent::Tag(t) = ev {
-            eprintln!("test.flv snapshot tag: type={:?}, len={}", t.header.tag_type, t.body.len());
+            eprintln!(
+                "test.flv snapshot tag: type={:?}, len={}",
+                t.header.tag_type,
+                t.body.len()
+            );
             assert!(t.is_valid_footer());
             verified_tags += 1;
         }
     }
     eprintln!("Total verified tags in snapshot: {}", verified_tags);
-    assert!(verified_tags >= 1, "Snapshot should contain at least metadata or sequence headers");
+    assert!(
+        verified_tags >= 1,
+        "Snapshot should contain at least metadata or sequence headers"
+    );
 }

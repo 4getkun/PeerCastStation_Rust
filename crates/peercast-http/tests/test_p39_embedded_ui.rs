@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use peercast_http::{
     build_asset_http_response, get_embedded_asset, HttpMethod, HttpRequest, RouteTarget,
 };
+use sha2::{Digest, Sha256};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,22 +25,53 @@ fn test_p39_embedded_assets_serving_and_mime_types() {
         ("/channels.html", "text/html; charset=utf-8"),
         ("/settings.html", "text/html; charset=utf-8"),
         ("/gallery.html", "text/html; charset=utf-8"),
-        ("/api/1/peercaststation.js", "application/javascript; charset=utf-8"),
+        (
+            "/api/1/peercaststation.js",
+            "application/javascript; charset=utf-8",
+        ),
         ("/css/tokens.css", "text/css; charset=utf-8"),
         ("/css/themes/nord.css", "text/css; charset=utf-8"),
         ("/css/components/status_card.css", "text/css; charset=utf-8"),
-        ("/css/components/channel_table.css", "text/css; charset=utf-8"),
-        ("/css/components/alert_banner.css", "text/css; charset=utf-8"),
-        ("/css/components/compact_layout.css", "text/css; charset=utf-8"),
-        ("/fixtures/index_fixtures.json", "application/json; charset=utf-8"),
-        ("/fixtures/channels_fixtures.json", "application/json; charset=utf-8"),
+        (
+            "/css/components/channel_table.css",
+            "text/css; charset=utf-8",
+        ),
+        (
+            "/css/components/alert_banner.css",
+            "text/css; charset=utf-8",
+        ),
+        (
+            "/css/components/compact_layout.css",
+            "text/css; charset=utf-8",
+        ),
+        (
+            "/fixtures/index_fixtures.json",
+            "application/json; charset=utf-8",
+        ),
+        (
+            "/fixtures/channels_fixtures.json",
+            "application/json; charset=utf-8",
+        ),
     ];
 
     for (route, expected_mime) in routes {
-        let asset = get_embedded_asset(route).unwrap_or_else(|| panic!("Route {} must be embedded", route));
-        assert_eq!(asset.mime_type, expected_mime, "Route {} MIME mismatch", route);
-        assert!(!asset.content.is_empty(), "Route {} content must not be empty", route);
-        assert!(asset.etag.starts_with('"') && asset.etag.ends_with('"'), "Route {} ETag must be valid", route);
+        let asset =
+            get_embedded_asset(route).unwrap_or_else(|| panic!("Route {} must be embedded", route));
+        assert_eq!(
+            asset.mime_type, expected_mime,
+            "Route {} MIME mismatch",
+            route
+        );
+        assert!(
+            !asset.content.is_empty(),
+            "Route {} content must not be empty",
+            route
+        );
+        assert!(
+            asset.etag.starts_with('"') && asset.etag.ends_with('"'),
+            "Route {} ETag must be valid",
+            route
+        );
     }
 }
 
@@ -59,12 +91,49 @@ fn test_p39_conditional_get_304_not_modified() {
     let (status304, headers304, body304) = build_asset_http_response(&asset, Some(asset.etag));
     assert_eq!(status304, 304);
     assert_eq!(body304, None);
-    assert!(headers304.iter().any(|(k, v)| *k == "Content-Length" && v == "0"));
+    assert!(headers304
+        .iter()
+        .any(|(k, v)| *k == "Content-Length" && v == &asset.content.len().to_string()));
 
     // 3. Conditional request with mismatched ETag -> HTTP 200 with content
-    let (status_mismatch, _, body_mismatch) = build_asset_http_response(&asset, Some("\"outdated-etag\""));
+    let (status_mismatch, _, body_mismatch) =
+        build_asset_http_response(&asset, Some("\"outdated-etag\""));
     assert_eq!(status_mismatch, 200);
     assert_eq!(body_mismatch.unwrap(), asset.content);
+
+    // Historical manually assigned tags do not match the content hash.
+    let (status_old_tag, _, _) = build_asset_http_response(&asset, Some("\"peca-idx-1.0\""));
+    assert_eq!(status_old_tag, 200);
+}
+
+#[test]
+fn test_p39_etags_are_sha256_of_embedded_content() {
+    let routes = [
+        "/index.html",
+        "/channels.html",
+        "/settings.html",
+        "/gallery.html",
+        "/api/1/peercaststation.js",
+        "/css/tokens.css",
+        "/css/themes/nord.css",
+        "/css/components/status_card.css",
+        "/css/components/channel_table.css",
+        "/css/components/alert_banner.css",
+        "/css/components/compact_layout.css",
+        "/fixtures/index_fixtures.json",
+        "/fixtures/channels_fixtures.json",
+    ];
+
+    for route in routes {
+        let asset = get_embedded_asset(route).unwrap();
+        let digest = Sha256::digest(asset.content);
+        let expected = format!("\"{:x}\"", digest);
+        assert_eq!(asset.etag, expected, "ETag mismatch for {route}");
+    }
+
+    let canonical = get_embedded_asset("/gallery.html").unwrap();
+    let alias = get_embedded_asset("/ui/fixtures/gallery.html").unwrap();
+    assert_eq!(canonical.etag, alias.etag);
 }
 
 /// Acceptance criterion 3:
@@ -75,11 +144,15 @@ fn test_p39_security_headers_and_csp() {
     let (_, headers, _) = build_asset_http_response(&asset, None);
 
     assert!(
-        headers.iter().any(|(k, v)| *k == "X-Content-Type-Options" && v == "nosniff"),
+        headers
+            .iter()
+            .any(|(k, v)| *k == "X-Content-Type-Options" && v == "nosniff"),
         "nosniff header must be present"
     );
     assert!(
-        headers.iter().any(|(k, v)| *k == "X-Frame-Options" && v == "SAMEORIGIN"),
+        headers
+            .iter()
+            .any(|(k, v)| *k == "X-Frame-Options" && v == "SAMEORIGIN"),
         "SAMEORIGIN header must be present"
     );
     assert!(
@@ -175,7 +248,8 @@ fn test_p39_router_integration_with_rpc_and_static_targets() {
     );
 
     // 2. RPC API route (POST and GET)
-    let rpc_req = b"POST /api/1 HTTP/1.1\r\nHost: localhost\r\nX-Requested-With: XMLHttpRequest\r\n\r\n";
+    let rpc_req =
+        b"POST /api/1 HTTP/1.1\r\nHost: localhost\r\nX-Requested-With: XMLHttpRequest\r\n\r\n";
     let parsed_rpc = HttpRequest::parse(rpc_req).unwrap();
     assert_eq!(parsed_rpc.method, HttpMethod::Post);
     assert_eq!(
@@ -195,7 +269,8 @@ fn test_p39_router_integration_with_rpc_and_static_targets() {
     );
 
     // 3. Media streaming route
-    let stream_req = b"GET /stream/0123456789ABCDEF0123456789ABCDEF.flv HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    let stream_req =
+        b"GET /stream/0123456789ABCDEF0123456789ABCDEF.flv HTTP/1.1\r\nHost: localhost\r\n\r\n";
     let parsed_stream = HttpRequest::parse(stream_req).unwrap();
     assert_eq!(
         parsed_stream.target,

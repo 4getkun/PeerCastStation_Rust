@@ -53,7 +53,11 @@ fn create_clean_dir(name: &str) -> PathBuf {
 #[test]
 fn test_p41_target_binary_exists_and_hash_computed() {
     let bin_path = locate_app_binary();
-    assert!(bin_path.exists(), "Binary must exist: {}", bin_path.display());
+    assert!(
+        bin_path.exists(),
+        "Binary must exist: {}",
+        bin_path.display()
+    );
 
     let bytes = fs::read(&bin_path).expect("failed to read binary bytes");
     assert!(!bytes.is_empty(), "Binary bytes must not be empty");
@@ -69,7 +73,11 @@ fn test_p41_target_binary_exists_and_hash_computed() {
     hasher.update(&bytes);
     let digest = hasher.finalize();
     let hex_hash = format!("{:02x}", digest);
-    assert_eq!(hex_hash.len(), 64, "SHA-256 hex digest must be 64 characters");
+    assert_eq!(
+        hex_hash.len(),
+        64,
+        "SHA-256 hex digest must be 64 characters"
+    );
 }
 
 /// Acceptance criterion 2:
@@ -80,7 +88,10 @@ fn test_p41_clean_machine_isolated_startup() {
     let clean_dir = create_clean_dir("startup");
     let target_cfg = clean_dir.join("peercast.json");
 
-    assert!(!target_cfg.exists(), "Config file must not exist before clean startup");
+    assert!(
+        !target_cfg.exists(),
+        "Config file must not exist before clean startup"
+    );
 
     // Run peercast-app --kill in clean directory (performs initialization and clean exit)
     let output = Command::new(&bin_path)
@@ -94,15 +105,27 @@ fn test_p41_clean_machine_isolated_startup() {
         .output()
         .expect("failed to execute peercast-app");
 
-    assert!(output.status.success(), "Clean startup with --kill should exit with 0");
+    assert!(
+        output.status.success(),
+        "Clean startup with --kill should exit with 0"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Kill requested") || stdout.contains("signaling"));
 
     // Verify config file was automatically generated with valid versioned schema
-    assert!(target_cfg.exists(), "Default config must be automatically generated");
+    assert!(
+        target_cfg.exists(),
+        "Default config must be automatically generated"
+    );
     let cfg_text = fs::read_to_string(&target_cfg).expect("failed to read generated config");
-    assert!(cfg_text.contains("\"schemaVersion\": 2"), "Generated config must be schema v2");
-    assert!(cfg_text.contains("\"port\": 7197"), "CLI port override must be persisted in config");
+    assert!(
+        cfg_text.contains("\"schemaVersion\": 2"),
+        "Generated config must be schema v2"
+    );
+    assert!(
+        cfg_text.contains("\"port\": 7197"),
+        "CLI port override must be persisted in config"
+    );
 
     let _ = fs::remove_dir_all(clean_dir);
 }
@@ -155,9 +178,17 @@ fn test_p41_embedded_ui_self_containment() {
 
     for asset_path in required_assets {
         let asset: Option<EmbeddedAsset> = get_embedded_asset(asset_path);
-        assert!(asset.is_some(), "Asset {} must be embedded in binary", asset_path);
+        assert!(
+            asset.is_some(),
+            "Asset {} must be embedded in binary",
+            asset_path
+        );
         let a = asset.unwrap();
-        assert!(!a.content.is_empty(), "Asset {} must have non-empty payload", asset_path);
+        assert!(
+            !a.content.is_empty(),
+            "Asset {} must have non-empty payload",
+            asset_path
+        );
 
         // Verify zero external CDN references
         let content_str = String::from_utf8_lossy(a.content);

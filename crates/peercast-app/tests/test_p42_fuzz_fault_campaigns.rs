@@ -113,7 +113,8 @@ fn test_p42_atom_and_pcp_fuzz_campaign() {
     // Base seed atoms: valid pcp\n root atom with helo child
     let base_atom_bytes = vec![
         b'p', b'c', b'p', b'\n', 0x01, 0x00, 0x00, 0x80, // parent with 1 child
-        b'h', b'e', b'l', b'o', 0x04, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, // leaf 4 bytes
+        b'h', b'e', b'l', b'o', 0x04, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03,
+        0x04, // leaf 4 bytes
     ];
 
     let budget = AtomBudget::default();
@@ -151,7 +152,10 @@ fn test_p42_atom_and_pcp_fuzz_campaign() {
     }
 
     assert!(iterations >= 3000, "fuzz iterations must be at least 3000");
-    assert!(start.elapsed().as_secs() < 30, "fuzz run must complete efficiently");
+    assert!(
+        start.elapsed().as_secs() < 30,
+        "fuzz run must complete efficiently"
+    );
 }
 
 /// Acceptance criterion 2:
@@ -163,14 +167,20 @@ fn test_p42_container_demuxers_fuzz_campaign() {
     let mut iterations = 0;
 
     // Seed headers for each container format
-    let flv_seed = vec![b'F', b'L', b'V', 0x01, 0x05, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00];
+    let flv_seed = vec![
+        b'F', b'L', b'V', 0x01, 0x05, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00,
+    ];
     let ts_seed = vec![0x47, 0x40, 0x11, 0x10]; // TS sync byte 0x47 + packet header
     let asf_seed = vec![
-        0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
-        0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x02,
+        0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE,
+        0x6C, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x02,
     ];
-    let mkv_seed = vec![0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81, 0x01];
-    let ogg_seed = vec![b'O', b'g', b'g', b'S', 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    let mkv_seed = vec![
+        0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81, 0x01,
+    ];
+    let ogg_seed = vec![
+        b'O', b'g', b'g', b'S', 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
     let mp3_seed = vec![0xFF, 0xFB, 0x90, 0x64]; // MP3 frame sync 0xFFFB
 
     for &seed in &seeds {
@@ -222,9 +232,12 @@ fn test_p42_container_demuxers_fuzz_campaign() {
 
             // 7. Bounded Sniffer Fuzz
             let sniff_res = detect_container(&flv_buf);
-            assert!(
-                matches!(sniff_res, SniffResult::Definitive(_) | SniffResult::NeedsMoreData { .. } | SniffResult::Unsupported)
-            );
+            assert!(matches!(
+                sniff_res,
+                SniffResult::Definitive(_)
+                    | SniffResult::NeedsMoreData { .. }
+                    | SniffResult::Unsupported
+            ));
 
             let mut sniff_buf = SniffBuffer::new(4096);
             let _ = sniff_buf.feed(&flv_buf);
@@ -288,7 +301,9 @@ async fn test_p42_http_and_rpc_fuzz_campaign() {
             let rpc_state = RpcState::default();
             let dispatcher = RpcDispatcher::new(rpc_state);
             let json_str = String::from_utf8_lossy(&req_bytes);
-            let _ = dispatcher.handle_request_str(&json_str, AccessLevel::Playback).await;
+            let _ = dispatcher
+                .handle_request_str(&json_str, AccessLevel::Playback)
+                .await;
         }
     }
 }
@@ -300,7 +315,8 @@ fn test_p42_fragmentation_fault_injection() {
     let payload = vec![
         b'p', b'c', b'p', b'\n', 0x01, 0x00, 0x00, 0x80, // parent 1 child
         b'c', b'h', b'a', b'n', 0x10, 0x00, 0x00, 0x00, // leaf 16 bytes
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10,
     ];
 
     let budget = AtomBudget::default();
@@ -311,13 +327,17 @@ fn test_p42_fragmentation_fault_injection() {
         let mut b = Bytes::copy_from_slice(first_half);
         // Partial decode must return Ok(None) or Err, never panic or return corrupt atom
         let res = Atom::decode(&mut b, &budget);
-        assert!(matches!(res, Ok(None) | Err(_)), "partial atom at split {} must not return Ok(Some)", split_pos);
+        assert!(
+            matches!(res, Ok(None) | Err(_)),
+            "partial atom at split {} must not return Ok(Some)",
+            split_pos
+        );
     }
 
     // 2. Fragmented feeding: 1-byte chunks into container demuxers
     let flv_data = vec![
-        b'F', b'L', b'V', 0x01, 0x05, 0x00, 0x00, 0x00, 0x09,
-        0x00, 0x00, 0x00, 0x00, // FLV header
+        b'F', b'L', b'V', 0x01, 0x05, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00,
+        0x00, // FLV header
         0x12, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Tag header
         0x01, 0x02, 0x03, 0x04, 0x05, // Tag payload
         0x00, 0x00, 0x00, 0x10, // Previous tag size

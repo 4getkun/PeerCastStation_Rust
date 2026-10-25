@@ -1,6 +1,6 @@
+use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
-use serde_json::Value;
 
 use peercast_rpc::{
     ChannelViewModel, ClientRpcError, ControllerError, IndexController, MockRpcTransport,
@@ -49,7 +49,10 @@ fn test_p37d_tokens_file_complete_and_valid() {
     assert!(css.contains("--peca-focus-outline-width:"));
 
     // Theme variations
-    assert!(css.contains(r#"[data-theme="dark"]"#), "Dark theme must be defined");
+    assert!(
+        css.contains(r#"[data-theme="dark"]"#),
+        "Dark theme must be defined"
+    );
     assert!(
         css.contains(r#"[data-theme="high-contrast"]"#),
         "High-contrast theme must be defined (WCAG AAA)"
@@ -134,7 +137,10 @@ fn test_p37d_fixtures_match_rust_viewmodels() {
     // Validate normal state fields
     let normal = index_json.get("normal").expect("normal fixture missing");
     let version = normal.get("version").unwrap();
-    assert_eq!(version.get("apiVersion").unwrap().as_str().unwrap(), "1.0.0");
+    assert_eq!(
+        version.get("apiVersion").unwrap().as_str().unwrap(),
+        "1.0.0"
+    );
 
     let plugins_raw = normal.get("plugins").unwrap().clone();
     let plugins: Vec<PluginSummary> = serde_json::from_value(plugins_raw).unwrap();
@@ -142,8 +148,9 @@ fn test_p37d_fixtures_match_rust_viewmodels() {
     assert_eq!(plugins[0].name, "PCP");
 
     let channels_fixtures_path = repo_root().join("ui/fixtures/channels_fixtures.json");
-    let channels_json: Value = serde_json::from_str(&fs::read_to_string(channels_fixtures_path).unwrap())
-        .expect("channels_fixtures.json must be valid JSON");
+    let channels_json: Value =
+        serde_json::from_str(&fs::read_to_string(channels_fixtures_path).unwrap())
+            .expect("channels_fixtures.json must be valid JSON");
 
     let normal_channels_raw = channels_json.get("normal").unwrap().clone();
     let channels: Vec<ChannelViewModel> = serde_json::from_value(normal_channels_raw).unwrap();

@@ -26,8 +26,7 @@ async fn test_stalled_receiver_cannot_stop_healthy_receiver() {
         max_count: 5,
         max_lag: Duration::from_secs(5),
     };
-    let (sink_stalled, source_stalled) =
-        create_subscriber_pair(SubscriberId(2), limits_stalled);
+    let (sink_stalled, source_stalled) = create_subscriber_pair(SubscriberId(2), limits_stalled);
     registry.register(sink_stalled);
 
     // Healthy reader task drains packets concurrently
@@ -93,12 +92,24 @@ async fn test_lag_based_eviction() {
     registry.register(sink);
 
     // Packet 1 admitted at t = 1.0s
-    let c1 = Content::new(1, Duration::from_secs(0), 0, vec![0u8; 50], ContinuationFlags::NONE);
+    let c1 = Content::new(
+        1,
+        Duration::from_secs(0),
+        0,
+        vec![0u8; 50],
+        ContinuationFlags::NONE,
+    );
     let failed1 = registry.fanout(&c1, Duration::from_secs(1));
     assert!(failed1.is_empty());
 
     // Packet 2 at t = 7.0s (> 5.0s lag from Packet 1)
-    let c2 = Content::new(1, Duration::from_secs(1), 50, vec![0u8; 50], ContinuationFlags::NONE);
+    let c2 = Content::new(
+        1,
+        Duration::from_secs(1),
+        50,
+        vec![0u8; 50],
+        ContinuationFlags::NONE,
+    );
     let failed2 = registry.fanout(&c2, Duration::from_secs(7));
 
     assert_eq!(failed2.len(), 1);

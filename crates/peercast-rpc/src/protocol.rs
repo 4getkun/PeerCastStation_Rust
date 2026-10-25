@@ -70,7 +70,10 @@ impl RpcErrorObject {
         });
         Self::with_data(
             rpc_code::UNSUPPORTED_METHOD,
-            format!("Method '{}' is not supported in the current milestone", method),
+            format!(
+                "Method '{}' is not supported in the current milestone",
+                method
+            ),
             data,
         )
     }

@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use thiserror::Error;
 use tokio::sync::Mutex;
 
@@ -25,7 +25,9 @@ pub enum ClientRpcError {
     #[error("Unauthorized: method requires administrative authorization")]
     Unauthorized,
 
-    #[error("Method '{method}' is unsupported/deferred in current milestone (capability: {capability})")]
+    #[error(
+        "Method '{method}' is unsupported/deferred in current milestone (capability: {capability})"
+    )]
     UnsupportedMethod { method: String, capability: String },
 
     #[error("Failed to deserialize response payload: {0}")]
@@ -313,8 +315,9 @@ impl<T: RpcTransport> PeerCastRpcClient<T> {
             .transport
             .send_request("setSettings", Some(params))
             .await?;
-        val.as_bool()
-            .ok_or_else(|| ClientRpcError::Deserialization("setSettings result must be a boolean".into()))
+        val.as_bool().ok_or_else(|| {
+            ClientRpcError::Deserialization("setSettings result must be a boolean".into())
+        })
     }
 
     /// Queries active authentication token if any.

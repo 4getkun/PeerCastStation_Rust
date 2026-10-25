@@ -47,7 +47,9 @@ pub enum ProbeResult {
 /// Errors produced during reverse probe configuration or execution.
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 pub enum ProbeError {
-    #[error("Probe target IP ({target}) does not match observed peer IP ({observed}) (SSRF prevention)")]
+    #[error(
+        "Probe target IP ({target}) does not match observed peer IP ({observed}) (SSRF prevention)"
+    )]
     ForbiddenTarget { target: IpAddr, observed: IpAddr },
 
     #[error("Probe port 0 is invalid")]
@@ -242,9 +244,9 @@ impl ProbeCodec {
                 atom.name()
             )));
         }
-        let ver = atom.get_u32_le().map_err(|_| {
-            ProbeError::Protocol("pcp\\n atom missing u32 version payload".into())
-        })?;
+        let ver = atom
+            .get_u32_le()
+            .map_err(|_| ProbeError::Protocol("pcp\\n atom missing u32 version payload".into()))?;
         Ok(Some(ver))
     }
 
@@ -452,7 +454,9 @@ pub async fn execute_reverse_probe_with_profile(
                 .await
                 .map_err(|e| ProbeError::Io(e.to_string()))?;
             if n == 0 {
-                return Err(ProbeError::Protocol("Connection closed before oleh".to_string()));
+                return Err(ProbeError::Protocol(
+                    "Connection closed before oleh".to_string(),
+                ));
             }
             in_buf.extend_from_slice(&read_arr[..n]);
 

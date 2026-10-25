@@ -135,9 +135,7 @@ impl PlaylistBuilder {
             let query_str = self
                 .query_params
                 .iter()
-                .map(|(k, v)| {
-                    format!("{}={}", urlencoding_simple(k), urlencoding_simple(v))
-                })
+                .map(|(k, v)| format!("{}={}", urlencoding_simple(k), urlencoding_simple(v)))
                 .collect::<Vec<_>>()
                 .join("&");
             url.push('?');

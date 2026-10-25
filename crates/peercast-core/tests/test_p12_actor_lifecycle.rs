@@ -88,36 +88,52 @@ async fn test_stale_generation_events_ignored() {
     let stale_gen = GenerationToken(1);
 
     let (tx, rx) = tokio::sync::mpsc::channel(16);
-    let (st_tx, _st_rx) = tokio::sync::watch::channel(peercast_core::actor::WorkerStatus::<TestStatus>::new_initial(active_gen));
+    let (st_tx, _st_rx) = tokio::sync::watch::channel(peercast_core::actor::WorkerStatus::<
+        TestStatus,
+    >::new_initial(active_gen));
     let mut ctx = peercast_core::actor::WorkerContext::new(rx, st_tx, active_gen);
 
     // 1. Send stale envelope (Gen 1)
     tx.send(ActorEnvelope::Custom {
         cmd: TestCmd::Ping(999),
         generation: stale_gen,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     // 2. Send active envelope (Gen 2)
     tx.send(ActorEnvelope::Custom {
         cmd: TestCmd::Ping(42),
         generation: active_gen,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     // 3. Send another stale envelope (Gen 1)
     tx.send(ActorEnvelope::Custom {
         cmd: TestCmd::Work("obsolete".into()),
         generation: stale_gen,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     // 4. Send active stop envelope (Gen 2)
     tx.send(ActorEnvelope::Stop {
         generation: active_gen,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     // Context MUST ignore both Gen 1 envelopes and only return Gen 2 envelopes!
     let first = ctx.recv().await.unwrap();
     assert_eq!(first.generation(), active_gen);
-    assert!(matches!(first, ActorEnvelope::Custom { cmd: TestCmd::Ping(42), .. }));
+    assert!(matches!(
+        first,
+        ActorEnvelope::Custom {
+            cmd: TestCmd::Ping(42),
+            ..
+        }
+    ));
 
     let second = ctx.recv().await.unwrap();
     assert_eq!(second.generation(), active_gen);
@@ -185,5 +201,8 @@ async fn test_bounded_queue_backpressure() {
     assert_eq!(handle.try_post(TestCmd::Ping(2)), Ok(()));
 
     // Third try_post must fail with QueueFull
-    assert_eq!(handle.try_post(TestCmd::Ping(3)), Err(ActorError::QueueFull));
+    assert_eq!(
+        handle.try_post(TestCmd::Ping(3)),
+        Err(ActorError::QueueFull)
+    );
 }

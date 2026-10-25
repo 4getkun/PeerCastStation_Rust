@@ -81,7 +81,7 @@ impl Default for AtomBudget {
     fn default() -> Self {
         Self {
             max_children: 1024,
-            max_leaf_len: 1024 * 1024,       // 1 MiB
+            max_leaf_len: 1024 * 1024, // 1 MiB
             max_depth: 32,
             max_total_nodes: 4096,
             max_total_bytes: 4 * 1024 * 1024, // 4 MiB
@@ -170,7 +170,10 @@ impl Atom {
 
     /// Creates a leaf Atom containing a 32-bit signed little-endian integer.
     pub fn new_i32_le(name: ID4, val: i32) -> Self {
-        Atom::new_leaf(name, Bytes::copy_from_slice(&Scalar::write_u32_le(val as u32)))
+        Atom::new_leaf(
+            name,
+            Bytes::copy_from_slice(&Scalar::write_u32_le(val as u32)),
+        )
     }
 
     /// Creates a leaf Atom containing a 64-bit little-endian integer.
@@ -371,7 +374,10 @@ impl Atom {
     /// Decodes an Atom from a raw byte slice, returning `(Atom, consumed_bytes)`.
     ///
     /// Leaves untouched subsequent bytes in `src`.
-    pub fn decode_slice(src: &[u8], budget: &AtomBudget) -> Result<Option<(Atom, usize)>, AtomError> {
+    pub fn decode_slice(
+        src: &[u8],
+        budget: &AtomBudget,
+    ) -> Result<Option<(Atom, usize)>, AtomError> {
         let tree_len = match measure_tree(src, 0, budget)? {
             MeasureResult::Complete(len) => len,
             MeasureResult::Incomplete { .. } => return Ok(None),
@@ -464,11 +470,7 @@ enum MeasureResult {
 }
 
 /// Measures the tree's byte length and validates budgets without allocating.
-fn measure_tree(
-    src: &[u8],
-    depth: usize,
-    budget: &AtomBudget,
-) -> Result<MeasureResult, AtomError> {
+fn measure_tree(src: &[u8], depth: usize, budget: &AtomBudget) -> Result<MeasureResult, AtomError> {
     let mut tracker = BudgetTracker::new(budget);
     measure_node(src, depth, &mut tracker)
 }
@@ -539,7 +541,10 @@ fn measure_node(
 fn parse_tree(bytes: &Bytes) -> Atom {
     let mut cursor = bytes.clone();
     let atom = parse_node(&mut cursor);
-    debug_assert!(cursor.is_empty(), "All bytes must be consumed by parse_node");
+    debug_assert!(
+        cursor.is_empty(),
+        "All bytes must be consumed by parse_node"
+    );
     atom
 }
 

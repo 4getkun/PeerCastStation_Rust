@@ -16,9 +16,7 @@ use peercast_pcp::probe::{execute_reverse_probe, ProbeLimiter, ProbeLimits, Prob
 use peercast_pcp::relay_client::{
     RelayClientPhase, RelayClientStateMachine, RelayEvent, RelayNetworkProfile, SERVANT_VERSION,
 };
-use peercast_pcp::relay_server::{
-    RelayServerEvent, RelayServerStateMachine,
-};
+use peercast_pcp::relay_server::{RelayServerEvent, RelayServerStateMachine};
 
 fn sample_channel_id() -> ChannelId {
     ChannelId::from_hex("0123456789abcdef0123456789abcdef").unwrap()
@@ -149,15 +147,12 @@ async fn test_p21_loopback_200_relay_streaming_and_hash_verification() {
     // Spawn controlled client task
     let client_handle = tokio::spawn(async move {
         let mut socket = TcpStream::connect(server_addr).await.unwrap();
-        let mut client = RelayClientStateMachine::new(
-            channel_id,
-            client_sid,
-            RelayNetworkProfile::IPv4,
-            0,
-        );
+        let mut client =
+            RelayClientStateMachine::new(channel_id, client_sid, RelayNetworkProfile::IPv4, 0);
 
         // 1. Send HTTP GET request
-        let req_bytes = client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
+        let req_bytes =
+            client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
         socket.write_all(&req_bytes).await.unwrap();
 
         let mut read_buf = BytesMut::with_capacity(65536);
@@ -180,7 +175,9 @@ async fn test_p21_loopback_200_relay_streaming_and_hash_verification() {
         }
 
         // 3. Send client helo
-        let helo_bytes = client.build_helo("PeerCastRustTest/1.0", Some(7144)).unwrap();
+        let helo_bytes = client
+            .build_helo("PeerCastRustTest/1.0", Some(7144))
+            .unwrap();
         socket.write_all(&helo_bytes).await.unwrap();
 
         // 4. Single continuous event loop for handshake completion and media stream reassembly
@@ -196,16 +193,17 @@ async fn test_p21_loopback_200_relay_streaming_and_hash_verification() {
                         let consumed = read_buf.len() - freeze.len();
                         let _ = read_buf.split_to(consumed);
                         match ev {
-                            RelayEvent::HandshakeCompleted { remote_session_id, .. } => {
+                            RelayEvent::HandshakeCompleted {
+                                remote_session_id, ..
+                            } => {
                                 assert_eq!(remote_session_id, Some(server_sid));
                                 handshake_done = true;
                             }
+                            RelayEvent::HeaderChunk(header) => {
+                                assert!(received_header.replace(header.data).is_none());
+                            }
                             RelayEvent::MediaChunk(chunk) => {
-                                if received_header.is_none() {
-                                    received_header = Some(chunk.data);
-                                } else {
-                                    reassembled_body.extend_from_slice(&chunk.data);
-                                }
+                                reassembled_body.extend_from_slice(&chunk.data);
                             }
                             _ => {}
                         }
@@ -268,7 +266,10 @@ async fn test_p21_loopback_503_candidate_host_distribution() {
         channel_id,
         broadcast_id: None,
         local_endpoint: None,
-        global_endpoint: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1)), 7144)),
+        global_endpoint: Some(SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1)),
+            7144,
+        )),
         flags: HostFlags1::RELAY,
         relay_count: 1,
         direct_count: 0,
@@ -297,7 +298,9 @@ async fn test_p21_loopback_503_candidate_host_distribution() {
             let n = socket.read(&mut tmp).await.unwrap();
             read_buf.extend_from_slice(&tmp[..n]);
             let mut freeze = read_buf.clone().freeze();
-            if let Some(RelayServerEvent::RequestReceived(_)) = server.feed_bytes(&mut freeze).unwrap() {
+            if let Some(RelayServerEvent::RequestReceived(_)) =
+                server.feed_bytes(&mut freeze).unwrap()
+            {
                 let consumed = read_buf.len() - freeze.len();
                 let _ = read_buf.split_to(consumed);
                 break;
@@ -327,14 +330,11 @@ async fn test_p21_loopback_503_candidate_host_distribution() {
     // Client task: connect and receive candidates
     let client_handle = tokio::spawn(async move {
         let mut socket = TcpStream::connect(server_addr).await.unwrap();
-        let mut client = RelayClientStateMachine::new(
-            channel_id,
-            client_sid,
-            RelayNetworkProfile::IPv4,
-            0,
-        );
+        let mut client =
+            RelayClientStateMachine::new(channel_id, client_sid, RelayNetworkProfile::IPv4, 0);
 
-        let req_bytes = client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
+        let req_bytes =
+            client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
         socket.write_all(&req_bytes).await.unwrap();
 
         let mut read_buf = BytesMut::with_capacity(16384);
@@ -353,7 +353,9 @@ async fn test_p21_loopback_503_candidate_host_distribution() {
         }
 
         // Send helo
-        let helo_bytes = client.build_helo("PeerCastRustTest/1.0", Some(7144)).unwrap();
+        let helo_bytes = client
+            .build_helo("PeerCastRustTest/1.0", Some(7144))
+            .unwrap();
         socket.write_all(&helo_bytes).await.unwrap();
 
         // Read oleh, host, and quit(1003)
@@ -391,8 +393,14 @@ async fn test_p21_loopback_503_candidate_host_distribution() {
         }
 
         assert_eq!(client.candidate_hosts().len(), 1);
-        assert_eq!(client.candidate_hosts()[0].session_id, candidate_host_expected.session_id);
-        assert_eq!(client.candidate_hosts()[0].global_endpoint, candidate_host_expected.global_endpoint);
+        assert_eq!(
+            client.candidate_hosts()[0].session_id,
+            candidate_host_expected.session_id
+        );
+        assert_eq!(
+            client.candidate_hosts()[0].global_endpoint,
+            candidate_host_expected.global_endpoint
+        );
     });
 
     tokio::try_join!(server_handle, client_handle).unwrap();
@@ -423,7 +431,9 @@ async fn test_p21_loopback_404_offair_immediate_termination() {
             let n = socket.read(&mut tmp).await.unwrap();
             read_buf.extend_from_slice(&tmp[..n]);
             let mut freeze = read_buf.clone().freeze();
-            if let Some(RelayServerEvent::RequestReceived(_)) = server.feed_bytes(&mut freeze).unwrap() {
+            if let Some(RelayServerEvent::RequestReceived(_)) =
+                server.feed_bytes(&mut freeze).unwrap()
+            {
                 break;
             }
         }
@@ -435,14 +445,11 @@ async fn test_p21_loopback_404_offair_immediate_termination() {
     // Client receives 404 -> OffAir error, 0 atom decode
     let client_handle = tokio::spawn(async move {
         let mut socket = TcpStream::connect(server_addr).await.unwrap();
-        let mut client = RelayClientStateMachine::new(
-            channel_id,
-            client_sid,
-            RelayNetworkProfile::IPv4,
-            0,
-        );
+        let mut client =
+            RelayClientStateMachine::new(channel_id, client_sid, RelayNetworkProfile::IPv4, 0);
 
-        let req_bytes = client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
+        let req_bytes =
+            client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
         socket.write_all(&req_bytes).await.unwrap();
 
         let mut read_buf = BytesMut::with_capacity(4096);
@@ -453,7 +460,10 @@ async fn test_p21_loopback_404_offair_immediate_termination() {
         let mut freeze = read_buf.clone().freeze();
         let res = client.feed_bytes(&mut freeze);
         assert_eq!(res, Err(peercast_pcp::relay_client::RelayError::OffAir));
-        assert_eq!(client.phase(), RelayClientPhase::Terminal(QuitReason::OFF_AIR));
+        assert_eq!(
+            client.phase(),
+            RelayClientPhase::Terminal(QuitReason::OFF_AIR)
+        );
     });
 
     tokio::try_join!(server_handle, client_handle).unwrap();
@@ -486,7 +496,9 @@ async fn test_p21_loopback_reconnect_with_cursor_position() {
             let n = socket.read(&mut tmp).await.unwrap();
             read_buf.extend_from_slice(&tmp[..n]);
             let mut freeze = read_buf.clone().freeze();
-            if let Some(RelayServerEvent::RequestReceived(r)) = server.feed_bytes(&mut freeze).unwrap() {
+            if let Some(RelayServerEvent::RequestReceived(r)) =
+                server.feed_bytes(&mut freeze).unwrap()
+            {
                 break r;
             }
         };
@@ -505,7 +517,8 @@ async fn test_p21_loopback_reconnect_with_cursor_position() {
             cursor_pos,
         );
 
-        let req_bytes = client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
+        let req_bytes =
+            client.build_relay_request(&server_addr.to_string(), "PeerCastRustTest/1.0");
         let req_str = String::from_utf8(req_bytes.clone()).unwrap();
         assert!(req_str.contains("x-peercast-pos: 1250000\r\n"));
 
@@ -551,7 +564,10 @@ async fn test_p21_loopback_reverse_probe() {
             ID4::PCP_OLEH,
             vec![
                 Atom::new_string(ID4::HELO_AGENT, "PeerCastPeer/1.0"),
-                Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::copy_from_slice(peer_sid.as_bytes())),
+                Atom::new_leaf(
+                    ID4::HELO_SESSIONID,
+                    Bytes::copy_from_slice(peer_sid.as_bytes()),
+                ),
                 Atom::new_u32_le(ID4::HELO_VERSION, SERVANT_VERSION),
             ],
         );

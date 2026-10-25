@@ -14,22 +14,34 @@ fn test_encoder_reference_vectors_independent_bytes() {
     // 1. Raw PCP v1: "7063700a0400000001000000"
     let pcp_v1 = Atom::new_u32_le(ID4::PCP_CONNECT, 1);
     let bytes = pcp_v1.to_bytes().unwrap();
-    assert_eq!(bytes.as_ref(), &hex_to_bytes("7063700a0400000001000000")[..]);
+    assert_eq!(
+        bytes.as_ref(),
+        &hex_to_bytes("7063700a0400000001000000")[..]
+    );
 
     // 2. Raw PCP v100: "7063700a0400000064000000"
     let pcp_v100 = Atom::new_u32_le(ID4::PCP_CONNECT, 100);
     let bytes = pcp_v100.to_bytes().unwrap();
-    assert_eq!(bytes.as_ref(), &hex_to_bytes("7063700a0400000064000000")[..]);
+    assert_eq!(
+        bytes.as_ref(),
+        &hex_to_bytes("7063700a0400000064000000")[..]
+    );
 
     // 3. Normal quit: "7175697404000000e8030000"
     let quit_norm = Atom::new_u32_le(ID4::PCP_QUIT, 1000);
     let bytes = quit_norm.to_bytes().unwrap();
-    assert_eq!(bytes.as_ref(), &hex_to_bytes("7175697404000000e8030000")[..]);
+    assert_eq!(
+        bytes.as_ref(),
+        &hex_to_bytes("7175697404000000e8030000")[..]
+    );
 
     // 4. Read error quit 4000: "7175697404000000a00f0000"
     let quit_4000 = Atom::new_u32_le(ID4::PCP_QUIT, 4000);
     let bytes = quit_4000.to_bytes().unwrap();
-    assert_eq!(bytes.as_ref(), &hex_to_bytes("7175697404000000a00f0000")[..]);
+    assert_eq!(
+        bytes.as_ref(),
+        &hex_to_bytes("7175697404000000a00f0000")[..]
+    );
 
     // 5. Empty parent: "68656c6f00000080"
     let empty_parent = Atom::new_empty_parent(ID4::PCP_HELO);
@@ -52,12 +64,18 @@ fn test_encoder_reference_vectors_independent_bytes() {
     let sid_payload = hex_to_bytes("00112233445566778899aabbccddeeff");
     let sid_atom = Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::from(sid_payload));
     let bytes = sid_atom.to_bytes().unwrap();
-    assert_eq!(bytes.as_ref(), &hex_to_bytes("736964001000000000112233445566778899aabbccddeeff")[..]);
+    assert_eq!(
+        bytes.as_ref(),
+        &hex_to_bytes("736964001000000000112233445566778899aabbccddeeff")[..]
+    );
 
     // 9. UTF-8 NUL leaf ("name" with "あ\0"): "6e616d6504000000e3818200"
     let name_atom = Atom::new_string(ID4(*b"name"), "あ");
     let bytes = name_atom.to_bytes().unwrap();
-    assert_eq!(bytes.as_ref(), &hex_to_bytes("6e616d6504000000e3818200")[..]);
+    assert_eq!(
+        bytes.as_ref(),
+        &hex_to_bytes("6e616d6504000000e3818200")[..]
+    );
 }
 
 #[test]

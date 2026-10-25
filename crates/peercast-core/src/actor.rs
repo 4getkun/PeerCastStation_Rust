@@ -86,13 +86,8 @@ impl<S: Default> WorkerStatus<S> {
 /// Internal command envelope carrying generation token for validation.
 #[derive(Debug)]
 pub enum ActorEnvelope<C> {
-    Custom {
-        cmd: C,
-        generation: GenerationToken,
-    },
-    Stop {
-        generation: GenerationToken,
-    },
+    Custom { cmd: C, generation: GenerationToken },
+    Stop { generation: GenerationToken },
 }
 
 impl<C> ActorEnvelope<C> {

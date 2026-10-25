@@ -35,7 +35,9 @@ fn test_decoder_fragmentation_every_split_position() {
 
         // When the rest of the bytes arrive
         let mut buf_full = encoded.clone();
-        let decoded = Atom::decode(&mut buf_full, &budget).unwrap().expect("Should succeed");
+        let decoded = Atom::decode(&mut buf_full, &budget)
+            .unwrap()
+            .expect("Should succeed");
         assert_eq!(decoded, tree);
         assert_eq!(buf_full.len(), 0, "Buffer should be fully consumed");
     }
@@ -83,12 +85,24 @@ fn test_decoder_eof_clean_versus_truncated() {
     // 2. Truncated header (e.g. 5 bytes received, peer closed socket)
     let mut partial_header = Bytes::from_static(b"pcp\n\x04");
     let err = Atom::decode_eof(&mut partial_header, &budget).unwrap_err();
-    assert_eq!(err, AtomError::Truncated { needed: 8, available: 5 });
+    assert_eq!(
+        err,
+        AtomError::Truncated {
+            needed: 8,
+            available: 5
+        }
+    );
 
     // 3. Truncated payload (header says 4 bytes payload, only 2 bytes provided)
     let mut partial_payload = Bytes::from_static(b"pcp\n\x04\x00\x00\x00\x01\x00");
     let err = Atom::decode_eof(&mut partial_payload, &budget).unwrap_err();
-    assert_eq!(err, AtomError::Truncated { needed: 12, available: 10 });
+    assert_eq!(
+        err,
+        AtomError::Truncated {
+            needed: 12,
+            available: 10
+        }
+    );
 }
 
 #[test]
@@ -100,7 +114,9 @@ fn test_decoder_preserves_order_and_duplicates() {
     let original = Atom::new_parent(ID4::PCP_ROOT, vec![child1, child2, child3]);
     let mut bytes = original.to_bytes().unwrap();
 
-    let decoded = Atom::decode(&mut bytes, &AtomBudget::default()).unwrap().unwrap();
+    let decoded = Atom::decode(&mut bytes, &AtomBudget::default())
+        .unwrap()
+        .unwrap();
     assert_eq!(decoded, original);
 
     // Verify ordering and duplicate retention

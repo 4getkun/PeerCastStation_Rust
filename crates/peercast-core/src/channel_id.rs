@@ -62,8 +62,12 @@ impl ChannelId {
         for (i, byte) in bytes.iter_mut().enumerate() {
             let high = s.as_bytes()[i * 2] as char;
             let low = s.as_bytes()[i * 2 + 1] as char;
-            let h = high.to_digit(16).ok_or(ChannelIdError::InvalidHexDigit(high))?;
-            let l = low.to_digit(16).ok_or(ChannelIdError::InvalidHexDigit(low))?;
+            let h = high
+                .to_digit(16)
+                .ok_or(ChannelIdError::InvalidHexDigit(high))?;
+            let l = low
+                .to_digit(16)
+                .ok_or(ChannelIdError::InvalidHexDigit(low))?;
             *byte = ((h << 4) | l) as u8;
         }
         Ok(ChannelId(bytes))

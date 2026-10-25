@@ -19,7 +19,9 @@ pub enum ControllerError {
     #[error("Read request is already in progress")]
     ReadAlreadyInProgress,
 
-    #[error("Received stale response for superseded sequence (expected >= {expected}, got {received})")]
+    #[error(
+        "Received stale response for superseded sequence (expected >= {expected}, got {received})"
+    )]
     StaleResponseIgnored { expected: u64, received: u64 },
 
     #[error("RPC client error: {0}")]
@@ -244,7 +246,10 @@ impl<T: RpcTransport> SettingsController<T> {
     }
 
     /// Submits settings updates with strict re-entrancy and blind-retry prevention (REQ-084, Global Rule 2).
-    pub async fn update_settings(&self, new_settings: ServentSettings) -> Result<(), ControllerError> {
+    pub async fn update_settings(
+        &self,
+        new_settings: ServentSettings,
+    ) -> Result<(), ControllerError> {
         let seq = self.seq_counter.fetch_add(1, Ordering::SeqCst);
 
         // Re-entrancy guard: early-return if mutation is already in flight

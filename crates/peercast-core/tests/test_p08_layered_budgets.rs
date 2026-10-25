@@ -63,13 +63,7 @@ fn test_budget_max_children_boundary() {
     // 2. Limit + 1 (6 children) -> must fail immediately with ChildCountExceeded
     let mut header_6 = Bytes::from_static(b"root\x06\x00\x00\x80"); // 6 children with MSB set
     let err = Atom::decode(&mut header_6, &custom_budget).unwrap_err();
-    assert_eq!(
-        err,
-        AtomError::ChildCountExceeded {
-            actual: 6,
-            max: 5
-        }
-    );
+    assert_eq!(err, AtomError::ChildCountExceeded { actual: 6, max: 5 });
 }
 
 #[test]

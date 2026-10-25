@@ -58,7 +58,10 @@ fn test_p20_split_outgoing_body_safely_under_16384_bytes() {
 
         match parsed.payload {
             PacketPayload::Data(d) => {
-                assert!(d.len() <= MAX_PACKET_DATALEN, "Sub-packet data must be <= 16384");
+                assert!(
+                    d.len() <= MAX_PACKET_DATALEN,
+                    "Sub-packet data must be <= 16384"
+                );
                 reassembled.extend_from_slice(&d);
                 expected_pos += d.len() as i64;
             }
@@ -67,7 +70,10 @@ fn test_p20_split_outgoing_body_safely_under_16384_bytes() {
     }
 
     // Crucial check: Reassembled fixture bytes MUST match original input bit-for-bit
-    assert_eq!(reassembled, original_fixture, "Zero corruption or truncation across split packets");
+    assert_eq!(
+        reassembled, original_fixture,
+        "Zero corruption or truncation across split packets"
+    );
 }
 
 #[test]
@@ -112,6 +118,36 @@ fn test_p20_inbound_packet_cap_rejection() {
 }
 
 #[test]
+fn test_p20_large_header_data_leaf_bypasses_media_packet_cap() {
+    let header_bytes = vec![0x42; MAX_PACKET_DATALEN + 1];
+    let header_atom = Atom::new_parent(
+        ID4::CHAN_PKT,
+        vec![
+            Atom::new_leaf(ID4::PKT_TYPE, Bytes::copy_from_slice(b"head")),
+            Atom::new_u32_le(ID4::PKT_POS, 0),
+            Atom::new_leaf(ID4::PKT_DATA, header_bytes.clone()),
+        ],
+    );
+    let parsed = ChannelPacket::from_atom(&header_atom, None).unwrap();
+    assert!(
+        matches!(parsed.payload, PacketPayload::Header(ref bytes) if bytes.as_ref() == header_bytes)
+    );
+
+    let data_atom = Atom::new_parent(
+        ID4::CHAN_PKT,
+        vec![
+            Atom::new_u32_le(ID4::PKT_POS, 0),
+            Atom::new_leaf(ID4::PKT_DATA, header_bytes),
+        ],
+    );
+    assert!(matches!(
+        ChannelPacket::from_atom(&data_atom, None),
+        Err(PacketError::PacketDataTooLarge { actual, max })
+            if actual == MAX_PACKET_DATALEN + 1 && max == MAX_PACKET_DATALEN
+    ));
+}
+
+#[test]
 fn test_p20_oversized_header_rejection() {
     let mut adapter = ChannelPacketAdapter::new(8 * 1024 * 1024, Duration::from_secs(3));
 
@@ -127,7 +163,13 @@ fn test_p20_oversized_header_rejection() {
     };
 
     let err = adapter.ingest_packet(pkt).unwrap_err();
-    assert!(matches!(err, PacketError::HeaderTooLarge { actual: 204800, max: 131072 }));
+    assert!(matches!(
+        err,
+        PacketError::HeaderTooLarge {
+            actual: 204800,
+            max: 131072
+        }
+    ));
 }
 
 #[test]
@@ -141,8 +183,7 @@ fn test_p20_32bit_position_rollover_unwrapping() {
     let pos_rolled = 0x0000_1000u32;
     let unwrapped2 = unwrap_wire_pos(pos_rolled, Some(unwrapped1));
     assert_eq!(
-        unwrapped2,
-        0x1_0000_1000i64,
+        unwrapped2, 0x1_0000_1000i64,
         "Rolled over wire position must become continuous 64-bit monotonic offset"
     );
 
@@ -203,7 +244,14 @@ fn test_p20_header_epoch_invalidation_and_restart() {
         unknown_extensions: Vec::new(),
     };
     let res2 = adapter.ingest_packet(body1).unwrap();
-    assert!(matches!(res2, PacketIngestResult::BodyPushed { pos: 100, len: 12, .. }));
+    assert!(matches!(
+        res2,
+        PacketIngestResult::BodyPushed {
+            pos: 100,
+            len: 12,
+            ..
+        }
+    ));
 
     // 3. Stream restarts with new metadata / header (Epoch 2)
     let head2 = ChannelPacket {
@@ -215,7 +263,13 @@ fn test_p20_header_epoch_invalidation_and_restart() {
         unknown_extensions: Vec::new(),
     };
     let res3 = adapter.ingest_packet(head2).unwrap();
-    assert_eq!(res3, PacketIngestResult::HeaderReset { epoch: 2, pos: 1000 });
+    assert_eq!(
+        res3,
+        PacketIngestResult::HeaderReset {
+            epoch: 2,
+            pos: 1000
+        }
+    );
     assert_eq!(adapter.current_epoch(), 2);
 
     // Cache must have cleared old body items upon new epoch header

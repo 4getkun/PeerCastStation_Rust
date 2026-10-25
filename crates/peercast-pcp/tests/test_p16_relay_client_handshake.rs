@@ -27,7 +27,10 @@ fn test_p16_full_200_handshake_success_and_ok_validation() {
     assert!(req_str.starts_with("GET /channel/0123456789ABCDEF0123456789ABCDEF HTTP/1.0\r\n"));
     assert!(req_str.contains("x-peercast-pcp: 1\r\n"));
     assert!(!req_str.contains("pcnt"), "Must never contain pcnt");
-    assert!(!req_str.contains("pcp\n"), "Must never contain raw pcp newline in HTTP request");
+    assert!(
+        !req_str.contains("pcp\n"),
+        "Must never contain raw pcp newline in HTTP request"
+    );
     assert_eq!(sm.phase(), RelayClientPhase::WaitingResponse);
 
     // 2. Server sends 200 OK prelude
@@ -45,7 +48,10 @@ fn test_p16_full_200_handshake_success_and_ok_validation() {
     let oleh = Atom::new_parent(
         ID4::PCP_OLEH,
         vec![
-            Atom::new_leaf(ID4::HELO_SESSIONID, Bytes::copy_from_slice(server_sid.as_bytes())),
+            Atom::new_leaf(
+                ID4::HELO_SESSIONID,
+                Bytes::copy_from_slice(server_sid.as_bytes()),
+            ),
             Atom::new_u16_le(ID4::HELO_PORT, 7144),
         ],
     );
@@ -115,23 +121,26 @@ fn test_p16_control_messages_interleaved_with_media_stream() {
     );
 
     // 2. Interleaved: Host candidate atom (REQ-032: Must NOT fail if not media!)
-    let host_atom = Atom::new_parent(
-        ID4::PCP_HOST,
-        vec![Atom::new_u32_le(ID4::HOST_PORT, 7144)],
-    );
+    let host_atom = Atom::new_parent(ID4::PCP_HOST, vec![Atom::new_u32_le(ID4::HOST_PORT, 7144)]);
 
     // 3. Interleaved: Broadcast atom
-    let bcst_atom = Atom::new_parent(
-        ID4::PCP_BCST,
-        vec![Atom::new_u8(ID4::BCST_TTL, 5)],
-    );
+    let bcst_atom = Atom::new_parent(ID4::PCP_BCST, vec![Atom::new_u8(ID4::BCST_TTL, 5)]);
 
     // 4. Second: Media Packet atom
     let pkt2 = Atom::new_parent(
         ID4::CHAN_PKT,
         vec![
             Atom::new_u32_le(ID4::PKT_POS, 164),
+            Atom::new_leaf(ID4::PKT_TYPE, ID4::PKT_TYPE_HEAD.as_bytes().to_vec()),
             Atom::new_leaf(ID4::PKT_DATA, vec![0x22; 64]),
+        ],
+    );
+
+    let pkt3 = Atom::new_parent(
+        ID4::CHAN_PKT,
+        vec![
+            Atom::new_u32_le(ID4::PKT_POS, 228),
+            Atom::new_leaf(ID4::PKT_HEAD, vec![0x33; 16]),
         ],
     );
 
@@ -141,6 +150,7 @@ fn test_p16_control_messages_interleaved_with_media_stream() {
     host_atom.encode(&mut stream_buf).unwrap();
     bcst_atom.encode(&mut stream_buf).unwrap();
     pkt2.encode(&mut stream_buf).unwrap();
+    pkt3.encode(&mut stream_buf).unwrap();
 
     let mut buf = Bytes::from(stream_buf);
 
@@ -156,9 +166,12 @@ fn test_p16_control_messages_interleaved_with_media_stream() {
     let ev3 = sm.feed_bytes(&mut buf).unwrap().expect("Broadcast");
     assert!(matches!(ev3, RelayEvent::Broadcast(_)));
 
-    // Read item 4: MediaChunk
+    // Read item 4: header chunks remain distinct from media.
     let ev4 = sm.feed_bytes(&mut buf).unwrap().expect("Pkt2");
-    assert!(matches!(ev4, RelayEvent::MediaChunk(c) if c.pos == 164 && c.len() == 64));
+    assert!(matches!(ev4, RelayEvent::HeaderChunk(c) if c.pos == 164 && c.len() == 64));
+
+    let ev5 = sm.feed_bytes(&mut buf).unwrap().expect("Pkt3");
+    assert!(matches!(ev5, RelayEvent::HeaderChunk(c) if c.pos == 228 && c.len() == 16));
 
     assert!(buf.is_empty(), "All interleaved atoms consumed cleanly");
 }
@@ -196,7 +209,10 @@ fn test_p16_503_unavailable_path_through_helo_oleh() {
     let mut buf_quit = quit.to_bytes().unwrap();
     let ev4 = sm.feed_bytes(&mut buf_quit).unwrap().expect("Quit event");
     assert_eq!(ev4, RelayEvent::Quit(QuitReason::UNAVAILABLE));
-    assert_eq!(sm.phase(), RelayClientPhase::Terminal(QuitReason::UNAVAILABLE));
+    assert_eq!(
+        sm.phase(),
+        RelayClientPhase::Terminal(QuitReason::UNAVAILABLE)
+    );
 }
 
 #[test]

@@ -31,7 +31,8 @@ pub const ASF_OBJECT_HEADER_LEN: usize = 24;
 pub const ASF_TOP_LEVEL_HEADER_PRELUDE_LEN: usize = 6;
 
 /// Total minimum length of a valid Top-Level Header Object (24 + 6 = 30 bytes).
-pub const ASF_TOP_LEVEL_HEADER_MIN_LEN: usize = ASF_OBJECT_HEADER_LEN + ASF_TOP_LEVEL_HEADER_PRELUDE_LEN;
+pub const ASF_TOP_LEVEL_HEADER_MIN_LEN: usize =
+    ASF_OBJECT_HEADER_LEN + ASF_TOP_LEVEL_HEADER_PRELUDE_LEN;
 
 /// 16-byte Microsoft GUID representation on wire (standard COM little-endian layout for groups 1..3).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -477,7 +478,8 @@ impl WmspFrame {
                 if self.raw_bytes.len() < 12 {
                     return None;
                 }
-                let packet_len = u16::from_le_bytes([self.raw_bytes[10], self.raw_bytes[11]]) as usize;
+                let packet_len =
+                    u16::from_le_bytes([self.raw_bytes[10], self.raw_bytes[11]]) as usize;
                 let payload_len = packet_len.saturating_sub(8);
                 let end = (12 + payload_len).min(self.raw_bytes.len());
                 Some(&self.raw_bytes[12..end])
@@ -564,7 +566,8 @@ pub fn parse_asf_top_level_header(
                 for i in 0..count {
                     let offset = 2 + 6 * i;
                     if offset + 6 <= payload.len() {
-                        let stream_num = u16::from_le_bytes([payload[offset], payload[offset + 1]]) & 0x7F;
+                        let stream_num =
+                            u16::from_le_bytes([payload[offset], payload[offset + 1]]) & 0x7F;
                         let avg_br = u32::from_le_bytes([
                             payload[offset + 2],
                             payload[offset + 3],
@@ -591,15 +594,31 @@ pub fn parse_asf_top_level_header(
     // If any video stream is present -> "WMV"
     // Else if any audio stream is present -> "WMA"
     // Else -> "ASF"
-    let has_video = stream_props.iter().any(|s| s.stream_type == ASF_STREAM_TYPE_VIDEO_GUID);
-    let has_audio = stream_props.iter().any(|s| s.stream_type == ASF_STREAM_TYPE_AUDIO_GUID);
+    let has_video = stream_props
+        .iter()
+        .any(|s| s.stream_type == ASF_STREAM_TYPE_VIDEO_GUID);
+    let has_audio = stream_props
+        .iter()
+        .any(|s| s.stream_type == ASF_STREAM_TYPE_AUDIO_GUID);
 
     let (content_type, mime_type, stream_ext) = if has_video {
-        ("WMV".to_string(), "video/x-ms-wmv".to_string(), ".wmv".to_string())
+        (
+            "WMV".to_string(),
+            "video/x-ms-wmv".to_string(),
+            ".wmv".to_string(),
+        )
     } else if has_audio {
-        ("WMA".to_string(), "audio/x-ms-wma".to_string(), ".wma".to_string())
+        (
+            "WMA".to_string(),
+            "audio/x-ms-wma".to_string(),
+            ".wma".to_string(),
+        )
     } else {
-        ("ASF".to_string(), "video/x-ms-asf".to_string(), ".asf".to_string())
+        (
+            "ASF".to_string(),
+            "video/x-ms-asf".to_string(),
+            ".asf".to_string(),
+        )
     };
 
     // Upstream bitrate calculation:
@@ -683,7 +702,11 @@ pub struct AsfDemuxer {
 impl AsfDemuxer {
     /// Creates a new demuxer with the specified transport profile and buffer limits.
     pub fn new(profile: AsfTransportProfile) -> Self {
-        Self::with_limits(profile, DEFAULT_MAX_ASF_BUFFER_CAPACITY, DEFAULT_MAX_ASF_OBJECT_SIZE)
+        Self::with_limits(
+            profile,
+            DEFAULT_MAX_ASF_BUFFER_CAPACITY,
+            DEFAULT_MAX_ASF_OBJECT_SIZE,
+        )
     }
 
     /// Creates a demuxer with explicit memory bounds (Global Rule 3).
@@ -761,12 +784,14 @@ impl AsfDemuxer {
                             available: frame_bytes.len(),
                         });
                     }
-                    let packet_len = u16::from_le_bytes([frame_bytes[10], frame_bytes[11]]) as usize;
+                    let packet_len =
+                        u16::from_le_bytes([frame_bytes[10], frame_bytes[11]]) as usize;
                     let payload_len = packet_len.saturating_sub(8);
                     let end = (12 + payload_len).min(frame_bytes.len());
                     let asf_header_payload = &frame_bytes[12..end];
 
-                    let meta = parse_asf_top_level_header(asf_header_payload, self.max_object_size)?;
+                    let meta =
+                        parse_asf_top_level_header(asf_header_payload, self.max_object_size)?;
 
                     if self.metadata.is_some() {
                         // Header replacement mid-stream: increment epoch (REQ-051)
@@ -793,7 +818,10 @@ impl AsfDemuxer {
                     self.stream_position += frame_bytes.len() as u64;
                     return Ok(Some(out));
                 }
-                WmspFrameType::Data | WmspFrameType::Media | WmspFrameType::Command | WmspFrameType::Packet => {
+                WmspFrameType::Data
+                | WmspFrameType::Media
+                | WmspFrameType::Command
+                | WmspFrameType::Packet => {
                     if self.state == AsfDemuxerState::Streaming {
                         let pos = self.stream_position;
                         self.stream_position += frame_bytes.len() as u64;
@@ -865,7 +893,9 @@ impl AsfDemuxer {
                 };
                 self.stream_position += obj_bytes.len() as u64;
                 return Ok(Some(out));
-            } else if header.guid == ASF_DATA_OBJECT_GUID || self.state == AsfDemuxerState::Streaming {
+            } else if header.guid == ASF_DATA_OBJECT_GUID
+                || self.state == AsfDemuxerState::Streaming
+            {
                 let pos = self.stream_position;
                 self.stream_position += obj_bytes.len() as u64;
                 return Ok(Some(AsfDemuxOutput::ContentPacket {

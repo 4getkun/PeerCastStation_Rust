@@ -16,7 +16,11 @@ fn test_p11_quit_code_exact_preservation() {
 
     for (code, expected_desc) in test_codes {
         let reason = QuitReason::from_raw(code);
-        assert_eq!(reason.raw(), code, "Raw wire integer must be preserved exactly");
+        assert_eq!(
+            reason.raw(),
+            code,
+            "Raw wire integer must be preserved exactly"
+        );
         assert_eq!(reason.description(), expected_desc);
         // Display and Debug formatting must not panic
         let disp = format!("{}", reason);

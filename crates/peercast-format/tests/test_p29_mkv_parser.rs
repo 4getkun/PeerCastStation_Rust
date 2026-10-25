@@ -80,22 +80,38 @@ fn make_synthetic_simple_block(track_number: u64, is_keyframe: bool, payload: &[
 
 #[test]
 fn test_p29_upstream_test_mkv_real_fixture() {
-    let fixture_path = Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestMKV\fixtures\test.mkv");
+    let fixture_path =
+        Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestMKV\fixtures\test.mkv");
     if !fixture_path.exists() {
-        eprintln!("Skipping test_p29_upstream_test_mkv_real_fixture: fixture not found at {:?}", fixture_path);
+        eprintln!(
+            "Skipping test_p29_upstream_test_mkv_real_fixture: fixture not found at {:?}",
+            fixture_path
+        );
         return;
     }
 
     let file_bytes = fs::read(fixture_path).expect("Failed to read test.mkv fixture");
-    assert!(file_bytes.len() > 1_000_000, "test.mkv should be ~7.83 MB, got {}", file_bytes.len());
+    assert!(
+        file_bytes.len() > 1_000_000,
+        "test.mkv should be ~7.83 MB, got {}",
+        file_bytes.len()
+    );
 
     let mut demuxer = MkvDemuxer::new();
-    demuxer.feed(&file_bytes).expect("Feeding test.mkv bytes must succeed");
+    demuxer
+        .feed(&file_bytes)
+        .expect("Feeding test.mkv bytes must succeed");
 
     // 1. First output must be HeaderSnapshotReady
-    let first_out = demuxer.next_output().expect("Parsing test.mkv header must succeed");
+    let first_out = demuxer
+        .next_output()
+        .expect("Parsing test.mkv header must succeed");
     let (snapshot, metadata) = match first_out {
-        Some(MkvDemuxOutput::HeaderSnapshotReady { snapshot, metadata, epoch }) => {
+        Some(MkvDemuxOutput::HeaderSnapshotReady {
+            snapshot,
+            metadata,
+            epoch,
+        }) => {
             assert_eq!(epoch, 0);
             (snapshot, metadata)
         }
@@ -106,7 +122,10 @@ fn test_p29_upstream_test_mkv_real_fixture() {
     // ContentHeader not null, position == 0
     assert_eq!(snapshot.pos, 0);
     assert_eq!(snapshot.container_type, "MKV");
-    assert!(snapshot.data.len() > 32, "HeaderSnapshot must contain EBML and Segment headers");
+    assert!(
+        snapshot.data.len() > 32,
+        "HeaderSnapshot must contain EBML and Segment headers"
+    );
 
     // ChannelInfo check:
     // assert_equal 'video/x-matroska', res.ChannelInfo.MIMEType
@@ -123,11 +142,22 @@ fn test_p29_upstream_test_mkv_real_fixture() {
     let mut keyframe_count = 0;
     let mut expected_pos = snapshot.data.len() as u64;
 
-    while let Some(out) = demuxer.next_output().expect("Parsing test.mkv blocks should succeed") {
+    while let Some(out) = demuxer
+        .next_output()
+        .expect("Parsing test.mkv blocks should succeed")
+    {
         match out {
-            MkvDemuxOutput::ContentPacket { packet, epoch, position, is_keyframe } => {
+            MkvDemuxOutput::ContentPacket {
+                packet,
+                epoch,
+                position,
+                is_keyframe,
+            } => {
                 assert_eq!(epoch, 0);
-                assert_eq!(position, expected_pos, "Stream position must advance contiguously");
+                assert_eq!(
+                    position, expected_pos,
+                    "Stream position must advance contiguously"
+                );
                 expected_pos += packet.len() as u64;
                 total_blocks += 1;
                 if is_keyframe {
@@ -139,28 +169,53 @@ fn test_p29_upstream_test_mkv_real_fixture() {
         }
     }
 
-    assert!(total_blocks > 100, "test.mkv must have many content blocks, got {}", total_blocks);
-    assert!(keyframe_count > 0, "test.mkv must contain verified keyframes, got {}", keyframe_count);
+    assert!(
+        total_blocks > 100,
+        "test.mkv must have many content blocks, got {}",
+        total_blocks
+    );
+    assert!(
+        keyframe_count > 0,
+        "test.mkv must contain verified keyframes, got {}",
+        keyframe_count
+    );
     assert_eq!(demuxer.stream_position(), expected_pos);
 }
 
 #[test]
 fn test_p29_upstream_test_webm_real_fixture() {
-    let fixture_path = Path::new(r"C:\Github\_upstream_peercaststation\PeerCastStation\TestMKV\fixtures\test.webm");
+    let fixture_path = Path::new(
+        r"C:\Github\_upstream_peercaststation\PeerCastStation\TestMKV\fixtures\test.webm",
+    );
     if !fixture_path.exists() {
-        eprintln!("Skipping test_p29_upstream_test_webm_real_fixture: fixture not found at {:?}", fixture_path);
+        eprintln!(
+            "Skipping test_p29_upstream_test_webm_real_fixture: fixture not found at {:?}",
+            fixture_path
+        );
         return;
     }
 
     let file_bytes = fs::read(fixture_path).expect("Failed to read test.webm fixture");
-    assert!(file_bytes.len() > 1_000_000, "test.webm should be ~1.80 MB, got {}", file_bytes.len());
+    assert!(
+        file_bytes.len() > 1_000_000,
+        "test.webm should be ~1.80 MB, got {}",
+        file_bytes.len()
+    );
 
     let mut demuxer = MkvDemuxer::new();
-    demuxer.feed(&file_bytes).expect("Feeding test.webm bytes must succeed");
+    demuxer
+        .feed(&file_bytes)
+        .expect("Feeding test.webm bytes must succeed");
 
-    let first_out = demuxer.next_output().expect("Parsing test.webm header must succeed");
+    let first_out = demuxer
+        .next_output()
+        .expect("Parsing test.webm header must succeed");
     let (snapshot, metadata) = match first_out {
-        Some(MkvDemuxOutput::HeaderSnapshotReady { snapshot, metadata, epoch }) => {
+        Some(MkvDemuxOutput::HeaderSnapshotReady {
+            snapshot,
+            metadata,
+            epoch,
+        }) => {
             assert_eq!(epoch, 0);
             (snapshot, metadata)
         }
@@ -179,7 +234,10 @@ fn test_p29_upstream_test_webm_real_fixture() {
 
     // Read subsequent blocks
     let mut total_blocks = 0;
-    while let Some(out) = demuxer.next_output().expect("Parsing test.webm blocks should succeed") {
+    while let Some(out) = demuxer
+        .next_output()
+        .expect("Parsing test.webm blocks should succeed")
+    {
         if let MkvDemuxOutput::ContentPacket { is_keyframe, .. } = out {
             total_blocks += 1;
             if is_keyframe {
@@ -187,7 +245,11 @@ fn test_p29_upstream_test_webm_real_fixture() {
             }
         }
     }
-    assert!(total_blocks > 50, "test.webm must contain content blocks, got {}", total_blocks);
+    assert!(
+        total_blocks > 50,
+        "test.webm must contain content blocks, got {}",
+        total_blocks
+    );
 }
 
 #[test]
@@ -341,7 +403,9 @@ fn test_p29_header_replacement_epoch_bump() {
     // 1. Initial snapshot: MKV, epoch 0
     let out1 = demuxer.next_output().unwrap().unwrap();
     match out1 {
-        MkvDemuxOutput::HeaderSnapshotReady { epoch, metadata, .. } => {
+        MkvDemuxOutput::HeaderSnapshotReady {
+            epoch, metadata, ..
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(metadata.content_type, "MKV");
         }
@@ -363,7 +427,9 @@ fn test_p29_header_replacement_epoch_bump() {
 
     let out4 = demuxer.next_output().unwrap().unwrap();
     match out4 {
-        MkvDemuxOutput::HeaderSnapshotReady { epoch, metadata, .. } => {
+        MkvDemuxOutput::HeaderSnapshotReady {
+            epoch, metadata, ..
+        } => {
             assert_eq!(epoch, 1, "Epoch must bump on stream restart");
             assert_eq!(metadata.content_type, "WEBM");
         }

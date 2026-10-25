@@ -1,8 +1,8 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use peercast_format::mp3::{Mp3DemuxOutput, Mp3Demuxer};
 use peercast_format::ogg::{
-    compute_ogg_crc, OggCodec, OggDemuxOutput, OggDemuxer, OggPageHeader,
-    OggParseError, OGG_CAPTURE_PATTERN, OGG_FLAG_BOS, OGG_FLAG_EOS,
+    compute_ogg_crc, OggCodec, OggDemuxOutput, OggDemuxer, OggPageHeader, OggParseError,
+    OGG_CAPTURE_PATTERN, OGG_FLAG_BOS, OGG_FLAG_EOS,
 };
 
 /// Helper to build a valid Ogg page with exact RFC 3533 CRC-32 checksum.
@@ -29,7 +29,10 @@ fn make_ogg_page(
         body.put_slice(&pkt[offset..offset + remaining]);
     }
 
-    assert!(segment_table.len() <= 255, "Ogg page cannot have more than 255 segments");
+    assert!(
+        segment_table.len() <= 255,
+        "Ogg page cannot have more than 255 segments"
+    );
 
     let mut header = BytesMut::new();
     header.put_slice(&OGG_CAPTURE_PATTERN); // 'OggS'
@@ -159,7 +162,11 @@ fn test_p30_vorbis_headers_and_audio_only_startup() {
     // Verify HeaderSnapshot established
     let out1 = demuxer.next_output().unwrap().unwrap();
     match out1 {
-        OggDemuxOutput::HeaderSnapshotReady { snapshot, metadata, epoch } => {
+        OggDemuxOutput::HeaderSnapshotReady {
+            snapshot,
+            metadata,
+            epoch,
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(snapshot.container_type, "OGG");
             assert_eq!(metadata.codec, OggCodec::Vorbis);
@@ -178,7 +185,12 @@ fn test_p30_vorbis_headers_and_audio_only_startup() {
     demuxer.feed(&page3).unwrap();
     let out2 = demuxer.next_output().unwrap().unwrap();
     match out2 {
-        OggDemuxOutput::ContentPage { page, is_keyframe, epoch, position } => {
+        OggDemuxOutput::ContentPage {
+            page,
+            is_keyframe,
+            epoch,
+            position,
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(position, (page1.len() + page2.len()) as u64);
             assert_eq!(page, page3);
@@ -206,7 +218,11 @@ fn test_p30_opus_headers_and_startup() {
 
     let out = demuxer.next_output().unwrap().unwrap();
     match out {
-        OggDemuxOutput::HeaderSnapshotReady { snapshot, metadata, epoch } => {
+        OggDemuxOutput::HeaderSnapshotReady {
+            snapshot,
+            metadata,
+            epoch,
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(snapshot.container_type, "OPUS");
             assert_eq!(metadata.codec, OggCodec::Opus);
@@ -267,7 +283,10 @@ fn test_p30_theora_video_headers_and_keyframe_detection() {
     let out2 = demuxer.next_output().unwrap().unwrap();
     match out2 {
         OggDemuxOutput::ContentPage { is_keyframe, .. } => {
-            assert!(is_keyframe, "Theora granulepos with 0 interframe offset must be keyframe");
+            assert!(
+                is_keyframe,
+                "Theora granulepos with 0 interframe offset must be keyframe"
+            );
         }
         _ => panic!("Expected ContentPage"),
     }
@@ -278,7 +297,10 @@ fn test_p30_theora_video_headers_and_keyframe_detection() {
     let out3 = demuxer.next_output().unwrap().unwrap();
     match out3 {
         OggDemuxOutput::ContentPage { is_keyframe, .. } => {
-            assert!(!is_keyframe, "Theora granulepos with non-zero interframe offset is interframe");
+            assert!(
+                !is_keyframe,
+                "Theora granulepos with non-zero interframe offset is interframe"
+            );
         }
         _ => panic!("Expected ContentPage"),
     }
@@ -327,7 +349,9 @@ fn test_p30_chained_stream_serial_change_epoch_bump() {
     // First epoch 0
     let out1 = demuxer.next_output().unwrap().unwrap();
     match out1 {
-        OggDemuxOutput::HeaderSnapshotReady { epoch, metadata, .. } => {
+        OggDemuxOutput::HeaderSnapshotReady {
+            epoch, metadata, ..
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(metadata.serial_number, serial1);
         }
@@ -345,7 +369,9 @@ fn test_p30_chained_stream_serial_change_epoch_bump() {
 
     let out2 = demuxer.next_output().unwrap().unwrap();
     match out2 {
-        OggDemuxOutput::HeaderSnapshotReady { epoch, metadata, .. } => {
+        OggDemuxOutput::HeaderSnapshotReady {
+            epoch, metadata, ..
+        } => {
             assert_eq!(epoch, 1, "Chained stream must bump epoch");
             assert_eq!(metadata.serial_number, serial2);
         }
@@ -405,7 +431,12 @@ fn test_p30_explicit_mp3_audio_scope_decision_and_parser() {
     // 1. First output: HeaderSnapshotReady (skips ID3 tag and establishes snapshot on frame 1)
     let out1 = demuxer.next_output().unwrap().unwrap();
     match out1 {
-        Mp3DemuxOutput::HeaderSnapshotReady { snapshot, bitrate_kbps, sample_rate_hz, epoch } => {
+        Mp3DemuxOutput::HeaderSnapshotReady {
+            snapshot,
+            bitrate_kbps,
+            sample_rate_hz,
+            epoch,
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(snapshot.container_type, "MP3");
             assert_eq!(snapshot.pos, 0);
@@ -419,7 +450,11 @@ fn test_p30_explicit_mp3_audio_scope_decision_and_parser() {
     // 2. Second output: ContentFrame (frame 2)
     let out2 = demuxer.next_output().unwrap().unwrap();
     match out2 {
-        Mp3DemuxOutput::ContentFrame { frame, epoch, position } => {
+        Mp3DemuxOutput::ContentFrame {
+            frame,
+            epoch,
+            position,
+        } => {
             assert_eq!(epoch, 0);
             assert_eq!(position, 417);
             assert_eq!(frame.len(), 418);
@@ -430,5 +465,8 @@ fn test_p30_explicit_mp3_audio_scope_decision_and_parser() {
     // Signal EOF
     let eof = demuxer.signal_eof().unwrap().unwrap();
     assert_eq!(eof, Mp3DemuxOutput::EndOfStream);
-    assert_eq!(demuxer.state(), peercast_format::mp3::Mp3DemuxerState::Ended);
+    assert_eq!(
+        demuxer.state(),
+        peercast_format::mp3::Mp3DemuxerState::Ended
+    );
 }
