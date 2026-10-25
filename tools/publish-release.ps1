@@ -135,7 +135,7 @@ function Invoke-WranglerPut([string]$Bucket, [string]$Key, [string]$File, [strin
 function Test-PublicObject([string]$Url, [string]$File, [string]$ContentType) {
     $temporary = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N') + '.bin')
     try {
-        $verifyUrl = "$Url?release-check=$([Guid]::NewGuid().ToString('N'))"
+        $verifyUrl = "${Url}?release-check=$([Guid]::NewGuid().ToString('N'))"
         $response = Invoke-WebRequest -Uri $verifyUrl -OutFile $temporary -PassThru -HttpVersion 2.0 -TimeoutSec 120 -SkipHttpErrorCheck
         if ([int]$response.StatusCode -lt 200 -or [int]$response.StatusCode -ge 300) { throw "Public object returned HTTP $([int]$response.StatusCode): $Url" }
         $expected = Get-Item -LiteralPath $File
