@@ -215,14 +215,19 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> インストーラー版 <span>/</span> ZIP形式</p>
-                <p className="download-note">バージョン 1.0.0。ZIPを展開してインストーラーを実行してください。</p>
-                <p className="download-checksum">SHA-256: <code>11dea5510b60a6fb1bb470a478c3833eef980a962d1abffc592f117251e27195</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip.sha256">チェックサムファイル</a></p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.0 <span>/</span> インストーラー</p>
+                <p className="download-note">インストーラーを直接ダウンロードできます。ライセンス文書を含むZIP版も用意しています。</p>
+                <p className="download-checksum">インストーラー SHA-256: <code>C781037DF2AA4FFD334D8CA249C0318D346909E23A7DD5FB63CA38DDD9075EF9</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/PeercastRT_1.0.0_x64-setup.exe.sha256">チェックサム</a></p>
+                <p className="download-checksum">ZIP版 SHA-256: <code>11dea5510b60a6fb1bb470a478c3833eef980a962d1abffc592f117251e27195</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip.sha256">チェックサム</a></p>
+                <p className="download-note">ZIP版にはライセンス文書を同梱しています。インストーラーとZIP版はいずれもコード署名されていません。</p>
               </div>
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip">
+              <div className="download-actions">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/PeercastRT_1.0.0_x64-setup.exe">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
-                Windows版をダウンロード
+                インストーラーをダウンロード
               </a>
+              <a className="download-alternative" href="https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip">ライセンス同梱ZIP版をダウンロード</a>
+              </div>
             </div>
           </div>
         </section>

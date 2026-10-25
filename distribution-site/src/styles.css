@@ -614,6 +614,24 @@ a:focus-visible {
   font-size: 16px;
 }
 
+.download-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.download-alternative {
+  color: #4f46d7;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.download-alternative:hover {
+  text-decoration: underline;
+}
+
 .download-button:disabled {
   cursor: not-allowed;
   color: #fff;
@@ -780,6 +798,14 @@ a:focus-visible {
 
   .download-button {
     min-width: min(100%, 320px);
+  }
+
+  .download-actions {
+    width: 100%;
+  }
+
+  .download-alternative {
+    text-align: center;
   }
 }
 

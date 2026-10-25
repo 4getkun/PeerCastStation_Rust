@@ -46,10 +46,12 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 ## Downloads
 
-The Windows x64 installer is available as a ZIP archive:
+The Windows x64 installer is available directly, with a ZIP archive containing the license documents as an alternative:
 
-- [PeerCast RT 1.0.0 installer ZIP](https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip)
-- [SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip.sha256) (`11dea5510b60a6fb1bb470a478c3833eef980a962d1abffc592f117251e27195`)
+- [PeerCast RT 1.0.0 installer](https://peercast-rt-downloads.fourgetkun.com/PeercastRT_1.0.0_x64-setup.exe)
+- [Installer SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/PeercastRT_1.0.0_x64-setup.exe.sha256) (`c781037df2aa4ffd334d8ca249c0318d346909e23a7dd5fb63ca38ddd9075ef9`)
+- [License-included installer ZIP](https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip)
+- [ZIP SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip.sha256) (`11dea5510b60a6fb1bb470a478c3833eef980a962d1abffc592f117251e27195`)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
-Extract the archive and run `PeercastRT_1.0.0_x64-setup.exe` to install the application.
+Run `PeercastRT_1.0.0_x64-setup.exe` to install the application. The current installer is not code-signed; verify the SHA-256 checksum before running it.
