@@ -6,6 +6,47 @@ use tokio::net::TcpListener;
 
 const CHANNEL_ID: &str = "11111111111111111111111111111111";
 
+fn atom_leaf(tag: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut out = tag.to_vec();
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out.extend_from_slice(data);
+    out
+}
+
+fn atom_parent(tag: &[u8; 4], children: Vec<Vec<u8>>) -> Vec<u8> {
+    let mut out = tag.to_vec();
+    out.extend_from_slice(&(0x8000_0000u32 | children.len() as u32).to_le_bytes());
+    for child in children {
+        out.extend_from_slice(&child);
+    }
+    out
+}
+
+fn ready_fixture() -> Vec<u8> {
+    let id = (0..16)
+        .map(|i| u8::from_str_radix(&CHANNEL_ID[i * 2..i * 2 + 2], 16).unwrap())
+        .collect::<Vec<_>>();
+    [
+        atom_parent(b"oleh", vec![atom_leaf(b"sid\0", &[7; 16])]),
+        atom_leaf(b"ok\0\0", &1u32.to_le_bytes()),
+        atom_parent(
+            b"chan",
+            vec![
+                atom_leaf(b"id\0\0", &id),
+                atom_parent(
+                    b"pkt\0",
+                    vec![
+                        atom_leaf(b"type", b"head"),
+                        atom_leaf(b"pos\0", &0u32.to_le_bytes()),
+                        atom_leaf(b"data", b"RAW-HEADER"),
+                    ],
+                ),
+            ],
+        ),
+    ]
+    .concat()
+}
+
 fn yp(url: &str) -> YellowPageEntry {
     YellowPageEntry {
         name: "Fixture".into(),
@@ -55,6 +96,25 @@ async fn recording_source_has_an_isolated_runtime_and_close_drains_it() {
     let before_config = ConfigManager::new(&path).load().unwrap();
     let main_before = backend.snapshot().await.unwrap();
     assert!(main_before.recordings.is_empty());
+    let tracker_task = tokio::spawn(async move {
+        let (mut upstream, _) = tokio::time::timeout(Duration::from_secs(2), tracker.accept())
+            .await
+            .expect("dedicated recording relay should dial the tracker")
+            .unwrap();
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 1024];
+        while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+            let size = upstream.read(&mut buffer).await.unwrap();
+            assert!(size > 0);
+            request.extend_from_slice(&buffer[..size]);
+        }
+        upstream
+            .write_all(b"HTTP/1.0 200 OK\r\nContent-Type: application/x-peercast-pcp\r\n\r\n")
+            .await
+            .unwrap();
+        upstream.write_all(&ready_fixture()).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    });
     let mut source = backend
         .open_recording_source(CHANNEL_ID, "Fixture")
         .await
@@ -66,22 +126,10 @@ async fn recording_source_has_an_isolated_runtime_and_close_drains_it() {
         .stream_url
         .ends_with(&format!("/stream/{CHANNEL_ID}")));
 
-    let (mut upstream, _) = tokio::time::timeout(Duration::from_secs(2), tracker.accept())
-        .await
-        .expect("dedicated recording relay should dial the tracker")
-        .unwrap();
-    let mut request = [0u8; 2048];
-    let _ = tokio::time::timeout(Duration::from_secs(2), upstream.read(&mut request))
-        .await
-        .expect("dedicated relay should send its PCP request")
-        .unwrap();
     let main_during = backend.snapshot().await.unwrap();
     assert_eq!(main_during.endpoint, main_before.endpoint);
-    assert_eq!(main_during.channels.len(), main_before.channels.len());
-    assert_eq!(
-        main_during.channels[0].connection_attempts,
-        main_before.channels[0].connection_attempts
-    );
+    assert!(main_before.channels.is_empty());
+    assert!(main_during.channels.is_empty());
     assert_eq!(ConfigManager::new(&path).load().unwrap(), before_config);
 
     let source_port: u16 = reqwest::Url::parse(&source.stream_url)
@@ -93,7 +141,7 @@ async fn recording_source_has_an_isolated_runtime_and_close_drains_it() {
         .await
         .expect("recording listener should be released after close");
     drop(rebound);
-    drop(upstream);
+    tracker_task.await.unwrap();
     let main_after = backend.snapshot().await.unwrap();
     assert!(main_after.running);
     assert_eq!(main_after.endpoint, main_before.endpoint);

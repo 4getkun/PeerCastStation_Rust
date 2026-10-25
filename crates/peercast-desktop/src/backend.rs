@@ -616,6 +616,9 @@ impl DesktopBackend {
                     return Err("バックエンドが予期せず終了しました".into());
                 }
                 for (config, state) in running.runtime.channel_snapshots().await {
+                    if config.channel_id.eq_ignore_ascii_case(CHANNEL_ID) {
+                        continue;
+                    }
                     channels.push(ChannelSnapshot::native(&config, state, &running.runtime));
                 }
                 let metrics = running.metrics.snapshot(running.tracker.active_tasks());
@@ -820,8 +823,10 @@ impl DesktopBackend {
             .unwrap_or_default()
             .to_owned();
         if let Some(external) = &self.external {
+            let stream_url = external.stream_url(channel_id, endpoint)?;
+            external.wait_for_media(&stream_url).await?;
             return Ok(RecordingSource {
-                stream_url: external.stream_url(channel_id, endpoint)?,
+                stream_url,
                 name,
                 content_type,
                 title,
@@ -838,9 +843,27 @@ impl DesktopBackend {
             ..Default::default()
         };
         let running = self.start(&limits, &[], &desktop).await?;
-        if let Err(error) = running.runtime.add_relay_channel(config).await {
-            self.stop_running(running).await?;
-            return Err(error.to_string());
+        let channel = match running.runtime.add_relay_channel(config).await {
+            Ok(channel) => channel,
+            Err(error) => {
+                self.stop_running(running).await?;
+                return Err(error.to_string());
+            }
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !channel.snapshot().await.available {
+            if let Err(error) = self.check_open() {
+                self.stop_running(running).await?;
+                return Err(error);
+            }
+            if Instant::now() >= deadline {
+                self.stop_running(running).await?;
+                return Err(
+                    "配信元への接続がまだ完了していません。状態を確認して再度録画してください"
+                        .into(),
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
         let stream_url = format!("http://{}/stream/{id}", running.addr);
         if let Err(error) = self.check_open() {

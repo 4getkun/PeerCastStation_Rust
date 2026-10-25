@@ -130,21 +130,8 @@ async fn close_rejects_queued_restart_and_releases_listener_during_probe() {
     let probe_backend = backend.clone();
     let probe_task = tokio::spawn(async move { probe_backend.run_probe().await });
 
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let snapshot = backend.snapshot().await.unwrap();
-            if snapshot
-                .channels
-                .iter()
-                .any(|channel| channel.status == "受信中")
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("probe did not start receiving");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!probe_task.is_finished(), "probe should still be active");
     assert!(backend.begin_close());
     let restart_backend = backend.clone();
     let restart_task = tokio::spawn(async move { restart_backend.restart().await });
@@ -438,6 +425,17 @@ async fn failed_preferences_write_keeps_current_backend_and_preferences() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn internal_probe_channel_is_not_exposed_as_a_user_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = DesktopBackend::open(dir.path().join("desktop.json"))
+        .await
+        .unwrap();
+    let snapshot = backend.snapshot().await.unwrap();
+    assert!(snapshot.channels.is_empty());
+    close_backend(&backend).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn directory_selection_creates_one_dynamic_relay_and_a_local_playlist() {
     const ID: &str = "11111111111111111111111111111111";
     let tracker = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -494,7 +492,7 @@ async fn directory_selection_creates_one_dynamic_relay_and_a_local_playlist() {
     assert!(text.starts_with("#EXTM3U"));
     assert!(text.contains("Test Channel"));
     let snapshot = backend.snapshot().await.unwrap();
-    assert_eq!(snapshot.channels.len(), 2);
+    assert_eq!(snapshot.channels.len(), 1);
     assert!(text
         .lines()
         .any(|line| line == format!("{}/stream/{ID}", snapshot.endpoint)));

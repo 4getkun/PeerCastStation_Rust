@@ -57,6 +57,7 @@
     recordingListFingerprint: "",
     recordingBusy: false,
     pendingRecordingRemoval: null,
+    ypContextChannel: null,
   };
 
   const viewTitles = { yp: "チャンネル", channels: "配信", connections: "接続", recordings: "録画", logs: "ログ", settings: "設定" };
@@ -1733,6 +1734,55 @@
     } else {
       selectYpChannel(channel);
     }
+  });
+  function closeYpContextMenu() {
+    const menu = byId("yp-context-menu");
+    if (menu) menu.hidden = true;
+    state.ypContextChannel = null;
+  }
+  if (ypRoot) ypRoot.addEventListener("contextmenu", (event) => {
+    const row = event.target.closest(".yp-row");
+    if (!row) return;
+    const channel = state.ypChannels[Number(row.dataset.ypIndex)];
+    const menu = byId("yp-context-menu");
+    if (!channel?.name || !menu) return;
+    event.preventDefault();
+    selectYpChannel(channel);
+    state.ypContextChannel = channel;
+    menu.hidden = false;
+    const width = 190;
+    const height = 84;
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8))}px`;
+    byId("yp-context-favorite")?.focus();
+  });
+  async function setContextChannelPreference(kind) {
+    const channel = state.ypContextChannel;
+    closeYpContextMenu();
+    if (!channel?.name || state.busy || state.ypBusy) return;
+    state.ypBusy = true;
+    updateYpControls();
+    try {
+      const snapshot = await invoke("set_channel_preference", { channelName: String(channel.name), kind });
+      renderSnapshot(snapshot);
+      const channels = await invoke("get_yp_channels", { refresh: false });
+      state.ypChannels = Array.isArray(channels) ? channels : [];
+      renderYpDirectory();
+      setNotice(`${displayValue(channel.name)} を${kind === "ng" ? "NG" : "お気に入り"}に入れました。`);
+    } catch (error) {
+      setNotice(`チャンネルを登録できませんでした: ${errorText(error)}`, true);
+    } finally {
+      state.ypBusy = false;
+      updateYpControls();
+    }
+  }
+  bind("yp-context-favorite", "click", () => { void setContextChannelPreference("favorite"); });
+  bind("yp-context-ng", "click", () => { void setContextChannelPreference("ng"); });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#yp-context-menu")) closeYpContextMenu();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeYpContextMenu();
   });
   const channelsRoot = byId("channels-list");
   if (channelsRoot) channelsRoot.addEventListener("click", (event) => {

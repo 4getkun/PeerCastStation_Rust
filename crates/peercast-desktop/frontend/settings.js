@@ -20,8 +20,8 @@
     const busy = ["checking", "downloading", "applying"].includes(phase);
     const labels = {
       idle: "更新を確認できます。", checking: "更新を確認しています…", upToDate: "最新バージョンを使用しています。",
-      notPublished: "現在、更新版は公開されていません。", available: `バージョン ${status.version || ""} を利用できます。`,
-      downloading: "更新データを取得しています…", ready: `バージョン ${status.version || ""} の更新データを取得しました。`,
+      notPublished: "現在、更新版は公開されていません。", available: `バージョン ${status?.version || ""} を利用できます。`,
+      downloading: "更新データを取得しています…", ready: `バージョン ${status?.version || ""} の更新データを取得しました。`,
       applying: "更新を適用しています…", error: "更新を確認できませんでした。通信状態を確認して再試行してください。",
     };
     const total = status?.totalBytes;

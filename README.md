@@ -48,10 +48,10 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 installer is available directly, with a ZIP archive containing the license documents as an alternative:
 
-- [PeerCast RT 1.0.0 installer](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.0/PeercastRT_1.0.0_x64-setup.exe)
-- [Installer SHA-256 checksum](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.0/PeercastRT_1.0.0_x64-setup.exe.sha256) (`6444276206e9fec416759138885b55c203a75b26255128a11d69bafa61f5c186`)
-- [License-included installer ZIP](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.0/PeerCastRT-1.0.0-windows-x64-installer.zip)
-- [ZIP SHA-256 checksum](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.0/PeerCastRT-1.0.0-windows-x64-installer.zip.sha256) (`7e69b3301fd333ff2031bc3889a3aff07fca21b92e2a5f21f2ee16de62e42701`)
+- [PeerCast RT 1.0.1 installer](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeercastRT_1.0.1_x64-setup.exe)
+- [Installer SHA-256 checksum](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeercastRT_1.0.1_x64-setup.exe.sha256) (`5ef15d6d63add1fd1cd96c3e514a10939c74de8f518a215f55664e43a78dddce`)
+- [License-included installer ZIP](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeerCastRT-1.0.1-windows-x64-installer.zip)
+- [ZIP SHA-256 checksum](https://github.com/4getkun/PeerCastStation_Rust/releases/download/v1.0.1/PeerCastRT-1.0.1-windows-x64-installer.zip.sha256) (`0bee0644941d18ebf1f89bec0c23896c45d4275284675e116fd265e169528f90`)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
-Run `PeercastRT_1.0.0_x64-setup.exe` to install the application. The current installer is not code-signed; verify the SHA-256 checksum before running it.
+Run `PeercastRT_1.0.1_x64-setup.exe` to install the application. The current installer is not code-signed; verify the SHA-256 checksum before running it.

@@ -223,6 +223,7 @@ async fn backend_recording_writes_loopback_media_and_stop_closes_partial_file() 
                     break;
                 }
             }
+            tokio::time::sleep(Duration::from_millis(500)).await;
             let wire = peer_cast_fixture(ID, &media);
             socket
                 .write_all(b"HTTP/1.0 200 OK\r\nContent-Type: application/x-peercast-pcp\r\n\r\n")
@@ -260,6 +261,10 @@ async fn backend_recording_writes_loopback_media_and_stop_closes_partial_file() 
     })
     .await
     .expect("loopback recording should persist media bytes");
+    assert_eq!(
+        first.retries, 0,
+        "A direct recording must wait for its relay before opening the local HTTP stream"
+    );
     let live = tokio::time::timeout(Duration::from_secs(1), backend.snapshot())
         .await
         .expect("connection snapshot must not wait for the recording session lock")
@@ -420,7 +425,7 @@ async fn source_open_failure_retries_then_finishes_at_configured_bound() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn retained_source_is_closed_when_failed_job_is_removed_and_backend_shuts_down() {
+async fn unready_source_is_closed_when_failed_job_is_removed_and_backend_shuts_down() {
     const ID: &str = "cccccccccccccccccccccccccccccccc";
     let dir = tempfile::tempdir().unwrap();
     let backend = DesktopBackend::open(dir.path().join("desktop.json"))
@@ -485,7 +490,7 @@ async fn retained_source_is_closed_when_failed_job_is_removed_and_backend_shuts_
         .enqueue_recording(ID.into(), "Fixture".into(), false)
         .await
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(6), async {
+    tokio::time::timeout(Duration::from_secs(15), async {
         loop {
             let rows = backend.snapshot().await.unwrap().recordings;
             if rows.iter().any(|r| r.id == job && r.status == "failed") {
@@ -495,7 +500,7 @@ async fn retained_source_is_closed_when_failed_job_is_removed_and_backend_shuts_
         }
     })
     .await
-    .expect("HTTP 503 should end at zero retries");
+    .expect("an unready relay should end at zero retries");
     tracker_task.await.unwrap();
     backend.control_recording(&job, "remove").await.unwrap();
     tokio::time::timeout(Duration::from_secs(8), backend.close())

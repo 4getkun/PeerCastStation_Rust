@@ -136,6 +136,24 @@ async fn preview_channel_rules(
 }
 
 #[tauri::command]
+async fn set_channel_preference(
+    backend: State<'_, Backend>,
+    channel_name: String,
+    kind: String,
+) -> Result<Snapshot, String> {
+    let snapshot = backend.snapshot().await?;
+    let mut desktop = snapshot.desktop;
+    peercast_desktop::rules::upsert_quick_channel_rule(
+        &mut desktop.channel_rules,
+        &channel_name,
+        &kind,
+    )?;
+    backend
+        .apply_desktop_preferences(snapshot.limits, snapshot.yellow_pages, desktop)
+        .await
+}
+
+#[tauri::command]
 async fn preview_recording_rules(
     backend: State<'_, Backend>,
     rules: Vec<RecordingFilter>,
@@ -368,6 +386,7 @@ fn main() {
             apply_preferences,
             choose_file,
             preview_channel_rules,
+            set_channel_preference,
             preview_recording_rules,
             preview_sound,
             play_rule_sound,

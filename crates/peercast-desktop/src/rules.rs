@@ -123,6 +123,60 @@ pub fn normalize_rules(mut rules: Vec<ChannelRule>) -> Result<Vec<ChannelRule>, 
     Ok(rules)
 }
 
+pub fn upsert_quick_channel_rule(
+    rules: &mut Vec<ChannelRule>,
+    channel_name: &str,
+    kind: &str,
+) -> Result<(), String> {
+    let normalized_name = channel_name.trim().nfkc().collect::<String>();
+    if normalized_name.is_empty() || normalized_name.chars().any(char::is_control) {
+        return Err("チャンネル名が正しくありません".into());
+    }
+    let pattern = format!("^{}$", regex::escape(&normalized_name));
+    if pattern.chars().count() > 2048 {
+        return Err("チャンネル名が長すぎます".into());
+    }
+    let (favorite, hidden) = match kind {
+        "favorite" => (true, false),
+        "ng" => (false, true),
+        _ => return Err("チャンネルの登録方法が正しくありません".into()),
+    };
+    let existing = rules.iter_mut().find(|rule| {
+        rule.id.starts_with("quick-")
+            && rule.use_regex
+            && rule.normalize_width
+            && rule.fields == ["name"]
+            && rule.pattern == pattern
+    });
+    let rule = match existing {
+        Some(rule) => rule,
+        None => {
+            if rules.len() >= MAX_RULES {
+                return Err("ルールは128件まで登録できます".into());
+            }
+            rules.push(ChannelRule {
+                id: format!("quick-{}", uuid::Uuid::new_v4().simple()),
+                ..ChannelRule::default()
+            });
+            rules.last_mut().expect("a quick rule was just added")
+        }
+    };
+    rule.name = normalized_name.chars().take(80).collect();
+    rule.enabled = true;
+    rule.pattern = pattern;
+    rule.fields = vec!["name".into()];
+    rule.use_regex = true;
+    rule.normalize_width = true;
+    rule.match_case = false;
+    rule.favorite = favorite;
+    rule.hidden = hidden;
+    rule.mute = false;
+    rule.text_color = None;
+    rule.background_color = None;
+    rule.sound_path = None;
+    normalize_rules(rules.clone()).map(|normalized| *rules = normalized)
+}
+
 pub fn validate_sound_path(path: &str) -> Result<(), String> {
     if path.len() > 32767
         || path.chars().any(char::is_control)
@@ -295,4 +349,25 @@ pub fn preview_rules(
             })
             .collect(),
     })
+}
+
+#[cfg(test)]
+mod quick_rule_tests {
+    use super::*;
+
+    #[test]
+    fn quick_channel_rule_is_exact_idempotent_and_switchable() {
+        let mut rules = Vec::new();
+        upsert_quick_channel_rule(&mut rules, "Ａ＋Ｂ [test]", "favorite").unwrap();
+        assert_eq!(rules.len(), 1);
+        assert!(rules[0].favorite);
+        assert!(!rules[0].hidden);
+        assert!(rule_matches(&rules[0], &json!({ "name": "A+B [test]" }), "").unwrap());
+        assert!(!rule_matches(&rules[0], &json!({ "name": "A+B [test] extra" }), "").unwrap());
+
+        upsert_quick_channel_rule(&mut rules, "Ａ＋Ｂ [test]", "ng").unwrap();
+        assert_eq!(rules.len(), 1);
+        assert!(!rules[0].favorite);
+        assert!(rules[0].hidden);
+    }
 }

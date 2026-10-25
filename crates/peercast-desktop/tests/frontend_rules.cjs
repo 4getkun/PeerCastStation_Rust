@@ -43,6 +43,13 @@ console.log('Frontend window size regression: defaults, five presets, saved cust
 
 const appSource = fs.readFileSync(path.join(__dirname, '../frontend/app.js'), 'utf8');
 const appHtml = fs.readFileSync(path.join(__dirname, '../frontend/index.html'), 'utf8');
+for (const id of ['yp-context-menu', 'yp-context-favorite', 'yp-context-ng']) {
+  assert(appHtml.includes(`id="${id}"`), `The channel context menu must include #${id}`);
+}
+assert.match(appSource, /addEventListener\("contextmenu"/,
+  'Right-clicking a channel must open the direct action menu');
+assert.match(appSource, /invoke\("set_channel_preference"/,
+  'Favorite and NG actions must be persisted without navigating to settings');
 function appFunction(name, bindings = {}) {
   const match = appSource.match(new RegExp(`  function ${name}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n  \\}`));
   assert(match, `The ${name} helper must exist`);

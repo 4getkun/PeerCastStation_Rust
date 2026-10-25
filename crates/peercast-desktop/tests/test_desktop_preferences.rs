@@ -6,7 +6,7 @@ use peercast_desktop::rules::ChannelRule;
 use std::fs;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 
 fn limits(directs: u32, relays: u32, upstream: u32) -> Limits {
     Limits {
@@ -121,27 +121,15 @@ async fn desktop_only_save_keeps_the_active_runtime_and_endpoint() {
     let path = dir.path().join("desktop.json");
     let backend = DesktopBackend::open(path).await.unwrap();
     let initial = backend.snapshot().await.unwrap();
-    let ingest_address = initial
-        .ingest_endpoint
-        .strip_prefix("http://")
-        .unwrap()
-        .trim_end_matches('/')
-        .to_owned();
-    let mut push = TcpStream::connect(ingest_address).await.unwrap();
-    push.write_all(b"POST / HTTP/1.1\r\n\r\nruntime-survives-settings-save")
-        .await
-        .unwrap();
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let snapshot = backend.snapshot().await.unwrap();
-            if snapshot.channels[0].buffered_bytes > 0 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("local HTTP push should reach the runtime");
+    assert!(
+        backend
+            .run_probe()
+            .await
+            .unwrap()
+            .last_probe
+            .unwrap()
+            .passed
+    );
     let mut desktop = initial.desktop.clone();
     desktop.channel_rules = vec![rule("rock", "Rock", "Rock")];
     let updated = backend
@@ -151,7 +139,16 @@ async fn desktop_only_save_keeps_the_active_runtime_and_endpoint() {
     assert!(updated.running);
     assert_eq!(updated.endpoint, initial.endpoint);
     assert_eq!(updated.desktop, desktop);
-    assert!(updated.channels[0].buffered_bytes > 0);
+    assert!(updated.channels.is_empty());
+    assert!(
+        backend
+            .run_probe()
+            .await
+            .unwrap()
+            .last_probe
+            .unwrap()
+            .passed
+    );
     close(&backend).await;
 }
 

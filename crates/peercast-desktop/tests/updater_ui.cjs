@@ -18,6 +18,7 @@ function helper(name) {
 const normalize = helper('normalizeUpdateStatus');
 const model = helper('updateCardModel');
 const renderNotes = helper('renderUpdateNotes');
+assert.doesNotThrow(() => model(null), 'The settings view must render before update status is loaded');
 const phases = ['idle', 'checking', 'upToDate', 'notPublished', 'available', 'downloading', 'ready', 'applying', 'error'];
 for (const phase of phases) assert.equal(normalize({ phase }).phase, phase);
 assert.equal(normalize({ phase: 'unknown-phase' }).phase, 'error');

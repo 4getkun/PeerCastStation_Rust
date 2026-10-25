@@ -34,7 +34,10 @@ function encodeBmp24(width, height, rgb) {
 
 async function drawBmp({ width, height, svg, logoRect, filename }) {
   const logo = await sharp(logoPath)
-    .resize(logoRect.width, logoRect.height, { fit: "contain" })
+    .resize(logoRect.width, logoRect.height, {
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
     .png()
     .toBuffer();
   const png = await sharp({
@@ -62,12 +65,12 @@ async function main() {
     width: 150,
     height: 57,
     filename: "installer-header.bmp",
-    logoRect: { left: 9, top: 15, width: 47, height: 27 },
+    logoRect: { left: 14, top: 13, width: 30, height: 30 },
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
       <rect width="150" height="57" fill="#fbfaff"/>
       <rect x="0" y="0" width="4" height="57" fill="#493478"/>
       <path d="M5 54.5H150" stroke="#ded5f5"/>
-      <text x="63" y="35" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#30204f">Peercast RT</text>
+      <text x="54" y="35" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#30204f">Peercast RT</text>
     </svg>`,
   });
 
@@ -75,7 +78,7 @@ async function main() {
     width: 164,
     height: 314,
     filename: "installer-sidebar.bmp",
-    logoRect: { left: 6, top: 12, width: 38, height: 23 },
+    logoRect: { left: 10, top: 10, width: 30, height: 30 },
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
       <rect width="164" height="314" fill="#f8f6fd"/>
       <rect width="50" height="314" fill="#352457"/>
