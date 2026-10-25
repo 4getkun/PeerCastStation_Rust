@@ -49,6 +49,7 @@ GPLv3 (compatible with upstream PeerCastStation).
 The Windows x64 installer is available as a ZIP archive:
 
 - [PeerCast RT 1.0.0 installer ZIP](https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip)
+- [SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/PeerCastRT-1.0.0-windows-x64-installer.zip.sha256) (`11dea5510b60a6fb1bb470a478c3833eef980a962d1abffc592f117251e27195`)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
 Extract the archive and run `PeercastRT_1.0.0_x64-setup.exe` to install the application.
