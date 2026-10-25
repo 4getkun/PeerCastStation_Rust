@@ -1,6 +1,12 @@
 /target
+**/target/
+**/__pycache__/
+*.py[cod]
 /distribution-site/node_modules/
 /distribution-site/dist/
+/distribution-site/*-preview.png
+/distribution-site/qa-comparison.html
+/distribution-site/qa-comparison.png
 **/*.rs.bk
 *.pdb
 peercast.json
