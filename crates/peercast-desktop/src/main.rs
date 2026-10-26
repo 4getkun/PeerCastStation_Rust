@@ -292,6 +292,19 @@ async fn get_yp_channels(
                 .show()
             {
                 Ok(()) => {
+                    let sound_path = peercast_desktop::favorite_notifications::preferred_sound_path(
+                        rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
+                        &candidates,
+                    );
+                    tauri::async_runtime::spawn(async move {
+                        let result = match sound_path {
+                            Some(path) => peercast_desktop::audio::play_sound(path).await,
+                            None => peercast_desktop::audio::play_favorite_chime().await,
+                        };
+                        if let Err(error) = result {
+                            eprintln!("お気に入り通知音を再生できませんでした: {error}");
+                        }
+                    });
                     let keys = candidates
                         .iter()
                         .map(|item| item.key.clone())

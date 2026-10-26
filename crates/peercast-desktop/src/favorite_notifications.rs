@@ -160,6 +160,29 @@ fn normalize_key(name: &str) -> String {
     name.trim().nfkc().collect::<String>().to_lowercase()
 }
 
+/// A custom rule sound takes precedence over the bundled chime for this batch.
+pub fn preferred_sound_path(rows: &[Value], candidates: &[FavoriteCandidate]) -> Option<String> {
+    rows.iter().find_map(|row| {
+        if row["isFavorite"] != true
+            || row["isHidden"] == true
+            || row["ruleMute"] == true
+            || row["contentType"]
+                .as_str()
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("RAW"))
+        {
+            return None;
+        }
+        let key = normalize_key(row["name"].as_str()?);
+        if !candidates.iter().any(|candidate| candidate.key == key) {
+            return None;
+        }
+        row["ruleSoundPath"]
+            .as_str()
+            .filter(|path| !path.trim().is_empty())
+            .map(str::to_owned)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +233,31 @@ mod tests {
         let restarted = FavoriteNotificationLedger::load(path).unwrap();
         assert!(restarted.due(&rows, 50_001).is_empty());
         assert_eq!(restarted.sent_at_ms_by_key.len(), 2);
+    }
+
+    #[test]
+    fn custom_sound_overrides_default_only_for_eligible_due_favorites() {
+        let ledger = FavoriteNotificationLedger::new(PathBuf::new());
+        let mut hidden = row("Hidden", "SP", true, true, "FLV");
+        hidden["ruleSoundPath"] = json!("hidden.wav");
+        let mut muted = row("Muted", "SP", true, false, "FLV");
+        muted["ruleMute"] = json!(true);
+        muted["ruleSoundPath"] = json!("muted.wav");
+        let mut raw = row("Artist", "SP", true, false, "RAW");
+        raw["ruleSoundPath"] = json!("raw.wav");
+        let mut custom = row("ＡＲＴＩＳＴ", "P@", true, false, "FLV");
+        custom["ruleSoundPath"] = json!("custom.wav");
+        let rows = [
+            hidden,
+            muted,
+            raw,
+            row("Artist", "SP", true, false, "FLV"),
+            custom,
+        ];
+        let due = ledger.due(&rows, 10);
+        assert_eq!(preferred_sound_path(&rows[..4], &due), None);
+        assert_eq!(preferred_sound_path(&rows, &due), Some("custom.wav".into()));
+        assert_eq!(preferred_sound_path(&rows, &[]), None);
     }
 
     #[test]

@@ -2983,7 +2983,7 @@ dependencies = [
 
 [[package]]
 name = "peercast-desktop"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "bytes",
  "chrono",

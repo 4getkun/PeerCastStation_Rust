@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PackageStage,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [string]$Version = '1.0.3'
+    [string]$Version = '1.0.4'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +23,16 @@ Copy-Item -LiteralPath $installerAsset -Destination (Join-Path $zipRoot $install
 foreach ($name in @('README-JA.txt', 'SOURCE.txt', 'player-bundle.json')) {
     Copy-Item -LiteralPath (Join-Path $stageRoot $name) -Destination (Join-Path $zipRoot $name)
 }
+@(
+    "PeerCast RT $Version for Windows x64"
+    ''
+    "このフォルダー内の $installerName を実行してインストールしてください。"
+    'PCRPlayer はセットアップに同梱されています。'
+    'ライセンス文書は licenses フォルダーにまとめています。'
+    '更新時は既存の設定と録画ファイルを保持します。'
+    ''
+    'ソースコード: https://github.com/4getkun/PeerCastStation_Rust'
+) | Set-Content -LiteralPath (Join-Path $zipRoot 'README-JA.txt') -Encoding utf8
 foreach ($name in @('LICENSE-GPL-3.0.txt', 'LICENSE_AUDIT.md', 'NotoSansJP-OFL.txt', 'Tabler-Icons-MIT.txt')) {
     Copy-Item -LiteralPath (Join-Path $stageRoot $name) -Destination (Join-Path $licenseRoot $name)
 }

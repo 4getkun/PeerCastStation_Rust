@@ -48,12 +48,12 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 download is one 7z archive containing the installer, checksums, and a `licenses/` folder:
 
-- [PeerCast RT 1.0.3 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.3/PeerCastRT-1.0.3-windows-x64-installer.7z)
-- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.3/PeerCastRT-1.0.3-windows-x64-installer.7z.sha256) (`be964bf6429482e9a0cf742d7625bad9bc1c892945e13c111e45e90b2905a9dd`)
+- [PeerCast RT 1.0.4 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.4/PeerCastRT-1.0.4-windows-x64-installer.7z)
+- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.4/PeerCastRT-1.0.4-windows-x64-installer.7z.sha256) (`5245c9f2e460a8982313bedfc54edaa5a5da349dd9e454d3ce168943779306f5`)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
-Extract the archive and run `PeercastRT_1.0.3_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
+Extract the archive and run `PeercastRT_1.0.4_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
 
-Version 1.0.3 improves relay startup, adds a copy button for filtered logs and a direct-favorite removal action, and notifies Windows when a favorite broadcaster appears on a channel-list update. Notifications are limited to once per broadcaster every 12 hours, with history retained across restarts; hidden or muted channels are excluded.
+Version 1.0.4 improves relay startup, adds a copy button for filtered logs and a direct-favorite removal action, and notifies Windows when a favorite broadcaster appears on a channel-list update. Notifications play one short original chime per batch, with custom rule sounds taking priority. They are limited to once per broadcaster every 12 hours, with history retained across restarts; hidden or muted channels are excluded.
 
 Update artifacts are signed for PeerCast RT's built-in updater. The installer does not have an Authenticode publisher signature, and the 7z format does not guarantee that Chrome or Windows warnings will be absent. Verify the SHA-256 checksum before running it.

@@ -638,17 +638,14 @@
   }
   function notifyNewYpChannels(channels) {
     const notices = [];
-    const soundRules = new Set();
     channels.forEach((channel) => {
       const annotation = channelAnnotation(channel);
       if (channel.favoriteNotificationSent && annotation.isFavorite && !annotation.isHidden && !annotation.ruleMute) {
         notices.push(displayValue(channel.name));
-        if (annotation.matchedRuleId && annotation.ruleSoundPath) soundRules.add(String(annotation.matchedRuleId));
       }
     });
     if (notices.length) {
       setNotice(`お気に入りの新着: ${notices.slice(0, 5).join("、")}${notices.length > 5 ? `、ほか${notices.length - 5}件` : ""}`);
-      soundRules.forEach((ruleId) => { void invoke("play_rule_sound", { ruleId }).catch(() => {}); });
     }
   }
 

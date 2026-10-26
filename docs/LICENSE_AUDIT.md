@@ -21,6 +21,7 @@ This document establishes the official license audit and redistribution clearanc
 | **Component Stylesheets** | `ui/css/components/*.css` | **GPL-3.0-or-later** | PeerCastStation Rust Contributors | Embedded in static HTTP server. | Audited & Bundled |
 | **Theme Stylesheets** | `ui/css/themes/nord.css` | **MIT / GPL-3.0-or-later** | Arctic Ice Studio & Contributors | Nord color palette; MIT compatible with GPL-3.0. | Audited & Bundled |
 | **Presentation Fixtures** | `ui/fixtures/*.json`, `gallery.html` | **GPL-3.0-or-later** | PeerCastStation Rust Contributors | Offline test/dev fixture gallery. | Audited & Bundled |
+| **Favorite Notification Chime** | `tools/generate-notification-sound.cjs` | **GPL-3.0-or-later** | PeerCastStation Rust Contributors | Original synthesized audio; no external recordings or samples. | Bundled in Desktop |
 | **Knockout.js** | `https://github.com/knockout/knockout` (v3.5.1) | **MIT** | Knockout team | Preserve copyright & permission notice. | Upstream UI Dependency |
 | **Bootstrap** | `https://github.com/twbs/bootstrap` (v5.3.3) | **MIT** | Twitter, Inc. / The Bootstrap Authors | Preserve copyright & permission notice. | Upstream UI Dependency |
 | **Bootswatch Cerulean** | `https://github.com/thomaspark/bootswatch` | **MIT** | Thomas Park | Preserve copyright & permission notice. | Upstream UI Dependency |

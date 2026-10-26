@@ -215,13 +215,13 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.3 <span>/</span> 7z形式</p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.4 <span>/</span> 7z形式</p>
                 <p className="download-note">インストーラーとライセンス文書をひとつにまとめています。展開して、フォルダー内のセットアップを実行してください。</p>
-                <p className="download-checksum">SHA-256: <code>be964bf6429482e9a0cf742d7625bad9bc1c892945e13c111e45e90b2905a9dd</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.3/PeerCastRT-1.0.3-windows-x64-installer.7z.sha256">チェックサム</a></p>
+                <p className="download-checksum">SHA-256: <code>5245c9f2e460a8982313bedfc54edaa5a5da349dd9e454d3ce168943779306f5</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.4/PeerCastRT-1.0.4-windows-x64-installer.7z.sha256">チェックサム</a></p>
                 <p className="download-note">セットアップにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.3/PeerCastRT-1.0.3-windows-x64-installer.7z">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.4/PeerCastRT-1.0.4-windows-x64-installer.7z">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
                 Windows版をダウンロード
               </a>
