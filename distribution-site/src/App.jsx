@@ -89,10 +89,10 @@ export function App() {
               <div className="hero-actions">
                 <a className="button button-primary" href="#watch">
                   <IconPlayerPlay size={18} stroke={2} aria-hidden="true" />
-                  配信を見てみる
+                  視聴のしかた
                 </a>
                 <a className="button button-secondary" href="#broadcast">
-                  配信を始める
+                  配信のしかた
                   <IconArrowRight size={17} stroke={1.8} aria-hidden="true" />
                 </a>
               </div>
@@ -215,18 +215,16 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.2 <span>/</span> インストーラー</p>
-                <p className="download-note">専用の配布ホストからインストーラーを直接ダウンロードできます。ライセンス文書を含むZIP版も用意しています。</p>
-                <p className="download-checksum">インストーラー SHA-256: <code>B6E4C194A7952F472AADE4204EB5FDA01B239262AA4EB13E9847AF0C87656A3F</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeercastRT_1.0.2_x64-setup.exe.sha256">チェックサム</a></p>
-                <p className="download-checksum">ZIP版 SHA-256: <code>E70DB2D68383005BF1F1F2C170C40F62CFBA4E55C0CCF6A616EC639A3DE74FFF</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeerCastRT-1.0.2-windows-x64-installer.zip.sha256">チェックサム</a></p>
-                <p className="download-note">ZIP版にはライセンス文書を同梱しています。更新ファイルはアプリ内検証用に署名済みですが、インストーラーにWindowsの発行元署名はありません。</p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.0.3 <span>/</span> 7z形式</p>
+                <p className="download-note">インストーラーとライセンス文書をひとつにまとめています。展開して、フォルダー内のセットアップを実行してください。</p>
+                <p className="download-checksum">SHA-256: <code>be964bf6429482e9a0cf742d7625bad9bc1c892945e13c111e45e90b2905a9dd</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.3/PeerCastRT-1.0.3-windows-x64-installer.7z.sha256">チェックサム</a></p>
+                <p className="download-note">セットアップにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeercastRT_1.0.2_x64-setup.exe">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.3/PeerCastRT-1.0.3-windows-x64-installer.7z">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
-                インストーラーをダウンロード
+                Windows版をダウンロード
               </a>
-              <a className="download-alternative" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.0.2/PeerCastRT-1.0.2-windows-x64-installer.zip">ライセンス同梱ZIP版をダウンロード</a>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ use peercast_app::runtime::AppRuntime;
 use peercast_app::runtime_config::{ChannelConfig, ChannelSource};
 use peercast_rpc::server::RpcState;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 
 fn make_runtime() -> (Arc<AppRuntime>, TaskTracker) {
@@ -165,6 +165,76 @@ async fn shutdown_racing_add_leaves_no_worker_or_live_channel() {
         .expect("workers should drain after shutdown");
     let channel = runtime.channel("4123456789abcdef0123456789abcdef").unwrap();
     assert!(!channel.snapshot().await.available);
+}
+
+#[tokio::test]
+async fn selecting_same_dynamic_relay_after_terminal_404_restarts_worker() {
+    const ID: &str = "5123456789abcdef0123456789abcdef";
+    let tracker = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = tracker.local_addr().unwrap();
+    let (first_done_tx, first_done_rx) = tokio::sync::oneshot::channel();
+    let tracker_task = tokio::spawn(async move {
+        let (mut first, _) = tokio::time::timeout(Duration::from_secs(3), tracker.accept())
+            .await
+            .expect("first relay connection should arrive")
+            .unwrap();
+        let mut request = [0u8; 1024];
+        tokio::time::timeout(Duration::from_secs(2), first.read(&mut request))
+            .await
+            .expect("first relay request should arrive")
+            .unwrap();
+        first
+            .write_all(b"HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+        drop(first);
+        let _ = first_done_tx.send(());
+
+        tokio::time::timeout(Duration::from_secs(2), tracker.accept())
+            .await
+            .is_ok()
+    });
+
+    let task_tracker = TaskTracker::new();
+    let logs = Arc::new(BoundedLogBuffer::default());
+    let runtime = AppRuntime::new(
+        &AppConfig::default(),
+        task_tracker.clone(),
+        Arc::clone(&logs),
+        Arc::new(RwLock::new(RpcState::default())),
+    )
+    .unwrap();
+    runtime.start().await.unwrap();
+    let mut config = relay(ID);
+    config.source = ChannelSource::Relay { endpoint };
+    let channel = runtime.add_relay_channel(config.clone()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(4), first_done_rx)
+        .await
+        .expect("fixture should respond to the first connection")
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if logs.snapshot().iter().any(|entry| {
+                entry.target == "relay"
+                    && entry.message.contains("source ended")
+                    && entry.message.contains("terminal=true")
+            }) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("first 404 should end the relay worker terminally");
+    assert_eq!(channel.snapshot().await.connection_attempts, 1);
+
+    runtime.add_relay_channel(config).await.unwrap();
+    let second_connection = tracker_task.await.unwrap();
+    drain(&runtime, &task_tracker).await;
+    assert!(
+        second_connection,
+        "reselecting a channel after terminal 404 should restart its relay worker"
+    );
 }
 
 #[tokio::test]

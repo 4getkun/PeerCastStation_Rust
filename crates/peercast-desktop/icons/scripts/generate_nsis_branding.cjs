@@ -100,12 +100,7 @@ async function main() {
   // The custom wide installer uses a 239x588 physical-pixel brand rail on
   // the target 150% DPI layout. Rendering at the final size avoids NSIS's
   // low-quality non-uniform stretch of the stock 164x314 sidebar bitmap.
-  await drawBmp({
-    width: 239,
-    height: 588,
-    filename: "installer-brand-rail.bmp",
-    logoRect: { left: 39, top: 46, width: 162, height: 81 },
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="239" height="588" viewBox="0 0 239 588">
+  const railSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="239" height="588" viewBox="0 0 239 588">
       <defs><linearGradient id="rail" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f0fd"/><stop offset="1" stop-color="#ebe5f8"/></linearGradient></defs>
       <rect width="239" height="588" fill="url(#rail)"/>
       <rect width="6" height="588" fill="#735bd3"/>
@@ -118,8 +113,19 @@ async function main() {
       <text x="84" y="350" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="15" font-weight="600" fill="#3d344e">ようこそ</text>
       <text x="39" y="535" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="13" fill="#746d80">Windows x64</text>
       <text x="39" y="563" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="12" fill="#958da1">Version ${tauriConfig.version}</text>
-    </svg>`,
-  });
+    </svg>`;
+  for (const [filename, label] of [
+    ["installer-brand-rail.bmp", "ようこそ"],
+    ["installer-uninstall-rail.bmp", "アンインストール"],
+  ]) {
+    await drawBmp({
+      width: 239,
+      height: 588,
+      filename,
+      logoRect: { left: 39, top: 46, width: 162, height: 81 },
+      svg: railSvg.replace("ようこそ", label),
+    });
+  }
 }
 
 main().catch((error) => {

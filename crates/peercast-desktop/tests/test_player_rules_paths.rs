@@ -126,6 +126,102 @@ fn rule_priority_last_match_overrides_and_disabled_rules_do_not_apply() {
 }
 
 #[test]
+fn direct_favorite_interactions_follow_last_match_and_restore_other_rules() {
+    let channel = json!({"name":"Artist","yellowPage":"SP","channelId":"111"});
+    let rows = vec![channel.clone()];
+    let mut broad_ng = rule("broad-ng", "Artist");
+    broad_ng.favorite = false;
+    broad_ng.hidden = true;
+    let direct_favorite = ChannelRule {
+        id: "quick-direct".into(),
+        name: "Artist".into(),
+        pattern: "^Artist$".into(),
+        fields: vec!["name".into()],
+        use_regex: true,
+        normalize_width: true,
+        match_case: false,
+        favorite: true,
+        hidden: false,
+        ..ChannelRule::default()
+    };
+
+    let broad_ng_then_direct = decorate_channels(
+        rows.clone(),
+        &[broad_ng.clone(), direct_favorite.clone()],
+        "http://127.0.0.1:12345",
+    )
+    .unwrap();
+    assert_eq!(broad_ng_then_direct[0]["matchedRuleId"], "quick-direct");
+    assert_eq!(broad_ng_then_direct[0]["isFavorite"], true);
+    assert_eq!(broad_ng_then_direct[0]["isHidden"], false);
+
+    let direct_then_broad_ng = decorate_channels(
+        rows.clone(),
+        &[direct_favorite.clone(), broad_ng.clone()],
+        "http://127.0.0.1:12345",
+    )
+    .unwrap();
+    assert_eq!(direct_then_broad_ng[0]["matchedRuleId"], "broad-ng");
+    assert_eq!(direct_then_broad_ng[0]["isFavorite"], false);
+    assert_eq!(direct_then_broad_ng[0]["isHidden"], true);
+
+    let mut broad_favorite = rule("broad-favorite", "Artist");
+    broad_favorite.favorite = true;
+    broad_favorite.hidden = false;
+    let before_direct_removal = decorate_channels(
+        rows.clone(),
+        &[broad_favorite.clone(), direct_favorite.clone()],
+        "http://127.0.0.1:12345",
+    )
+    .unwrap();
+    assert_eq!(before_direct_removal[0]["matchedRuleId"], "quick-direct");
+    let after_broad_favorite_remains = decorate_channels(
+        rows.clone(),
+        &[broad_favorite.clone()],
+        "http://127.0.0.1:12345",
+    )
+    .unwrap();
+    assert_eq!(
+        after_broad_favorite_remains[0]["matchedRuleId"],
+        "broad-favorite"
+    );
+    assert_eq!(after_broad_favorite_remains[0]["isFavorite"], true);
+
+    let mut manual_exact = rule("manual-exact", "^Artist$");
+    manual_exact.use_regex = true;
+    manual_exact.favorite = false;
+    manual_exact.hidden = true;
+    let mut page_rule = rule("page-sp", "^SP$");
+    page_rule.fields = vec!["yellowPage".into()];
+    page_rule.use_regex = true;
+    page_rule.favorite = true;
+    page_rule.hidden = false;
+    let exact_and_page = decorate_channels(
+        rows.clone(),
+        &[
+            manual_exact.clone(),
+            direct_favorite.clone(),
+            page_rule.clone(),
+        ],
+        "http://127.0.0.1:12345",
+    )
+    .unwrap();
+    assert_eq!(exact_and_page[0]["matchedRuleId"], "page-sp");
+    assert_eq!(exact_and_page[0]["isFavorite"], true);
+    assert_eq!(exact_and_page[0]["isHidden"], false);
+
+    let after_direct_removal = decorate_channels(
+        rows,
+        &[broad_favorite, manual_exact, page_rule],
+        "http://127.0.0.1:12345",
+    )
+    .unwrap();
+    assert_eq!(after_direct_removal[0]["matchedRuleId"], "page-sp");
+    assert_eq!(after_direct_removal[0]["isFavorite"], true);
+    assert_eq!(after_direct_removal[0]["isHidden"], false);
+}
+
+#[test]
 fn rule_matching_handles_width_literal_regex_and_all_metadata_targets() {
     let mut width = rule("width", "ゲーム");
     let row = json!({"name":"ｹﾞｰﾑ配信","description":"a+b","yellowPage":"P@","listeners":123,"channelId":"ABC"});

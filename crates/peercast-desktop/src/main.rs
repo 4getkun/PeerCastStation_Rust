@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use peercast_desktop::backend::{DesktopBackend, Limits, Snapshot, YellowPageEntry};
+use peercast_desktop::favorite_notifications::FavoriteNotificationLedger;
 use peercast_desktop::player::PlayerLaunch;
 use peercast_desktop::updater::{self, UpdateManager};
 use peercast_desktop::{
@@ -8,12 +9,14 @@ use peercast_desktop::{
     recording_config::RecordingFilter,
     rules::{ChannelRule, RulePreview},
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_notification::NotificationExt;
 
 type Backend = Arc<DesktopBackend>;
+type FavoriteNotifications = Arc<Mutex<FavoriteNotificationLedger>>;
 
 #[tauri::command]
 async fn start_broadcast(
@@ -251,10 +254,69 @@ async fn open_recording_folder(
 
 #[tauri::command]
 async fn get_yp_channels(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     backend: State<'_, Backend>,
+    notifications: State<'_, FavoriteNotifications>,
     refresh: bool,
+    notify_favorites: Option<bool>,
 ) -> Result<serde_json::Value, String> {
-    backend.get_yp_channels(refresh).await
+    if window.label() != "main" {
+        return Err("メイン画面から実行してください".into());
+    }
+    let mut rows = backend.get_yp_channels(refresh).await?;
+    if notify_favorites == Some(true) {
+        let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
+        let mut ledger = notifications
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let candidates = ledger.due(rows.as_array().unwrap_or(&Vec::new()), now);
+        if !candidates.is_empty() {
+            let names = candidates
+                .iter()
+                .take(5)
+                .map(|item| item.name.as_str())
+                .collect::<Vec<_>>()
+                .join("、");
+            let remaining = candidates.len().saturating_sub(5);
+            let body = if remaining == 0 {
+                format!("{names} が配信しています。")
+            } else {
+                format!("{names}、ほか{remaining}件が配信しています。")
+            };
+            match app
+                .notification()
+                .builder()
+                .title("お気に入りの配信が見つかりました")
+                .body(body)
+                .show()
+            {
+                Ok(()) => {
+                    let keys = candidates
+                        .iter()
+                        .map(|item| item.key.clone())
+                        .collect::<Vec<_>>();
+                    ledger.mark_sent(&keys, now);
+                    if let Err(error) = ledger.save() {
+                        eprintln!("{error}");
+                    }
+                    if let Some(rows) = rows.as_array_mut() {
+                        for row in rows {
+                            if candidates.iter().any(|item| {
+                                row["name"]
+                                    .as_str()
+                                    .is_some_and(|name| name.trim() == item.name)
+                            }) {
+                                row["favoriteNotificationSent"] = serde_json::Value::Bool(true);
+                            }
+                        }
+                    }
+                }
+                Err(error) => eprintln!("お気に入り通知を表示できませんでした: {error}"),
+            }
+        }
+    }
+    Ok(rows)
 }
 
 #[tauri::command]
@@ -348,6 +410,7 @@ fn main() {
             peercast_desktop::native_window::restore_main(app);
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::Builder::new().app_name("Peercast RT").build())
         .setup(|app| {
             let mut path = app.path().app_local_data_dir()?.join("tauri-test.json");
@@ -359,6 +422,12 @@ fn main() {
                     })?.into();
                 }
             }
+            let ledger_path = path.with_extension("favorite-notifications.json");
+            let ledger = FavoriteNotificationLedger::load(ledger_path.clone()).unwrap_or_else(|error| {
+                eprintln!("{error}");
+                FavoriteNotificationLedger::new(ledger_path)
+            });
+            app.manage(Arc::new(Mutex::new(ledger)) as FavoriteNotifications);
             let backend = tauri::async_runtime::block_on(DesktopBackend::open_detecting(path))
                 .map_err(std::io::Error::other)?;
             let saved = tauri::async_runtime::block_on(backend.snapshot()).map_err(std::io::Error::other)?;

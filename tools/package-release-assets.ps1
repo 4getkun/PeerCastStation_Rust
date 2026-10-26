@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PackageStage,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [string]$Version = '1.0.2'
+    [string]$Version = '1.0.3'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,12 +32,21 @@ $installerHash = (Get-FileHash -LiteralPath $installerAsset -Algorithm SHA256).H
 "$installerHash  $installerName" | Set-Content -LiteralPath (Join-Path $zipRoot 'SHA256SUMS.txt') -Encoding ascii
 "$installerHash  $installerName" | Set-Content -LiteralPath "$installerAsset.sha256" -Encoding ascii
 
-$zipName = "PeerCastRT-${Version}-windows-x64-installer.zip"
+$zipName = "PeerCastRT-${Version}-windows-x64-installer.7z"
 $zipAsset = Join-Path $outputRoot $zipName
-Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $zipRoot | Select-Object -ExpandProperty FullName) -DestinationPath $zipAsset -CompressionLevel Optimal
+$sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+if (-not (Test-Path -LiteralPath $sevenZip)) { throw '7-Zip was not found.' }
+Push-Location $zipRoot
+try {
+    & $sevenZip a -t7z -mx=7 -mmt=4 $zipAsset '.\*'
+    if ($LASTEXITCODE -ne 0) { throw '7z release packaging failed.' }
+    & $sevenZip t $zipAsset
+    if ($LASTEXITCODE -ne 0) { throw '7z release integrity check failed.' }
+}
+finally { Pop-Location }
 $zipHash = (Get-FileHash -LiteralPath $zipAsset -Algorithm SHA256).Hash.ToLowerInvariant()
 "$zipHash  $zipName" | Set-Content -LiteralPath "$zipAsset.sha256" -Encoding ascii
 
 Write-Output "Installer SHA256: $installerHash"
-Write-Output "ZIP SHA256: $zipHash"
+Write-Output "7z SHA256: $zipHash"
 Write-Output "Release assets: $outputRoot"

@@ -27,7 +27,12 @@ if (-not $SkipBuild) {
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 $playerRoot = Join-Path $outputRoot 'PCRPlayer'
 New-Item -ItemType Directory -Path $playerRoot -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $packageRoot "target\$Profile\peercast-desktop.exe") -Destination (Join-Path $outputRoot 'Peercast-RT.exe') -Force
+$binary = Join-Path $packageRoot "target\$Profile\peercast-desktop.exe"
+if ($SkipBuild -and -not (Test-Path -LiteralPath $binary)) {
+    # Tauri renames the Cargo binary to mainBinaryName after bundling.
+    $binary = Join-Path $packageRoot "target\$Profile\PeerCast-RT.exe"
+}
+Copy-Item -LiteralPath $binary -Destination (Join-Path $outputRoot 'Peercast-RT.exe') -Force
 foreach ($name in @('PCRPlayer64.exe', 'LICENSE.txt')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot $name) -Destination (Join-Path $playerRoot $name) -Force
 }

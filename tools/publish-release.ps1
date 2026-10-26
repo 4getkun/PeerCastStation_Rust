@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PlayerArchive,
-    [string]$Version = '1.0.2',
+    [string]$Version = '1.0.3',
     [string]$ReleaseNotes = '自動更新と新しいインストーラーデザインを追加しました。',
     [string]$WorkDirectory = '',
     [string]$ReleaseDirectory = '',
@@ -37,7 +37,7 @@ $releaseRoot = if ([string]::IsNullOrWhiteSpace($ReleaseDirectory)) {
 $bundleInstaller = Join-Path $repoRoot "target/release/bundle/nsis/PeerCast RT_${Version}_x64-setup.exe"
 $bundleSignature = "$bundleInstaller.sig"
 $installerName = "PeercastRT_${Version}_x64-setup.exe"
-$zipName = "PeerCastRT-${Version}-windows-x64-installer.zip"
+$zipName = "PeerCastRT-${Version}-windows-x64-installer.7z"
 $installerAsset = Join-Path $releaseRoot $installerName
 $zipAsset = Join-Path $releaseRoot $zipName
 $licenseRoot = Join-Path $releaseRoot 'zip-root/licenses'
@@ -98,8 +98,8 @@ $zipHash = (Get-FileHash -LiteralPath $zipAsset -Algorithm SHA256).Hash.ToLowerI
 Write-Output "Version: $Version"
 Write-Output "Installer: $installerAsset"
 Write-Output "Installer SHA256: $installerHash"
-Write-Output "ZIP: $zipAsset"
-Write-Output "ZIP SHA256: $zipHash"
+Write-Output "7z: $zipAsset"
+Write-Output "7z SHA256: $zipHash"
 Write-Output "Updater signature version: $Version"
 if (-not $Publish) {
     Write-Output 'Dry run complete. No remote objects were changed.'
@@ -152,7 +152,7 @@ function Test-PublicObject([string]$Url, [string]$File, [string]$ContentType) {
 $immutable = @(
     @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key=$dedicatedArtifactKey; File=$installerAsset; Type='application/octet-stream' },
     @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="$dedicatedArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$zipName"; File=$zipAsset; Type='application/zip' },
+    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$zipName"; File=$zipAsset; Type='application/x-7z-compressed' },
     @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$installerName.sha256"; File="$installerAsset.sha256"; Type='text/plain; charset=utf-8' },
     @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$zipName.sha256"; File="$zipAsset.sha256"; Type='text/plain; charset=utf-8' },
     @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key=$dedicatedVersionedKey; File=$dedicatedManifestPath; Type='application/json' },

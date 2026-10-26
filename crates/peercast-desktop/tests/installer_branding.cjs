@@ -18,7 +18,7 @@ assert(!source.includes('M34 270'), 'Rejected decorative network lines must not 
 assert.match(buildScript, /template\s*=.*installer\.nsi/, 'Release builds must use the custom NSIS template');
 assert.match(buildScript, /installerHooks\s*=.*installer-assets\.nsh/, 'The custom template must receive its exact-size brand rail through the asset include');
 assert.match(template, /Page custom PageReady PageReadyLeave/, 'The branded welcome must be a real custom NSIS page');
-assert.match(template, /SetCtlColors \$ReadyDialog "241C35" "F8F7FD"/, 'The welcome surface must keep the approved white/lavender palette');
+assert.match(template, /SetCtlColors \$ReadyDialog "241C35" "FFFFFF"/, 'The white welcome surface must contrast with the pale-lavender brand rail');
 assert.match(template, /PEERCAST_BRANDRAIL/, 'The original PeerCast loop must be rendered from the exact-size brand rail');
 assert(!template.includes('Install Misaca'), 'Borrowed product copy must not leak into the installer');
 assert.equal(brandRail.readInt32LE(18), 239, 'Brand rail width must match the measured installer column');

@@ -38,6 +38,7 @@ ${StrCase}
 ${StrLoc}
 
 !define MUI_CUSTOMFUNCTION_GUIINIT PeerCastGUIInit
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.PeerCastGUIInit
 
 {{#if installer_hooks}}
 !include "{{installer_hooks}}"
@@ -102,6 +103,17 @@ Var InstallerHeadingFont
 Var InstallerBodyFont
 Var InstallerSmallFont
 Var ReadyExistingMode
+Var InstallerContentWidth
+Var InstallerCardWidth
+Var ProgressLogoHandle
+Var ProgressTitleFont
+Var ProgressBodyFont
+Var ReadyCard
+Var FinishCard
+Var UninstallCard
+Var UninstallLogoHandle
+Var UninstallSmallFont
+Var UninstallBodyFont
 
 Name "${PRODUCTNAME}"
 BrandingText "${PRODUCTNAME} ${VERSION}"
@@ -185,6 +197,8 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; Uninstaller icon
 !if "${UNINSTALLERICON}" != ""
   !define MUI_UNICON "${UNINSTALLERICON}"
+!else if "${INSTALLERICON}" != ""
+  !define MUI_UNICON "${INSTALLERICON}"
 !endif
 
 ; Define registry key to store installer language
@@ -472,6 +486,8 @@ Var AppStartMenuFolder
 !insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
 
 ; 6. Installation page
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW PeerCastProgressShow
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE PeerCastProgressLeave
 !insertmacro MUI_PAGE_INSTFILES
 
 ; Prepare the shared Modern UI interface variables and full-window helpers.
@@ -497,52 +513,71 @@ Function un.ConfirmPage
   ${If} $UninstallDialog == error
     Abort
   ${EndIf}
-  SetCtlColors $UninstallDialog "25313B" "FFFFFF"
+  Push $UninstallDialog
+  Push 0
+  Call un.PeerCastPrepareFullWindow
+  SetCtlColors $UninstallDialog "241C35" "FFFFFF"
   ${If} $(^RTL) = 1
     nsDialogs::SetRTL 1
   ${EndIf}
 
   GetDlgItem $0 $HWNDPARENT 1
   SendMessage $0 ${WM_SETTEXT} 0 "STR:$(uninstallerConfirmButton)"
-  ${NSD_CreateIcon} 16u 10u 26u 26u ""
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\peercast-uninstall-sidebar.bmp "${PEERCAST_UNINSTALLRAIL}"
+  ${NSD_CreateBitmap} 5u 5u 96u 190u ""
   Pop $0
-  ${NSD_SetIconFromInstaller} $0 $InstallerLogoHandle
-  ${NSD_CreateLabel} 50u 10u -66u 18u "$(uninstallerTitle)"
+  ${NSD_SetStretchedBitmap} $0 "$PLUGINSDIR\peercast-uninstall-sidebar.bmp" $UninstallLogoHandle
+  CreateFont $UninstallSmallFont "Yu Gothic UI" 8 700
+  CreateFont $UninstallTitleFont "Yu Gothic UI" 13 700
+  CreateFont $UninstallBodyFont "Yu Gothic UI" 9 400
+  ${NSD_CreateLabel} 120u 18u $InstallerContentWidth 15u "$(uninstallerSubtitle)"
   Pop $0
-  SetCtlColors $0 "215786" "FFFFFF"
-  CreateFont $UninstallTitleFont "Yu Gothic UI" 11 700
+  SetCtlColors $0 "6F56D9" "FFFFFF"
+  SendMessage $0 ${WM_SETFONT} $UninstallSmallFont 1
+  ${NSD_CreateHLine} 120u 42u $InstallerContentWidth 1u ""
+  Pop $0
+  ${NSD_CreateLabel} 120u 56u $InstallerContentWidth 24u "$(uninstallerTitle)"
+  Pop $0
+  SetCtlColors $0 "17131F" "FFFFFF"
   SendMessage $0 ${WM_SETFONT} $UninstallTitleFont 1
-  ${NSD_CreateLabel} 50u 30u -66u 12u "$(uninstallerSubtitle)"
+  ${NSD_CreateLabel} 120u 91u $InstallerContentWidth 14u "$(uninstallerLocation)"
   Pop $0
-  SetCtlColors $0 "25313B" "FFFFFF"
-
-  ${NSD_CreateLabel} 16u 54u -32u 12u "$(uninstallerLocation)"
-  Pop $0
-  SetCtlColors $0 "25313B" "FFFFFF"
-  ${NSD_CreateText} 16u 68u -32u 16u "$INSTDIR"
+  SetCtlColors $0 "514A5E" "FFFFFF"
+  SendMessage $0 ${WM_SETFONT} $UninstallBodyFont 1
+  ${NSD_CreateText} 120u 109u $InstallerContentWidth 18u "$INSTDIR"
   Pop $UninstallPathControl
+  SetCtlColors $UninstallPathControl "514A5E" "FFFFFF"
+  SendMessage $UninstallPathControl ${WM_SETFONT} $UninstallBodyFont 1
   ${NSD_Edit_SetReadOnly} $UninstallPathControl 1
-
-  ${NSD_CreateLabel} 16u 96u -32u 38u ""
+  ${NSD_CreateLabel} 123u 140u 3u 24u ""
   Pop $0
-  SetCtlColors $0 "215786" "EAF3FB"
-  ${NSD_CreateLabel} 25u 99u -50u 32u "$(uninstallerProtection)"
+  SetCtlColors $0 "6F56D9" "6F56D9"
+  ${NSD_CreateLabel} 132u 145u 270u 16u "$(uninstallerProtection)"
   Pop $0
-  SetCtlColors $0 "215786" "EAF3FB"
+  SetCtlColors $0 "302A3C" "FFFFFF"
+  SendMessage $0 ${WM_SETFONT} $UninstallBodyFont 1
 
-  ${NSD_CreateCheckBox} 16u 151u -32u 20u "$(uninstallerDeleteCache)"
+  ${NSD_CreateCheckBox} 120u 174u $InstallerContentWidth 14u "$(uninstallerDeleteCache)"
   Pop $DeleteAppDataCheckbox
-  SetCtlColors $DeleteAppDataCheckbox "25313B" "FFFFFF"
+  SetCtlColors $DeleteAppDataCheckbox "302A3C" "FFFFFF"
+  ${NSD_AddStyle} $DeleteAppDataCheckbox ${WS_CLIPSIBLINGS}
   ${NSD_SetState} $DeleteAppDataCheckbox ${BST_UNCHECKED}
   nsDialogs::Show
-  ${NSD_FreeIcon} $InstallerLogoHandle
+  Call un.muiPageUnloadFullWindow
+  ${NSD_FreeBitmap} $UninstallLogoHandle
   System::Call 'gdi32::DeleteObject(p $UninstallTitleFont)'
+  System::Call 'gdi32::DeleteObject(p $UninstallSmallFont)'
+  System::Call 'gdi32::DeleteObject(p $UninstallBodyFont)'
 FunctionEnd
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
 Function un.ConfirmLeave
   SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
 FunctionEnd
 ; 2. Uninstalling Page
+!insertmacro MUI_UNPAGE_INIT
+!insertmacro MUI_PAGE_FUNCTION_FULLWINDOW
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.PeerCastProgressShow
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.PeerCastProgressLeave
 !insertmacro MUI_UNPAGE_INSTFILES
 
 ;Languages
@@ -577,6 +612,10 @@ LangString installerFirstRun ${LANG_ENGLISH} "When you are ready, select Next."
 LangString installerFirstRun ${LANG_JAPANESE} "準備ができたら「次へ」をクリックしてください。"
 LangString installerComplete ${LANG_ENGLISH} "PeerCast RT is ready to use."
 LangString installerComplete ${LANG_JAPANESE} "PeerCast RT を使用する準備ができました。"
+LangString installerProgressTitle ${LANG_ENGLISH} "Installing PeerCast RT"
+LangString installerProgressTitle ${LANG_JAPANESE} "PeerCast RT をインストールしています"
+LangString uninstallerProgressTitle ${LANG_ENGLISH} "Uninstalling PeerCast RT"
+LangString uninstallerProgressTitle ${LANG_JAPANESE} "PeerCast RT をアンインストールしています"
 LangString installerFinish ${LANG_ENGLISH} "Finish"
 LangString installerFinish ${LANG_JAPANESE} "完了"
 LangString installerBrowseTitle ${LANG_ENGLISH} "Select the installation folder"
@@ -630,15 +669,20 @@ Function PageReady
   ; Expand the child page before creating right-anchored controls; resizing
   ; only the outer frame leaves an empty strip on the right at high DPI.
   Call muiPageLoadFullWindow
-  System::Call 'user32::GetClientRect(p $HWNDPARENT, @r0)'
+  ShowWindow $mui.Line.FullWindow ${SW_HIDE}
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   StrCpy $R0 $3
   System::Free $0
-  System::Call 'user32::GetWindowRect(p $ReadyDialog, @r0)'
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetWindowRect(p $ReadyDialog, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   IntOp $R1 $4 - $2
   System::Free $0
   System::Call 'user32::SetWindowPos(p $ReadyDialog, p 0, i 0, i 0, i $R0, i $R1, i 0x0006)'
+  Push $ReadyDialog
+  Call PeerCastMeasureContent
 
   GetDlgItem $0 $HWNDPARENT 3
   ShowWindow $0 ${SW_HIDE}
@@ -646,7 +690,7 @@ Function PageReady
     GetDlgItem $0 $HWNDPARENT 1
     SendMessage $0 ${WM_SETTEXT} 0 "STR:$(installerInstall)"
   !endif
-  SetCtlColors $ReadyDialog "241C35" "F8F7FD"
+  SetCtlColors $ReadyDialog "241C35" "FFFFFF"
   ${If} $(^RTL) = 1
     nsDialogs::SetRTL 1
   ${EndIf}
@@ -660,10 +704,8 @@ Function PageReady
   Pop $2
   ${NSD_SetStretchedBitmap} $2 "$PLUGINSDIR\peercast-installer-sidebar.bmp" $InstallerLogoHandle
 
-  ; White setup card on the pale-lavender application surface.
-  ${NSD_CreateLabel} 107u 5u -5u 190u ""
-  Pop $3
-  SetCtlColors $3 "241C35" "FFFFFF"
+  ; Use the white dialog surface directly instead of overlapping background
+  ; controls that can cover labels and checkboxes on native-dialog repaints.
 
   CreateFont $InstallerSmallFont "Yu Gothic UI" 8 700
   CreateFont $InstallerTitleFont "Yu Gothic UI" 13 700
@@ -674,11 +716,7 @@ Function PageReady
   Pop $3
   SetCtlColors $3 "6F56D9" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
-  ${NSD_CreateLabel} -46u 12u 25u 16u "1 / 3"
-  Pop $3
-  SetCtlColors $3 "6F56D9" "F1EDFC"
-  SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
-  ${NSD_CreateHLine} 120u 31u -25u 1u ""
+  ${NSD_CreateHLine} 120u 31u $InstallerContentWidth 1u ""
   Pop $3
 
   ${If} $ReadyExistingMode = 1
@@ -690,46 +728,39 @@ Function PageReady
   ${Else}
     StrCpy $0 "$(installerTitle)"
   ${EndIf}
-  ${NSD_CreateLabel} 120u 47u -25u 27u "$0"
+  ${NSD_CreateLabel} 120u 47u $InstallerContentWidth 27u "$0"
   Pop $3
   SetCtlColors $3 "17131F" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerTitleFont 1
 
-  ${NSD_CreateLabel} 120u 78u -25u 15u "PeerCast RTをこのPCにインストールします。"
+  ${NSD_CreateLabel} 120u 78u $InstallerContentWidth 15u "PeerCast RTをこのPCにインストールします。"
   Pop $3
   SetCtlColors $3 "514A5E" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
-  ${NSD_CreateLabel} 120u 94u -25u 15u "数分で完了し、すぐに配信や視聴を始められます。"
+  ${NSD_CreateLabel} 120u 94u $InstallerContentWidth 15u "必要なファイルをこのPCに準備します。"
   Pop $3
   SetCtlColors $3 "514A5E" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
 
-  ${NSD_CreateLabel} 120u 119u -25u 43u ""
-  Pop $3
-  SetCtlColors $3 "241C35" "F3EFFC"
   ${NSD_CreateLabel} 120u 119u 3u 43u ""
   Pop $3
   SetCtlColors $3 "6F56D9" "6F56D9"
-  ${NSD_CreateLabel} 128u 126u 12u 18u "!"
+  ${NSD_CreateLabel} 129u 125u 280u 15u "$(installerProtection)"
   Pop $3
-  SetCtlColors $3 "6F56D9" "FFFFFF"
+  SetCtlColors $3 "302A3C" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerHeadingFont 1
-  ${NSD_CreateLabel} 145u 125u -48u 15u "$(installerProtection)"
+  ${NSD_CreateLabel} 129u 143u 280u 13u "$(installerProtectionNote)"
   Pop $3
-  SetCtlColors $3 "302A3C" "F3EFFC"
-  SendMessage $3 ${WM_SETFONT} $InstallerHeadingFont 1
-  ${NSD_CreateLabel} 145u 143u -48u 13u "$(installerProtectionNote)"
-  Pop $3
-  SetCtlColors $3 "7C748A" "F3EFFC"
+  SetCtlColors $3 "7C748A" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
 
   ${If} $ReadyExistingMode != 0
-    ${NSD_CreateLabel} 120u 167u -25u 12u "$(installerExistingNote)"
+    ${NSD_CreateLabel} 120u 167u $InstallerContentWidth 12u "$(installerExistingNote)"
     Pop $3
     SetCtlColors $3 "514A5E" "FFFFFF"
     SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
   ${Else}
-    ${NSD_CreateLabel} 120u 171u -25u 13u "$(installerFirstRun)"
+    ${NSD_CreateLabel} 120u 171u $InstallerContentWidth 13u "$(installerFirstRun)"
     Pop $3
     SetCtlColors $3 "514A5E" "FFFFFF"
     SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
@@ -854,20 +885,25 @@ Function PageFinish
   StrCpy $FinishDialog $0
   StrCpy $FinishBackNavigation 0
   Call muiPageLoadFullWindow
-  System::Call 'user32::GetClientRect(p $HWNDPARENT, @r0)'
+  ShowWindow $mui.Line.FullWindow ${SW_HIDE}
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   StrCpy $R0 $3
   System::Free $0
-  System::Call 'user32::GetWindowRect(p $FinishDialog, @r0)'
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetWindowRect(p $FinishDialog, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   IntOp $R1 $4 - $2
   System::Free $0
   System::Call 'user32::SetWindowPos(p $FinishDialog, p 0, i 0, i 0, i $R0, i $R1, i 0x0006)'
+  Push $FinishDialog
+  Call PeerCastMeasureContent
   GetDlgItem $0 $HWNDPARENT 3
   ShowWindow $0 ${SW_HIDE}
   GetDlgItem $0 $HWNDPARENT 1
   SendMessage $0 ${WM_SETTEXT} 0 "STR:$(installerFinish)"
-  SetCtlColors $FinishDialog "241C35" "F8F7FD"
+  SetCtlColors $FinishDialog "241C35" "FFFFFF"
   ${If} $(^RTL) = 1
     nsDialogs::SetRTL 1
   ${EndIf}
@@ -878,9 +914,6 @@ Function PageFinish
   ${NSD_CreateBitmap} 5u 5u 96u 190u ""
   Pop $2
   ${NSD_SetStretchedBitmap} $2 "$PLUGINSDIR\peercast-installer-finish-sidebar.bmp" $InstallerLogoHandle
-  ${NSD_CreateLabel} 107u 5u -5u 190u ""
-  Pop $3
-  SetCtlColors $3 "241C35" "FFFFFF"
   CreateFont $InstallerTitleFont "Yu Gothic UI" 13 700
   CreateFont $InstallerBodyFont "Yu Gothic UI" 9 400
   CreateFont $InstallerSmallFont "Yu Gothic UI" 8 700
@@ -888,36 +921,31 @@ Function PageFinish
   Pop $3
   SetCtlColors $3 "6F56D9" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
-  ${NSD_CreateLabel} -46u 12u 25u 16u "3 / 3"
+  ${NSD_CreateHLine} 120u 31u $InstallerContentWidth 1u ""
   Pop $3
-  SetCtlColors $3 "6F56D9" "F1EDFC"
-  SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
-  ${NSD_CreateHLine} 120u 31u -25u 1u ""
-  Pop $3
-  ${NSD_CreateLabel} 120u 49u -25u 28u "$(installerComplete)"
+  ${NSD_CreateLabel} 120u 49u $InstallerContentWidth 28u "$(installerComplete)"
   Pop $3
   SetCtlColors $3 "17131F" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerTitleFont 1
-  ${NSD_CreateLabel} 120u 88u -25u 36u ""
-  Pop $3
-  SetCtlColors $3 "241C35" "F3EFFC"
   ${NSD_CreateLabel} 123u 88u 3u 36u ""
   Pop $3
   SetCtlColors $3 "6F56D9" "6F56D9"
-  ${NSD_CreateLabel} 137u 98u -40u 14u "設定と録画ファイルはそのまま保持されています。"
+  ${NSD_CreateLabel} 129u 98u 280u 14u "設定と録画ファイルはそのまま保持されています。"
   Pop $3
-  SetCtlColors $3 "514A5E" "F3EFFC"
+  SetCtlColors $3 "514A5E" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
-  ${NSD_CreateCheckBox} 120u 139u -25u 14u "$(installerLaunch)"
+  ${NSD_CreateCheckBox} 120u 139u $InstallerContentWidth 14u "$(installerLaunch)"
   Pop $FinishLaunchCheckbox
   SetCtlColors $FinishLaunchCheckbox "302A3C" "FFFFFF"
-  ${NSD_CreateCheckBox} 120u 156u -25u 14u "$(installerDesktop)"
+  ${NSD_AddStyle} $FinishLaunchCheckbox ${WS_CLIPSIBLINGS}
+  ${NSD_CreateCheckBox} 120u 156u $InstallerContentWidth 14u "$(installerDesktop)"
   Pop $FinishDesktopCheckbox
   SetCtlColors $FinishDesktopCheckbox "302A3C" "FFFFFF"
+  ${NSD_AddStyle} $FinishDesktopCheckbox ${WS_CLIPSIBLINGS}
   ${If} $NoShortcutMode = 1
     EnableWindow $FinishDesktopCheckbox 0
   ${EndIf}
-  ${NSD_CreateLabel} 120u 177u -25u 13u "「完了」をクリックしてセットアップを閉じます。"
+  ${NSD_CreateLabel} 120u 177u $InstallerContentWidth 13u "「完了」をクリックしてセットアップを閉じます。"
   Pop $3
   SetCtlColors $3 "514A5E" "FFFFFF"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
@@ -974,7 +1002,141 @@ Function RunMainBinary
   nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
 FunctionEnd
 
-Function PeerCastGUIInit
+; Measure pixel widths after the page has its final client dimensions.
+; Negative nsDialogs widths are relative to the entire dialog, not to X.
+!macro PeerCastMeasureContentBody
+  Pop $9
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetClientRect(p $9, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  StrCpy $8 $3
+  System::Free $0
+  System::Call '*(i 0, i 0, i 140, i 0)p.r0'
+  System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  IntOp $InstallerContentWidth $8 - $3
+  System::Free $0
+  System::Call '*(i 0, i 0, i 112, i 0)p.r0'
+  System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  IntOp $InstallerCardWidth $8 - $3
+  System::Free $0
+!macroend
+Function PeerCastMeasureContent
+  !insertmacro PeerCastMeasureContentBody
+FunctionEnd
+Function un.PeerCastMeasureContent
+  !insertmacro PeerCastMeasureContentBody
+FunctionEnd
+
+; Shared full-window sizing for installer and uninstaller pages. Stack input:
+; page HWND, then desired height in dialog units (0 preserves its current height).
+!macro PeerCastPrepareFullWindow PREFIX
+Function ${PREFIX}PeerCastPrepareFullWindow
+  Pop $8
+  Pop $9
+  Call ${PREFIX}muiPageLoadFullWindow
+  ShowWindow $mui.Line.FullWindow ${SW_HIDE}
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  StrCpy $7 $3
+  System::Free $0
+  ${If} $8 = 0
+    System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+    System::Call 'user32::GetWindowRect(p $9, p r0)'
+    System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+    IntOp $6 $4 - $2
+  ${Else}
+    System::Call '*(i 0, i 0, i 0, i $8)p.r0'
+    System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r0)'
+    System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+    StrCpy $6 $4
+  ${EndIf}
+  System::Call 'user32::SetWindowPos(p $9, p 0, i 0, i 0, i $7, i $6, i 0x0006)'
+  System::Free $0
+  Push $9
+  Call ${PREFIX}PeerCastMeasureContent
+FunctionEnd
+!macroend
+!insertmacro PeerCastPrepareFullWindow ""
+!insertmacro PeerCastPrepareFullWindow "un."
+
+!macro PeerCastMove CONTROL X Y W H
+  System::Call '*(i ${X}, i ${Y}, i ${W}, i ${H})p.r0'
+  System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  System::Call 'user32::SetWindowPos(p ${CONTROL}, p 0, i r1, i r2, i r3, i r4, i 0x0004)'
+  System::Free $0
+!macroend
+
+; Keep NSIS's actual install/uninstall controls and section execution, while
+; using the same full-window visual system on both progress pages.
+!macro PeerCastProgressShowBody PREFIX TITLE
+  Call ${PREFIX}muiPageLoadFullWindow
+  ShowWindow $mui.Line.FullWindow ${SW_HIDE}
+  SetCtlColors $mui.InstFilesPage "241C35" "FFFFFF"
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  StrCpy $8 $3
+  System::Free $0
+  System::Call '*(i 0, i 0, i 0, i 200)p.r0'
+  System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r0)'
+  System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
+  System::Call 'user32::SetWindowPos(p $mui.InstFilesPage, p 0, i 0, i 0, i r8, i r4, i 0x0004)'
+  System::Free $0
+  Push $mui.InstFilesPage
+  Call ${PREFIX}PeerCastMeasureContent
+  CreateFont $ProgressTitleFont "Yu Gothic UI" 13 700
+  CreateFont $ProgressBodyFont "Yu Gothic UI" 9 400
+  InitPluginsDir
+  !if "${PREFIX}" == "un."
+    File /oname=$PLUGINSDIR\peercast-progress.bmp "${PEERCAST_UNINSTALLRAIL}"
+  !else
+    File /oname=$PLUGINSDIR\peercast-progress.bmp "${PEERCAST_BRANDRAIL}"
+  !endif
+  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x5400000E, i 0, i 0, i 0, i 0, p $mui.InstFilesPage, p 1200, p 0, p 0)p.r9'
+  !insertmacro PeerCastMove $9 5 5 96 190
+  ${NSD_SetStretchedBitmap} $9 "$PLUGINSDIR\peercast-progress.bmp" $ProgressLogoHandle
+  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${TITLE}", i 0x54000000, i 0, i 0, i 0, i 0, p $mui.InstFilesPage, p 1202, p 0, p 0)p.r9'
+  SetCtlColors $9 "17131F" "FFFFFF"
+  SendMessage $9 ${WM_SETFONT} $ProgressTitleFont 1
+  !insertmacro PeerCastMove $9 120 47 280 25
+  System::Call 'user32::SetWindowPos(p r9, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
+  !insertmacro PeerCastMove $mui.InstFilesPage.Text 120 82 280 14
+  SetCtlColors $mui.InstFilesPage.Text "514A5E" "FFFFFF"
+  SendMessage $mui.InstFilesPage.Text ${WM_SETFONT} $ProgressBodyFont 1
+  !insertmacro PeerCastMove $mui.InstFilesPage.ProgressBar 120 104 280 9
+  !insertmacro PeerCastMove $mui.InstFilesPage.ShowLogButton 120 125 80 16
+  !insertmacro PeerCastMove $mui.InstFilesPage.Log 120 147 280 38
+  SetCtlColors $mui.InstFilesPage.Log "514A5E" "FFFFFF"
+  ; Static backgrounds must stay behind the built-in progress controls.
+  System::Call 'user32::SetWindowPos(p $mui.InstFilesPage.Text, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
+  System::Call 'user32::SetWindowPos(p $mui.InstFilesPage.ProgressBar, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
+  System::Call 'user32::SetWindowPos(p $mui.InstFilesPage.ShowLogButton, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
+  System::Call 'user32::SetWindowPos(p $mui.InstFilesPage.Log, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 ${SW_HIDE}
+!macroend
+
+Function PeerCastProgressShow
+  !insertmacro PeerCastProgressShowBody "" "$(installerProgressTitle)"
+FunctionEnd
+Function un.PeerCastProgressShow
+  !insertmacro PeerCastProgressShowBody "un." "$(uninstallerProgressTitle)"
+FunctionEnd
+Function PeerCastProgressLeave
+  ; NSIS calls the instfiles leave callback when sections finish, while
+  ; this page remains visible awaiting Next. Keep its bitmap, fonts and
+  ; full-window chrome alive until the actual completion page is closed.
+FunctionEnd
+Function un.PeerCastProgressLeave
+  ; Keep the progress resources alive while the uninstaller completion page
+  ; is still visible, matching the installer callback behavior.
+FunctionEnd
+
+!macro PeerCastGUIInitBody
   ; Windows 11: request a white caption so the native frame belongs to the
   ; same white/lavender visual system as the installer content.
   System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, *i 0x00FFFFFF, i 4)'
@@ -983,7 +1145,8 @@ Function PeerCastGUIInit
   ; The stock NSIS dialog becomes too tall and narrow on high-DPI displays.
   ; Preserve its measured height, widen it to the approved mockup's 1.55:1
   ; aspect ratio, and keep the window centered horizontally.
-  System::Call 'user32::GetWindowRect(p $HWNDPARENT, @r0)'
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetWindowRect(p $HWNDPARENT, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   IntOp $5 $3 - $1
   IntOp $6 $4 - $2
@@ -996,14 +1159,16 @@ Function PeerCastGUIInit
   System::Free $0
 
   ; Re-anchor the native footer actions to the widened window.
-  System::Call 'user32::GetClientRect(p $HWNDPARENT, @r0)'
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   StrCpy $R0 $3
   StrCpy $R1 $4
   System::Free $0
 
   GetDlgItem $9 $HWNDPARENT 2
-  System::Call 'user32::GetWindowRect(p $9, @r0)'
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetWindowRect(p $9, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   IntOp $5 $3 - $1
   IntOp $6 $4 - $2
@@ -1015,7 +1180,8 @@ Function PeerCastGUIInit
   System::Free $0
 
   GetDlgItem $9 $HWNDPARENT 1
-  System::Call 'user32::GetWindowRect(p $9, @r0)'
+  System::Call '*(i 0, i 0, i 0, i 0)p.r0'
+  System::Call 'user32::GetWindowRect(p $9, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
   IntOp $5 $3 - $1
   IntOp $6 $4 - $2
@@ -1025,6 +1191,12 @@ Function PeerCastGUIInit
   IntOp $8 $8 - 14
   System::Call 'user32::SetWindowPos(p $9, p 0, i $7, i $8, i $5, i $6, i 0x0004)'
   System::Free $0
+!macroend
+Function PeerCastGUIInit
+  !insertmacro PeerCastGUIInitBody
+FunctionEnd
+Function un.PeerCastGUIInit
+  !insertmacro PeerCastGUIInitBody
 FunctionEnd
 
 

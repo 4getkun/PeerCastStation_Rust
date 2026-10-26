@@ -204,9 +204,7 @@ async fn attempt(
                             channel.id, endpoint, attempt_number
                         ),
                     );
-                    let helo = machine
-                        .build_helo_with_ping(APPLICATION_NAME, runtime.config.server.port)
-                        .map_err(io::Error::other)?;
+                    let helo = relay_helo(runtime, &machine, endpoint.is_ipv6())?;
                     tokio::time::timeout(io_timeout, stream.write_all(&helo))
                         .await
                         .map_err(io::Error::other)??;
@@ -221,9 +219,7 @@ async fn attempt(
                             channel.id, endpoint, attempt_number
                         ),
                     );
-                    let helo = machine
-                        .build_helo_with_ping(APPLICATION_NAME, runtime.config.server.port)
-                        .map_err(io::Error::other)?;
+                    let helo = relay_helo(runtime, &machine, endpoint.is_ipv6())?;
                     tokio::time::timeout(io_timeout, stream.write_all(&helo))
                         .await
                         .map_err(io::Error::other)??;
@@ -306,7 +302,15 @@ async fn attempt(
         pending = input
             .try_into_mut()
             .unwrap_or_else(|bytes| BytesMut::from(bytes.as_ref()));
-        let n = tokio::time::timeout(io_timeout, stream.read(&mut chunk))
+        // The initial media header can arrive after a keyframe interval or
+        // parent selection. Keep the normal live-stream timeout once media
+        // arrives, but allow startup to complete before reconnecting.
+        let read_timeout = if media_received {
+            io_timeout
+        } else {
+            io_timeout.max(Duration::from_secs(30))
+        };
+        let n = tokio::time::timeout(read_timeout, stream.read(&mut chunk))
             .await
             .map_err(io::Error::other)??;
         lease.received(n);
@@ -324,5 +328,53 @@ async fn attempt(
             ));
         }
         pending.extend_from_slice(&chunk[..n]);
+    }
+}
+
+fn relay_helo(
+    runtime: &AppRuntime,
+    machine: &RelayClientStateMachine,
+    ipv6: bool,
+) -> io::Result<bytes::Bytes> {
+    let network = runtime.network_snapshot();
+    let status = if ipv6 { &network.ipv6 } else { &network.ipv4 };
+    let result = match status.as_str() {
+        "open" => machine.build_helo(APPLICATION_NAME, Some(network.relay_port)),
+        "unknown" => machine.build_helo_with_ping(APPLICATION_NAME, network.relay_port),
+        // A loopback-only listener is already known to be unreachable from
+        // the Internet. Asking each parent to probe it blocks the handshake.
+        _ => machine.build_helo(APPLICATION_NAME, None),
+    };
+    result.map_err(io::Error::other)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_listener_does_not_request_reverse_ping() {
+        let runtime = AppRuntime::new(
+            &AppConfig::default(),
+            TaskTracker::new(),
+            Arc::new(BoundedLogBuffer::default()),
+            Arc::new(RwLock::new(RpcState::default())),
+        )
+        .unwrap();
+        let machine = RelayClientStateMachine::new(
+            ChannelId::from_hex("11111111111111111111111111111111").unwrap(),
+            runtime.session_id,
+            RelayNetworkProfile::IPv4,
+            0,
+        );
+        let mut bytes = relay_helo(&runtime, &machine, false).unwrap();
+        let atom = peercast_core::atom::Atom::decode(&mut bytes, &AtomBudget::default())
+            .unwrap()
+            .unwrap();
+        let children = atom.children().unwrap();
+        assert!(children.iter().all(|child| {
+            child.name() != peercast_core::id4::ID4::HELO_PING
+                && child.name() != peercast_core::id4::ID4::HELO_PORT
+        }));
     }
 }

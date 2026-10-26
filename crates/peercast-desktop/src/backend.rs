@@ -850,7 +850,7 @@ impl DesktopBackend {
                 return Err(error.to_string());
             }
         };
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(45);
         while !channel.snapshot().await.available {
             if let Err(error) = self.check_open() {
                 self.stop_running(running).await?;
@@ -977,7 +977,7 @@ impl DesktopBackend {
             .prepare_yp_channel_inner(channel_id, yellow_page)
             .await?;
         if let Some(channel) = &prepared.channel {
-            let deadline = Instant::now() + Duration::from_secs(10);
+            let deadline = Instant::now() + Duration::from_secs(45);
             while !channel.snapshot().await.available {
                 self.check_open()?;
                 if Instant::now() >= deadline {

@@ -50,11 +50,42 @@ assert.match(appSource, /addEventListener\("contextmenu"/,
   'Right-clicking a channel must open the direct action menu');
 assert.match(appSource, /invoke\("set_channel_preference"/,
   'Favorite and NG actions must be persisted without navigating to settings');
+assert(appHtml.includes('id="yp-context-favorite-label"'), 'Favorite context action must have a replaceable label');
 function appFunction(name, bindings = {}) {
   const match = appSource.match(new RegExp(`  function ${name}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n  \\}`));
   assert(match, `The ${name} helper must exist`);
   return new Function(...Object.keys(bindings), `return (${match[0].trim()})`)(...Object.values(bindings));
 }
+const isDirectFavoriteRule = appFunction('isDirectFavoriteRule');
+const directFavoriteRuleIndex = appFunction('directFavoriteRuleIndex', { isDirectFavoriteRule });
+const removeDirectFavoriteRule = appFunction('removeDirectFavoriteRule', { isDirectFavoriteRule });
+const directQuickFavorite = {
+  id: 'quick-a1', name: 'Artist', enabled: true, pattern: '^Artist$', fields: ['name'],
+  useRegex: true, normalizeWidth: true, matchCase: false, favorite: true, hidden: false,
+  mute: false, textColor: null, backgroundColor: null, soundPath: null,
+};
+const broadNg = { ...directQuickFavorite, id: 'broad-ng', name: 'All Artist streams', pattern: '^Artist.*$', favorite: false, hidden: true };
+const exactNg = { ...directQuickFavorite, id: 'manual-ng', favorite: false, hidden: true };
+const anotherExactFavorite = { ...directQuickFavorite, id: 'settings-exact', name: 'Artist' };
+const ypScopedRule = { ...broadNg, id: 'other-yp', name: 'Other page', pattern: '^Other Page$', fields: ['yellowPage'] };
+assert.equal(directFavoriteRuleIndex([directQuickFavorite], 'Artist'), 0, 'A directly created exact-name favorite should be recognized');
+assert.equal(directFavoriteRuleIndex([broadNg], 'Artist'), -1, 'A broad pattern must never be treated as the direct favorite');
+assert.equal(directFavoriteRuleIndex([anotherExactFavorite], 'Artist'), -1, 'A settings rule with an exact pattern must remain user-owned');
+assert.equal(directFavoriteRuleIndex([exactNg], 'Artist'), -1, 'An exact NG rule must not be treated as a favorite');
+const duplicateDirectFavorite = { ...directQuickFavorite, id: 'quick-a2' };
+const overlappingRules = [broadNg, directQuickFavorite, duplicateDirectFavorite, exactNg, anotherExactFavorite, ypScopedRule];
+assert.equal(directFavoriteRuleIndex(overlappingRules, 'Artist'), 1, 'A direct favorite remains identifiable when broad favorite/NG rules also match');
+const afterDirectFavoriteRemoval = removeDirectFavoriteRule(overlappingRules, 'Artist');
+assert.deepEqual(afterDirectFavoriteRemoval.map(({ id }) => id), ['broad-ng', 'manual-ng', 'settings-exact', 'other-yp'],
+  'One removal must remove duplicate direct favorites while preserving broad, NG, manual exact, and other-Yellow-Page rules');
+assert.equal(directFavoriteRuleIndex([directQuickFavorite, { ...directQuickFavorite, id: 'quick-a2' }], 'Artist'), 0,
+  'Existing direct exact entries prevent another direct favorite registration');
+const sameNameAcrossPages = [{ name: 'Artist', yellowPage: 'SP' }, { name: 'Artist', yellowPage: 'P@' }];
+assert.deepEqual(sameNameAcrossPages.map(({ name }) => directFavoriteRuleIndex([directQuickFavorite], name)), [0, 0],
+  'The existing direct rule is name-wide across Yellow Pages');
+assert.equal(directFavoriteRuleIndex([directQuickFavorite], 'Ａｒｔｉｓｔ'), 0,
+  'Names are normalized before matching the direct exact-name rule');
+console.log('Frontend direct favorite removal regression: overlapping rule preservation and same-name pages passed');
 const broadcastingHelper = appSource.match(/  function isBroadcastingChannel\(channel\) \{([\s\S]*?)\n  \}/);
 assert(broadcastingHelper, 'Broadcast view must use the explicit broadcasting flag');
 const isBroadcastingChannel = new Function('channel', broadcastingHelper[1]);

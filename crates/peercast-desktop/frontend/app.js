@@ -166,6 +166,42 @@
     return String(value);
   }
 
+  function isDirectFavoriteRule(rule, channelName) {
+    const name = String(channelName || "").trim().normalize("NFKC");
+    if (!name || !rule || !String(rule.id || "").startsWith("quick-") || rule.enabled === false
+      || rule.name !== Array.from(name).slice(0, 80).join("")
+      || rule.fields?.length !== 1 || rule.fields[0] !== "name"
+      || rule.useRegex !== true || rule.normalizeWidth !== true || rule.matchCase !== false
+      || rule.favorite !== true || rule.hidden !== false || rule.mute !== false
+      || rule.textColor != null || rule.backgroundColor != null || rule.soundPath != null) return false;
+    const pattern = String(rule.pattern || "");
+    if (!pattern.startsWith("^") || !pattern.endsWith("$")) return false;
+    let literal = "";
+    for (let index = 1; index < pattern.length - 1; index += 1) {
+      const character = pattern[index];
+      if (character === "\\") {
+        const escaped = pattern[index + 1];
+        if (!escaped || /[a-z0-9]/i.test(escaped)) return false;
+        literal += escaped;
+        index += 1;
+      } else {
+        if (/[.*+?()[\]{}|^$]/.test(character)) return false;
+        literal += character;
+      }
+    }
+    return literal === name;
+  }
+
+  function directFavoriteRuleIndex(rules, channelName) {
+    return Array.isArray(rules) ? rules.findIndex((rule) => isDirectFavoriteRule(rule, channelName)) : -1;
+  }
+
+  function removeDirectFavoriteRule(rules, channelName) {
+    if (!Array.isArray(rules)) return null;
+    const remaining = rules.filter((rule) => !isDirectFavoriteRule(rule, channelName));
+    return remaining.length === rules.length ? null : remaining;
+  }
+
   function counter(value) {
     const number = ypViewerCount({ listeners: value });
     return number === null ? "—" : String(number);
@@ -454,7 +490,11 @@
     const canPlay = Boolean(state.snapshot?.running && selected && isPlayableYpChannel(selected) && state.snapshot?.playerAvailable !== false);
     ["selected-play"].forEach((id) => {
       const button = byId(id);
-      if (button) button.disabled = state.busy || state.ypBusy || !canPlay;
+      if (button) {
+        button.disabled = state.busy || state.ypBusy || !canPlay;
+        button.setAttribute("aria-busy", String(state.ypBusy));
+        if (button.lastChild?.nodeType === Node.TEXT_NODE) button.lastChild.textContent = state.ypBusy ? " 接続中…" : " 視聴する";
+      }
     });
     const rowButtons = byId("yp-results")?.querySelectorAll(".yp-play-button") || [];
     rowButtons.forEach((button) => {
@@ -496,7 +536,7 @@
     state.ypError = "";
     renderYpDirectory();
     try {
-      const channels = await invoke("get_yp_channels", { refresh: Boolean(refresh) });
+      const channels = await invoke("get_yp_channels", { refresh: Boolean(refresh), notifyFavorites: Boolean(refresh || !state.ypLoaded) });
       if (!Array.isArray(channels)) throw new Error("一覧の応答形式が正しくありません。");
       state.ypGeneration = advanceYpGeneration(state.ypGeneration, channels);
       state.ypChannels = channels;
@@ -597,18 +637,14 @@
     void fetchYpChannels(force);
   }
   function notifyNewYpChannels(channels) {
-    const now = Date.now();
     const notices = [];
     const soundRules = new Set();
     channels.forEach((channel) => {
-      const key = ypChannelKey(channel);
-      const lastSeen = state.ypSeenAt.get(key);
       const annotation = channelAnnotation(channel);
-      if (annotation.isFavorite && !annotation.ruleMute && (lastSeen === undefined || now - lastSeen >= 3600000)) {
+      if (channel.favoriteNotificationSent && annotation.isFavorite && !annotation.isHidden && !annotation.ruleMute) {
         notices.push(displayValue(channel.name));
         if (annotation.matchedRuleId && annotation.ruleSoundPath) soundRules.add(String(annotation.matchedRuleId));
       }
-      state.ypSeenAt.set(key, now);
     });
     if (notices.length) {
       setNotice(`お気に入りの新着: ${notices.slice(0, 5).join("、")}${notices.length > 5 ? `、ほか${notices.length - 5}件` : ""}`);
@@ -1454,21 +1490,27 @@
     finally { state.recordingBusy = false; updateRecordingControls(); }
   }
 
-  function renderLogs() {
-    if (currentView() !== "logs") return;
-    const root = byId("logs-list");
-    if (!root) return;
+  function filteredLogs() {
     const entries = Array.isArray(state.snapshot?.logs) ? state.snapshot.logs : [];
     const query = state.logQuery.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
     const levelFilter = byId("log-level-filter")?.value || "all";
     const filterRank = logRanks[levelFilter];
-    const visible = entries.filter((entry) => {
+    return entries.filter((entry) => {
       const rank = logRanks[String(entry.level || "info").toLowerCase()];
       if (levelFilter !== "all" && (rank === undefined || rank > filterRank)) return false;
       if (!query) return true;
       return `${entry.target || ""} ${entry.message || ""}`.normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query);
     });
-    const fingerprint = JSON.stringify([visible, state.logQuery, levelFilter, Boolean(byId("log-wrap")?.checked)]);
+  }
+
+  function renderLogs() {
+    const visible = filteredLogs();
+    const copyButton = byId("copy-logs");
+    if (copyButton) copyButton.disabled = visible.length === 0;
+    if (currentView() !== "logs") return;
+    const root = byId("logs-list");
+    if (!root) return;
+    const fingerprint = JSON.stringify([visible, state.logQuery, byId("log-level-filter")?.value || "all", Boolean(byId("log-wrap")?.checked)]);
     if (fingerprint === state.logFingerprint) return;
     state.logFingerprint = fingerprint;
     root.replaceChildren();
@@ -1628,6 +1670,15 @@
     }
   }
 
+  async function copyVisibleLogs() {
+    const value = filteredLogs().map((entry) => {
+      const timestamp = Number(entry.timestampMs);
+      const date = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString("ja-JP") : "時刻不明";
+      return [date, displayValue(entry.level), displayValue(entry.target), displayValue(entry.message)].join("\t");
+    }).join("\n");
+    if (value) await copyText(value, "表示中のログ");
+  }
+
   function selectChannel(id) {
     state.channelSelectionId = id;
     state.detailKind = "channel";
@@ -1777,6 +1828,8 @@
     event.preventDefault();
     selectYpChannel(channel);
     state.ypContextChannel = channel;
+    const directFavorite = directFavoriteRuleIndex(state.snapshot?.desktop?.channelRules, channel.name) >= 0;
+    text("yp-context-favorite-label", directFavorite ? "お気に入りから外す" : "お気に入りに入れる");
     menu.hidden = false;
     const width = 190;
     const height = 84;
@@ -1788,15 +1841,28 @@
     const channel = state.ypContextChannel;
     closeYpContextMenu();
     if (!channel?.name || state.busy || state.ypBusy) return;
+    const current = state.snapshot || {};
+    const desktop = current.desktop || {};
+    const updatedRules = kind === "favorite"
+      ? removeDirectFavoriteRule(desktop.channelRules, channel.name)
+      : null;
     state.ypBusy = true;
     updateYpControls();
     try {
-      const snapshot = await invoke("set_channel_preference", { channelName: String(channel.name), kind });
+      const snapshot = updatedRules
+        ? await invoke("apply_preferences", {
+          limits: current.limits || {},
+          yellowPages: current.yellowPages || [],
+          desktop: { ...desktop, channelRules: updatedRules },
+        })
+        : await invoke("set_channel_preference", { channelName: String(channel.name), kind });
       renderSnapshot(snapshot);
       const channels = await invoke("get_yp_channels", { refresh: false });
       state.ypChannels = Array.isArray(channels) ? channels : [];
       renderYpDirectory();
-      setNotice(`${displayValue(channel.name)} を${kind === "ng" ? "NG" : "お気に入り"}に入れました。`);
+      setNotice(updatedRules
+        ? `${displayValue(channel.name)} の個別登録を解除しました。ほかの条件は引き続き適用されます。`
+        : `${displayValue(channel.name)} を${kind === "ng" ? "NG" : "お気に入り"}に入れました。`);
     } catch (error) {
       setNotice(`チャンネルを登録できませんでした: ${errorText(error)}`, true);
     } finally {
@@ -1879,6 +1945,7 @@
   bind("log-search", "input", () => { state.logQuery = byId("log-search").value; renderLogs(); });
   bind("log-level-filter", "change", renderLogs);
   bind("log-wrap", "change", renderLogs);
+  bind("copy-logs", "click", copyVisibleLogs);
 
   refresh();
   scheduleApplicationUpdateChecks();

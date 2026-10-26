@@ -106,6 +106,7 @@ pub struct RuntimeChannel {
     candidates: Mutex<Vec<peercast_core::host::Host>>,
     started: Instant,
     connection_attempts: AtomicUsize,
+    relay_active: AtomicBool,
     max_header_bytes: usize,
     connections: Arc<ConnectionRegistry>,
 }
@@ -148,6 +149,7 @@ impl RuntimeChannel {
             candidates: Mutex::new(Vec::new()),
             started: Instant::now(),
             connection_attempts: AtomicUsize::new(0),
+            relay_active: AtomicBool::new(false),
             max_header_bytes: app.runtime.streaming.max_header_bytes,
             connections: Arc::new(ConnectionRegistry::default()),
         })
@@ -360,15 +362,21 @@ impl AppRuntime {
             .dynamic_channels
             .write()
             .map_err(|_| io::Error::other("dynamic channel registry is poisoned"))?;
-        if let Some(channel) = dynamic.get(&id) {
-            return Ok(Arc::clone(channel));
-        }
-        if dynamic.len() >= 32 {
+        let existing = dynamic.get(&id).cloned();
+        if existing.is_none() && dynamic.len() >= 32 {
             return Err(io::Error::other("dynamic relay channel limit reached"));
         }
-        let channel = Arc::new(RuntimeChannel::new(config.clone(), &self.config)?);
-        dynamic.insert(id, Arc::clone(&channel));
+        let channel = if let Some(existing) = existing {
+            existing
+        } else {
+            let channel = Arc::new(RuntimeChannel::new(config.clone(), &self.config)?);
+            dynamic.insert(id, Arc::clone(&channel));
+            channel
+        };
         drop(dynamic);
+        if channel.relay_active.swap(true, Ordering::AcqRel) {
+            return Ok(channel);
+        }
         let endpoint = match config.source {
             ChannelSource::Relay { endpoint } => endpoint,
             ChannelSource::HttpPush { .. } => unreachable!("validated relay source"),
@@ -376,7 +384,8 @@ impl AppRuntime {
         let runtime = Arc::clone(self);
         let worker_channel = Arc::clone(&channel);
         self.tracker.spawn(async move {
-            relay::run(runtime, worker_channel, endpoint).await;
+            relay::run(runtime, Arc::clone(&worker_channel), endpoint).await;
+            worker_channel.relay_active.store(false, Ordering::Release);
         });
         Ok(channel)
     }
