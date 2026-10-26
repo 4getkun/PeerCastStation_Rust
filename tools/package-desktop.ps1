@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$PlayerSource,
     [string]$Destination = (Join-Path $PSScriptRoot '..\target\windows-x64'),
     [ValidateSet('debug', 'release', 'win11-x64')][string]$Profile = 'release',
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$YouTubeBundle = ''
 )
 $ErrorActionPreference = 'Stop'
 $packageRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -25,6 +26,12 @@ if (-not $SkipBuild) {
     finally { Pop-Location }
 }
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+$youtubeRoot = if ($YouTubeBundle) { [IO.Path]::GetFullPath($YouTubeBundle) } else { Join-Path $packageRoot 'target/youtube-helper/bundle' }
+if (-not (Test-Path -LiteralPath (Join-Path $youtubeRoot 'YouTube/yt-dlp.exe'))) { throw 'Run tools/prepare-youtube-helper.ps1 before packaging.' }
+$ytSpec = Get-Content -LiteralPath (Join-Path $packageRoot 'tools/yt-dlp/lock.json') -Raw | ConvertFrom-Json
+if ((Get-FileHash -LiteralPath (Join-Path $youtubeRoot 'YouTube/yt-dlp.exe') -Algorithm SHA256).Hash.ToLowerInvariant() -cne $ytSpec.binary.sha256) { throw 'yt-dlp helper hash mismatch.' }
+Copy-Item -LiteralPath (Join-Path $youtubeRoot 'YouTube') -Destination $outputRoot -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $youtubeRoot 'licenses') -Destination $outputRoot -Recurse -Force
 $playerRoot = Join-Path $outputRoot 'PCRPlayer'
 New-Item -ItemType Directory -Path $playerRoot -Force | Out-Null
 $binary = Join-Path $packageRoot "target\$Profile\peercast-desktop.exe"

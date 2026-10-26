@@ -1,0 +1,317 @@
+{
+  "version": "2026.08.19",
+  "binary": {
+    "name": "yt-dlp.exe",
+    "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe",
+    "sha256": "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+  },
+  "notices": {
+    "name": "THIRD_PARTY_LICENSES.txt",
+    "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.08.19/THIRD_PARTY_LICENSES.txt",
+    "sha256": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7"
+  },
+  "sources": [
+    {
+      "name": "pip-26.2.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/ae/15/4500e320e6b101ec3b719ae85b697d9940b6cda672bc555bd6016fc60c6f/pip-26.2.1.tar.gz",
+      "sha256": "f6ad667e89a1fe78046c8f13232b247200f5258d7828f3f7883d660878e0813f",
+      "bytes": 1848877,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "brotli-1.2.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/f7/16/c92ca344d646e71a43b8bb353f0a6490d7f6e06210f8554c8f874e454285/brotli-1.2.0.tar.gz",
+      "sha256": "e310f77e41941c13340a95976fe66a8a95b01e783d430eeaf7a2f87e0a57dd0a",
+      "bytes": 7388632,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "certifi-2026.7.22.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz",
+      "sha256": "741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55",
+      "bytes": 138112,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "charset_normalizer-3.5.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/cb/31/4971872b3ed8715346231fb6eb4da8fcba65a4143c189db151ee28a2812b/charset_normalizer-3.5.0.tar.gz",
+      "sha256": "49bd5feb59b0bf3cbf6ebcf4352e371c95b9da9bacd4449f8b64d0ad2c10a26e",
+      "bytes": 169295,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "idna-3.18.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/cd/63/9496c57188a2ee585e0f1db071d75089a11e98aa86eb99d9d7618fc1edce/idna-3.18.tar.gz",
+      "sha256": "ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848",
+      "bytes": 196711,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "mutagen-1.48.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/df/70/1675da133ea92227da41bf5b24e1c66be597ff736a1533ade41da986852f/mutagen-1.48.1.tar.gz",
+      "sha256": "8f95637ab9f6f305cec6bd1294e197debe207998e3e068596563c74f86b0a173",
+      "bytes": 1276978,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "pycryptodomex-3.23.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/c9/85/e24bf90972a30b0fcd16c73009add1d7d7cd9140c2498a68252028899e41/pycryptodomex-3.23.0.tar.gz",
+      "sha256": "71909758f010c82bc99b0abf4ea12012c98962fbf0583c2164f8b84533c2e4da",
+      "bytes": 4922157,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "requests-2.34.2.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz",
+      "sha256": "f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed",
+      "bytes": 142856,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "urllib3-2.7.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz",
+      "sha256": "231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c",
+      "bytes": 433602,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "websockets-16.1.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/21/f7/bc3a25c5ec26ce62ce487690becc2f3710bbc7b33338f005ad390db0b986/websockets-16.1.1.tar.gz",
+      "sha256": "db234eda965dcce15df96bb9709f587cd87d4d52aaf0e80e2f34ec04c7670c57",
+      "bytes": 182204,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "yt_dlp_ejs-0.8.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/d3/e6/cceb9530e8f4e5940f6f7822d90e9d94f1b85343329a16baaf47bbbb3de1/yt_dlp_ejs-0.8.0.tar.gz",
+      "sha256": "d5fa1639f63b5c4af8d932495f60689d5370f1a095782c944f7f62a303eb104e",
+      "bytes": 96571,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "cffi-2.1.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz",
+      "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+      "bytes": 530807,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "curl_cffi-0.16.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/b4/23/d32e113b16dbfb458bea408871ed98dd12f306a366a04215e84537e0af7e/curl_cffi-0.16.0.tar.gz",
+      "sha256": "b00b423da8028eb6221e3b63bcd63d681150c07cee8b16000d1f7ea292731895",
+      "bytes": 238344,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "pycparser-3.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz",
+      "sha256": "600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29",
+      "bytes": 103492,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "typing_extensions-4.16.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz",
+      "sha256": "dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5",
+      "bytes": 113555,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "altgraph-0.17.5.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/7e/f8/97fdf103f38fed6792a1601dbc16cc8aac56e7459a9fff08c812d8ae177a/altgraph-0.17.5.tar.gz",
+      "sha256": "c87b395dd12fabde9c99573a9749d67da8d29ef9de0125c7f536699b4a9bc9e7",
+      "bytes": 48428,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "packaging-26.3.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz",
+      "sha256": "94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79",
+      "bytes": 313412,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "pefile-2024.8.26.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/03/4f/2750f7f6f025a1507cd3b7218691671eecfd0bbebebe8b39aa0fe1d360b8/pefile-2024.8.26.tar.gz",
+      "sha256": "3ff6c5d8b43e8c37bb6e6dd5085658d658a7a0bdcd20b6a07b1fcfc1c4e9d632",
+      "bytes": 76008,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "pyinstaller_hooks_contrib-2026.6.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/94/5b/c9fe0db5e83ee1c39b2258fa21d23b15e1a60786b6c5990ee5074ead8bb6/pyinstaller_hooks_contrib-2026.6.tar.gz",
+      "sha256": "bef5002c32f4f50bd55b005da12cff64eca8783e7eaf86a06a62410164bab725",
+      "bytes": 173354,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "pywin32-ctypes-0.2.3.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/85/9f/01a1a99704853cb63f253eea009390c88e7131c67e66a0a02099a8c917cb/pywin32-ctypes-0.2.3.tar.gz",
+      "sha256": "d162dc04946d704503b2edc4d55f3dba5c1d539ead017afa00142c38b9885755",
+      "bytes": 29471,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "setuptools-84.0.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz",
+      "sha256": "f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73",
+      "bytes": 1168449,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "pyinstaller-6.22.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/05/03/669d06735cf57d7e2e5dfc3c2e1643554b34c559eff21449c58172ca0335/pyinstaller-6.22.0.tar.gz",
+      "sha256": "8b0166fff4583b374bbe7fa044bf03ddc33cab0f792a665807d96048e63f060e",
+      "bytes": 4072247,
+      "category": "pypi-sdist"
+    },
+    {
+      "name": "zlib-1.3.1.tar.gz",
+      "url": "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz",
+      "sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23",
+      "bytes": 1512791,
+      "category": "curl-native"
+    },
+    {
+      "name": "zstd-1.5.7.tar.gz",
+      "url": "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+      "sha256": "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+      "bytes": 2434947,
+      "category": "curl-native"
+    },
+    {
+      "name": "v1.2.0.tar.gz",
+      "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz",
+      "sha256": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec",
+      "bytes": 646315,
+      "category": "curl-native"
+    },
+    {
+      "name": "156c7b75ae9b8c3b3f847acf264f17594c3859fb.zip",
+      "url": "https://github.com/google/boringssl/archive/156c7b75ae9b8c3b3f847acf264f17594c3859fb.zip",
+      "sha256": "450e169b284697c6eafe523cb7679f4221fbe1a0993f773a566c33b188762844",
+      "bytes": 80313844,
+      "category": "curl-native"
+    },
+    {
+      "name": "nghttp2-1.63.0.tar.bz2",
+      "url": "https://github.com/nghttp2/nghttp2/releases/download/v1.63.0/nghttp2-1.63.0.tar.bz2",
+      "sha256": "607b174554d22a828bc532d1d734fe0f729b5d5ed207f2f12e96a62e83f29c55",
+      "bytes": 2012107,
+      "category": "curl-native"
+    },
+    {
+      "name": "ngtcp2-1.20.0.tar.bz2",
+      "url": "https://github.com/ngtcp2/ngtcp2/releases/download/v1.20.0/ngtcp2-1.20.0.tar.bz2",
+      "sha256": "871ec97ad86803cf312901b0c393b0ee70163e25a87c9b2894d1234341ce4e97",
+      "bytes": 898205,
+      "category": "curl-native"
+    },
+    {
+      "name": "nghttp3-1.15.0.tar.bz2",
+      "url": "https://github.com/ngtcp2/nghttp3/releases/download/v1.15.0/nghttp3-1.15.0.tar.bz2",
+      "sha256": "c6c491a52804814098e446630e6efc459afc0d3da7952ffe6cbdc0b3f99b2b62",
+      "bytes": 519681,
+      "category": "curl-native"
+    },
+    {
+      "name": "curl-8_21_0.tar.gz",
+      "url": "https://github.com/curl/curl/archive/curl-8_21_0.tar.gz",
+      "sha256": "ec753aa6f408a3ca9f0d6d5f7a77417aecd1544db13c03ae5d443612bf367364",
+      "bytes": 3592963,
+      "category": "curl-native"
+    },
+    {
+      "name": "curl-impersonate-v2.0.0-tag.tar.gz",
+      "url": "https://github.com/lexiforest/curl-impersonate/archive/refs/tags/v2.0.0.tar.gz",
+      "sha256": "a9827cfce8246e78b86e26f012ae9fcb9bc05822009cd7ce4c9e130af6bdfb6f",
+      "bytes": 207780,
+      "category": "curl-impersonate-source"
+    },
+    {
+      "name": "Python-3.10.11.tgz",
+      "url": "https://www.python.org/ftp/python/3.10.11/Python-3.10.11.tgz",
+      "sha256": "f3db31b668efa983508bd67b5712898aa4247899a346f2eb745734699ccd3859",
+      "bytes": 26085141,
+      "category": "cpython-source"
+    },
+    {
+      "name": "cpython-source-deps-bzip2-1.0.8.tar.gz",
+      "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/bzip2-1.0.8.tar.gz",
+      "sha256": "ab8d1b0cc087c20d4c32c0e4fcf7d0c733a95da12cedc6d63b3f0a9af07427e2",
+      "bytes": 818771,
+      "category": "cpython-external-source"
+    },
+    {
+      "name": "cpython-source-deps-sqlite-3.40.1.0.tar.gz",
+      "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/sqlite-3.40.1.0.tar.gz",
+      "sha256": "b070d74e1e74fc976542d6ce5da8708289c3eb61189138439ba26c313e947685",
+      "bytes": 2594993,
+      "category": "cpython-external-source"
+    },
+    {
+      "name": "cpython-source-deps-xz-5.2.5.tar.gz",
+      "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/xz-5.2.5.tar.gz",
+      "sha256": "a15c168e39e87d750c3dc766edc7f19bdda57dacf01e509678467eace91ad282",
+      "bytes": 1744796,
+      "category": "cpython-external-source"
+    },
+    {
+      "name": "cpython-source-deps-zlib-1.2.13.tar.gz",
+      "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/zlib-1.2.13.tar.gz",
+      "sha256": "ed0394d5358f3c4f2465fababac1bfd4e25205fc8c980c223b826bfbe56a528d",
+      "bytes": 1554520,
+      "category": "cpython-external-source"
+    },
+    {
+      "name": "cpython-source-deps-libffi-3.3.0.tar.gz",
+      "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/libffi-3.3.0.tar.gz",
+      "sha256": "e53dbda5bccd5aa8a0371773eca0fc131583e42862cfe9f68c52fc78ad134076",
+      "bytes": 508430,
+      "category": "cpython-external-source"
+    },
+    {
+      "name": "cpython-source-deps-openssl-1.1.1t.tar.gz",
+      "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/openssl-1.1.1t.tar.gz",
+      "sha256": "1ce3e9e874955bf740911788c7c5f239337a4063335ecf566ff451c8ff392b16",
+      "bytes": 10064282,
+      "category": "cpython-external-source"
+    },
+    {
+      "name": "pyinstaller-upstream-70fc17210920bce17f4ab09bbf8104b0dbd45338.tar.gz",
+      "url": "https://github.com/pyinstaller/pyinstaller/archive/70fc17210920bce17f4ab09bbf8104b0dbd45338.tar.gz",
+      "sha256": "587eb41e1087aeaf2a879b04db35b68bbe44b85f9227e263c873396806103540",
+      "bytes": 3617860,
+      "category": "pyinstaller-upstream-commit"
+    },
+    {
+      "name": "Pyinstaller-Builds-2026.08.19.215425.tar.gz",
+      "url": "https://github.com/yt-dlp/Pyinstaller-Builds/archive/refs/tags/2026.08.19.215425.tar.gz",
+      "sha256": "861253d22a53cf73539ed5e48005a38e90df3fc5a2a1d073f79c4b5fcd6a6150",
+      "bytes": 7791,
+      "category": "pyinstaller-build-tag"
+    },
+    {
+      "name": "yt-dlp-2026.08.19-existing.tar.gz",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.tar.gz",
+      "sha256": "072aad4f2a7604e92155f61a275a4752dc64046c8f6d90df3710525d94cd37c1",
+      "bytes": 6020567,
+      "category": "yt-dlp-existing"
+    },
+    {
+      "name": "yt-dlp-v2026.08.19.tar.gz",
+      "url": "https://github.com/yt-dlp/yt-dlp/archive/refs/tags/2026.08.19.tar.gz",
+      "sha256": "a0779c45179a846986a852bce31bddbe9259b594574f75c0ec146d0567058f7e",
+      "bytes": 3113910,
+      "category": "yt-dlp-github-tag"
+    }
+  ],
+  "pythonVersion": "3.10.11",
+  "pyinstallerCommit": "70fc17210920bce17f4ab09bbf8104b0dbd45338",
+  "curlImpersonateVersion": "2.0.0",
+  "unlicense": {
+    "name": "Unlicense.txt",
+    "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.08.19/LICENSE",
+    "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
+  }
+}

@@ -19,6 +19,118 @@ use tauri_plugin_opener::OpenerExt;
 type Backend = Arc<DesktopBackend>;
 type FavoriteNotifications = Arc<Mutex<FavoriteNotificationLedger>>;
 
+struct YouTubeService {
+    monitor: Mutex<Result<peercast_desktop::youtube::YouTubeMonitor, String>>,
+}
+
+fn with_youtube<T>(
+    service: &YouTubeService,
+    action: impl FnOnce(&mut peercast_desktop::youtube::YouTubeMonitor) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut guard = service
+        .monitor
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match guard.as_mut() {
+        Ok(monitor) => action(monitor),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+fn current_time_ms() -> u64 {
+    chrono::Utc::now().timestamp_millis().max(0) as u64
+}
+
+#[tauri::command]
+fn youtube_status(
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_youtube(&service, |monitor| Ok(monitor.snapshot()))
+}
+
+#[tauri::command]
+fn youtube_add(
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+    url: String,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    let url = peercast_desktop::youtube_process::channel_url(&url)?;
+    with_youtube(&service, |monitor| monitor.add(url, current_time_ms()))
+}
+
+#[tauri::command]
+fn youtube_remove(
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+    id: String,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_youtube(&service, |monitor| monitor.remove(&id))
+}
+
+#[tauri::command]
+fn youtube_set_enabled(
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+    id: String,
+    enabled: bool,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_youtube(&service, |monitor| {
+        monitor.set_enabled(&id, enabled, current_time_ms())
+    })
+}
+
+#[tauri::command]
+fn youtube_refresh(
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_youtube(&service, |monitor| {
+        monitor.request_refresh(current_time_ms())
+    })
+}
+
+#[tauri::command]
+async fn youtube_open(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+    video_id: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    let url = peercast_desktop::youtube_process::video_url(&video_id)?;
+    let known = with_youtube(&service, |monitor| {
+        Ok(monitor
+            .snapshot()
+            .channels
+            .iter()
+            .any(|channel| channel.streams.iter().any(|stream| stream.id == video_id)))
+    })?;
+    if !known {
+        return Err("登録したチャンネルの配信を選択してください".into());
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn start_broadcast(
     backend: State<'_, Backend>,
@@ -330,70 +442,78 @@ async fn get_yp_channels(
     }
     let mut rows = backend.get_yp_channels(refresh).await?;
     if notify_favorites == Some(true) {
-        let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
-        let mut ledger = notifications
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let candidates = ledger.due(rows.as_array().unwrap_or(&Vec::new()), now);
-        if !candidates.is_empty() {
-            let names = candidates
-                .iter()
-                .take(5)
-                .map(|item| item.name.as_str())
-                .collect::<Vec<_>>()
-                .join("、");
-            let remaining = candidates.len().saturating_sub(5);
-            let body = if remaining == 0 {
-                format!("{names} が配信しています。")
-            } else {
-                format!("{names}、ほか{remaining}件が配信しています。")
-            };
-            match app
-                .notification()
-                .builder()
-                .title("お気に入りの配信が見つかりました")
-                .body(body)
-                .show()
-            {
-                Ok(()) => {
-                    let sound_path = peercast_desktop::favorite_notifications::preferred_sound_path(
-                        rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
-                        &candidates,
-                    );
-                    tauri::async_runtime::spawn(async move {
-                        let result = match sound_path {
-                            Some(path) => peercast_desktop::audio::play_sound(path).await,
-                            None => peercast_desktop::audio::play_favorite_chime().await,
-                        };
-                        if let Err(error) = result {
-                            eprintln!("お気に入り通知音を再生できませんでした: {error}");
-                        }
-                    });
-                    let keys = candidates
-                        .iter()
-                        .map(|item| item.key.clone())
-                        .collect::<Vec<_>>();
-                    ledger.mark_sent(&keys, now);
-                    if let Err(error) = ledger.save() {
-                        eprintln!("{error}");
+        notify_favorite_rows(&app, &notifications, &mut rows);
+    }
+    Ok(rows)
+}
+
+fn notify_favorite_rows(
+    app: &tauri::AppHandle,
+    notifications: &Mutex<FavoriteNotificationLedger>,
+    rows: &mut serde_json::Value,
+) {
+    let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let mut ledger = notifications
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let candidates = ledger.due(rows.as_array().unwrap_or(&Vec::new()), now);
+    if !candidates.is_empty() {
+        let names = candidates
+            .iter()
+            .take(5)
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>()
+            .join("、");
+        let remaining = candidates.len().saturating_sub(5);
+        let body = if remaining == 0 {
+            format!("{names} が配信しています。")
+        } else {
+            format!("{names}、ほか{remaining}件が配信しています。")
+        };
+        match app
+            .notification()
+            .builder()
+            .title("お気に入りの配信が見つかりました")
+            .body(body)
+            .show()
+        {
+            Ok(()) => {
+                let sound_path = peercast_desktop::favorite_notifications::preferred_sound_path(
+                    rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
+                    &candidates,
+                );
+                tauri::async_runtime::spawn(async move {
+                    let result = match sound_path {
+                        Some(path) => peercast_desktop::audio::play_sound(path).await,
+                        None => peercast_desktop::audio::play_favorite_chime().await,
+                    };
+                    if let Err(error) = result {
+                        eprintln!("お気に入り通知音を再生できませんでした: {error}");
                     }
-                    if let Some(rows) = rows.as_array_mut() {
-                        for row in rows {
-                            if candidates.iter().any(|item| {
-                                row["name"]
-                                    .as_str()
-                                    .is_some_and(|name| name.trim() == item.name)
-                            }) {
-                                row["favoriteNotificationSent"] = serde_json::Value::Bool(true);
-                            }
+                });
+                let keys = candidates
+                    .iter()
+                    .map(|item| item.key.clone())
+                    .collect::<Vec<_>>();
+                ledger.mark_sent(&keys, now);
+                if let Err(error) = ledger.save() {
+                    eprintln!("{error}");
+                }
+                if let Some(rows) = rows.as_array_mut() {
+                    for row in rows {
+                        if candidates.iter().any(|item| {
+                            row["name"]
+                                .as_str()
+                                .is_some_and(|name| name.trim() == item.name)
+                        }) {
+                            row["favoriteNotificationSent"] = serde_json::Value::Bool(true);
                         }
                     }
                 }
-                Err(error) => eprintln!("お気に入り通知を表示できませんでした: {error}"),
             }
+            Err(error) => eprintln!("お気に入り通知を表示できませんでした: {error}"),
         }
     }
-    Ok(rows)
 }
 
 #[tauri::command]
@@ -506,6 +626,26 @@ fn main() {
                 FavoriteNotificationLedger::new(ledger_path)
             });
             app.manage(Arc::new(Mutex::new(ledger)) as FavoriteNotifications);
+            let youtube_path = path.with_extension("youtube.json");
+            app.manage(YouTubeService { monitor: Mutex::new(peercast_desktop::youtube::YouTubeMonitor::load(youtube_path)) });
+            let youtube_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let requests = with_youtube(&youtube_app.state::<YouTubeService>(), |monitor| Ok(monitor.due_requests(current_time_ms()))).unwrap_or_default();
+                    for request in requests {
+                        let result = match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
+                            Ok(executable) => peercast_desktop::youtube_process::probe(&executable, &request.url).await,
+                            Err(error) => Err(error),
+                        };
+                        let rows = with_youtube(&youtube_app.state::<YouTubeService>(), |monitor| Ok(monitor.complete(&request.id, result, current_time_ms()))).unwrap_or_default();
+                        if !rows.is_empty() {
+                            let ledger = youtube_app.state::<FavoriteNotifications>();
+                            notify_favorite_rows(&youtube_app, &ledger, &mut serde_json::Value::Array(rows));
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            });
             let backend = tauri::async_runtime::block_on(DesktopBackend::open_detecting(path))
                 .map_err(std::io::Error::other)?;
             let saved = tauri::async_runtime::block_on(backend.snapshot()).map_err(std::io::Error::other)?;
@@ -527,6 +667,12 @@ fn main() {
             start_broadcast,
             stop_broadcast,
             get_yp_channels,
+            youtube_status,
+            youtube_add,
+            youtube_remove,
+            youtube_set_enabled,
+            youtube_refresh,
+            youtube_open,
             play_yp_channel,
             apply_limits,
             apply_yellow_pages,

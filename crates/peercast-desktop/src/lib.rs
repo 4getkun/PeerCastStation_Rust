@@ -14,3 +14,5 @@ pub mod recording_flv;
 pub mod recording_path;
 pub mod rules;
 pub mod updater;
+pub mod youtube;
+pub mod youtube_process;

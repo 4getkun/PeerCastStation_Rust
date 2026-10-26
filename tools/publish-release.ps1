@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PlayerArchive,
-    [string]$Version = '1.0.5',
+    [string]$Version = '1.1.0',
     [string]$ReleaseNotes = '自動更新と新しいインストーラーデザインを追加しました。',
     [string]$WorkDirectory = '',
     [string]$ReleaseDirectory = '',
@@ -165,6 +165,18 @@ $immutable = @(
     @{ Bucket='misaka-downloads'; Base=$legacyBase; Key="$legacyArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
     @{ Bucket='misaka-downloads'; Base=$legacyBase; Key=$legacyVersionedKey; File=$legacyManifestPath; Type='application/json' }
 )
+
+$ytSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/yt-dlp/lock.json') -Raw | ConvertFrom-Json
+$ytSourceName = "yt-dlp-$($ytSpec.version)-sources.7z"
+$ytSourceFile = Join-Path $repoRoot "target/youtube-helper/$ytSourceName"
+foreach ($source in @(@{File=$ytSourceFile;Name=$ytSourceName;Type='application/x-7z-compressed'}, @{File="$ytSourceFile.sha256";Name="$ytSourceName.sha256";Type='text/plain; charset=utf-8'})) {
+    if (-not (Test-Path -LiteralPath $source.File)) { throw "Missing yt-dlp source asset: $($source.File)" }
+    $immutable += @{Bucket='peercast-rt-downloads';Base=$dedicatedBase;Key="releases/$Version/$($source.Name)";File=$source.File;Type=$source.Type}
+}
+foreach ($notice in Get-ChildItem -LiteralPath (Join-Path $licenseRoot 'yt-dlp') -File) {
+    $noticeType = if ($notice.Extension -eq '.json') { 'application/json' } else { 'text/plain; charset=utf-8' }
+    $immutable += @{Bucket='peercast-rt-downloads';Base=$dedicatedBase;Key="releases/$Version/licenses/yt-dlp/$($notice.Name)";File=$notice.FullName;Type=$noticeType}
+}
 
 foreach ($item in $immutable) { Invoke-WranglerPut $item.Bucket $item.Key $item.File $item.Type }
 foreach ($item in $immutable) { Test-PublicObject "$($item.Base)/$($item.Key)" $item.File $item.Type }

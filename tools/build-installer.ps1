@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$PlayerArchive,
-    [string]$Version = '1.0.5',
+    [string]$Version = '1.1.0',
     [string]$CliVersion = '2.12.4',
     [string]$WorkDirectory = '',
     [switch]$SkipPackageBuild
@@ -33,6 +33,8 @@ if ($LASTEXITCODE -ne 0) { throw 'PCRPlayer extraction failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Desktop packaging failed.' }
 
 $resources = [ordered]@{
+    (Join-Path $packageStage 'YouTube') = 'YouTube/'
+    (Join-Path $packageStage 'licenses') = 'licenses/'
     (Join-Path $packageStage 'PCRPlayer') = 'PCRPlayer/'
     (Join-Path $packageStage 'player-bundle.json') = 'player-bundle.json'
     (Join-Path $packageStage 'LICENSE-GPL-3.0.txt') = 'LICENSE-GPL-3.0.txt'

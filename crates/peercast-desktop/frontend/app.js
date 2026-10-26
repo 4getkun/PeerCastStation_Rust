@@ -9,6 +9,7 @@
   };
   const byId = (id) => document.getElementById(id);
   const YP_REFRESH_COOLDOWN_MS = 30_000;
+  const YOUTUBE_STATUS_POLL_MS = 5_000;
   const UPDATE_INITIAL_CHECK_DELAY_MS = 30_000;
   const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const UPDATE_LAST_CHECK_KEY = "peercast-rt.update.last-successful-check";
@@ -61,6 +62,11 @@
     recordingBusy: false,
     pendingRecordingRemoval: null,
     ypContextChannel: null,
+    youtubeSnapshot: null,
+    youtubeManagerFingerprint: null,
+    youtubeBusy: false,
+    youtubeQueryBusy: false,
+    youtubeSource: "all",
   };
 
   const viewTitles = { yp: "チャンネル", channels: "配信", connections: "接続", recordings: "録画", logs: "ログ", settings: "設定" };
@@ -332,15 +338,19 @@
     select.replaceChildren();
     const all = document.createElement("option");
     all.value = "all";
-    all.textContent = "すべてのYellow Page";
+    all.textContent = "すべてのチャンネル";
     select.append(all);
+    const youtube = document.createElement("option");
+    youtube.value = "youtube";
+    youtube.textContent = "YouTube";
+    select.append(youtube);
     pages.forEach((page) => {
       const option = document.createElement("option");
       option.value = page.name || page.channelsUrl || "";
       option.textContent = page.name || page.channelsUrl || "名称未設定";
       select.append(option);
     });
-    const values = new Set(["all", ...pages.map((page) => page.name || page.channelsUrl || "")]);
+    const values = new Set(["all", "youtube", ...pages.map((page) => page.name || page.channelsUrl || "")]);
     state.ypSource = values.has(previous) ? previous : "all";
     select.value = state.ypSource;
     return true;
@@ -352,11 +362,25 @@
       const annotation = channelAnnotation(channel);
       if (state.ypScope === "normal" && annotation.isHidden) return false;
       if (state.ypScope === "favorite" && (!annotation.isFavorite || annotation.isHidden)) return false;
-      if (state.ypSource !== "all" && String(channel.yellowPage || "") !== state.ypSource) return false;
+      if (!youtubeSourceMatches(state.ypSource, channel.yellowPage)) return false;
       if (!query) return true;
       return ["name", "genre", "description", "comment"].some((field) =>
         String(channel[field] ?? "").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query));
     });
+  }
+
+  function youtubeSourceMatches(source, yellowPage) {
+    if (source === "youtube") return false;
+    return source === "all" || String(yellowPage || "") === source;
+  }
+
+  function youtubeStateLabel(channel, stream) {
+    if (channel.error) return "確認できず";
+    if (channel.enabled !== true) return "監視無効";
+    if (stream?.status === "live") return "配信中";
+    if (stream?.status === "upcoming") return "予約";
+    if (channel.lastCheckedMs == null) return "確認待ち";
+    return "配信なし";
   }
 
   function ensureVisibleYpSelection(channels) {
@@ -377,19 +401,191 @@
     return element;
   }
 
+  function youtubeChannels() {
+    return Array.isArray(state.youtubeSnapshot?.channels) ? state.youtubeSnapshot.channels : [];
+  }
+
+  function renderYoutubeManager() {
+    const root = byId("youtube-subscriptions");
+    const summary = byId("youtube-manager-summary");
+    if (!root) return;
+    const channels = youtubeChannels();
+    const fingerprint = JSON.stringify(channels.map((channel) => [channel.id, channel.url, channel.name, channel.enabled]));
+    if (fingerprint === state.youtubeManagerFingerprint) {
+      updateYoutubeRefreshControl();
+      return;
+    }
+    if (summary) summary.textContent = channels.length
+      ? `YouTubeを管理・お気に入りを追加（${channels.length}件）`
+      : "YouTubeお気に入りを追加";
+    const focusedAction = root.contains(root.ownerDocument.activeElement)
+      ? root.ownerDocument.activeElement?.dataset?.youtubeAction
+        ? [root.ownerDocument.activeElement.dataset.youtubeAction, root.ownerDocument.activeElement.dataset.youtubeId]
+        : null
+      : null;
+    state.youtubeManagerFingerprint = fingerprint;
+    root.replaceChildren();
+    channels.forEach((channel) => {
+      const row = document.createElement("div");
+      row.className = "youtube-subscription-row";
+      const name = appendText(row, "span", "youtube-subscription-name", channel.name || channel.url || "登録チャンネル");
+      name.title = String(channel.url || "");
+      const toggle = appendText(row, "button", "button button-secondary youtube-subscription-toggle", channel.enabled ? "有効" : "無効");
+      toggle.type = "button";
+      toggle.dataset.youtubeAction = "enabled";
+      toggle.dataset.youtubeId = String(channel.id || "");
+      toggle.setAttribute("aria-pressed", String(channel.enabled === true));
+      const remove = appendText(row, "button", "button button-outline youtube-subscription-remove", "解除");
+      remove.type = "button";
+      remove.dataset.youtubeAction = "remove";
+      remove.dataset.youtubeId = String(channel.id || "");
+      root.append(row);
+    });
+    if (focusedAction) {
+      const matchingButton = [...root.querySelectorAll("[data-youtube-action]")]
+        .find((button) => button.dataset.youtubeAction === focusedAction[0] && button.dataset.youtubeId === focusedAction[1]);
+      matchingButton?.focus();
+    }
+    updateYoutubeRefreshControl();
+  }
+
+  function updateYoutubeRefreshControl() {
+    const button = byId("youtube-refresh");
+    if (!button) return;
+    const refreshState = youtubeRefreshState(state.youtubeSnapshot, Date.now());
+    button.disabled = state.youtubeBusy || refreshState.disabled;
+    button.title = state.youtubeSnapshot?.refreshing === true
+      ? "YouTubeの確認中です"
+      : refreshState.remainingSeconds > 0
+        ? `手動確認はあと${refreshState.remainingSeconds}秒後にできます`
+        : "登録チャンネルを今すぐ確認します";
+  }
+
+  function youtubeRefreshState(snapshot, nowMs) {
+    const lastRefresh = Number(snapshot?.lastRefreshMs);
+    const remainingSeconds = Number.isFinite(lastRefresh) && lastRefresh > 0
+      ? Math.max(0, Math.ceil((lastRefresh + 30_000 - nowMs) / 1000))
+      : 0;
+    return { disabled: !Array.isArray(snapshot?.channels) || snapshot.channels.length === 0 || snapshot.refreshing === true || remainingSeconds > 0, remainingSeconds };
+  }
+
+  function youtubeSnapshotsEqual(left, right) {
+    if (left === right) return true;
+    if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+    if (Array.isArray(left) || Array.isArray(right)) {
+      return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+        && left.every((value, index) => youtubeSnapshotsEqual(value, right[index]));
+    }
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+      key === rightKeys[index] && youtubeSnapshotsEqual(left[key], right[key]));
+  }
+
+  function youtubeStreamRows() {
+    const query = state.ypQuery.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
+    return youtubeChannels().flatMap((channel) => {
+      const streams = channel.enabled === true && !channel.error && Array.isArray(channel.streams) ? channel.streams : [];
+      const supported = streams.filter((stream) => stream && (stream.status === "live" || stream.status === "upcoming"));
+      const entries = supported.length ? supported.map((stream) => ({ channel, stream })) : [{ channel, stream: null }];
+      return entries.filter(({ channel: owner, stream }) => !query || [owner.name, stream?.title].some((value) =>
+        String(value || "").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query)));
+    });
+  }
+
+  function appendYoutubeRows(root) {
+    const source = state.ypSource;
+    if (source !== "all" && source !== "youtube") return 0;
+    const entries = youtubeStreamRows();
+    entries.forEach(({ channel, stream }) => {
+      const card = document.createElement("article");
+      card.className = `youtube-stream-card${stream?.status === "live" ? " is-live" : ""}`;
+      const badge = appendText(card, "span", "youtube-badge", "YouTube");
+      badge.setAttribute("aria-label", "YouTube配信");
+      const body = document.createElement("div");
+      body.className = "youtube-stream-copy";
+      appendText(body, "strong", "youtube-stream-channel", channel.name || "登録チャンネル");
+      if (stream) {
+        appendText(body, "span", "youtube-stream-title", stream.title || "タイトル未設定");
+        if (stream.status === "upcoming" && stream.scheduledAtMs != null) {
+          const date = new Date(Number(stream.scheduledAtMs));
+          appendText(body, "small", "youtube-stream-schedule", Number.isNaN(date.getTime()) ? "配信予定" : `配信予定 ${date.toLocaleString("ja-JP")}`);
+        }
+      } else {
+        const stateLabel = channel.enabled !== true ? "監視は無効です" : channel.error ? "確認できませんでした" : channel.lastCheckedMs == null ? "まもなく配信状況を確認します" : "配信はありません";
+        appendText(body, "span", `youtube-stream-state${channel.error ? " has-error" : ""}`, stateLabel);
+      }
+      card.append(body);
+      const stateLabel = youtubeStateLabel(channel, stream);
+      appendText(card, "span", `youtube-stream-status${stream?.status === "live" ? " status-live" : ""}`, stateLabel);
+      if (stream?.status === "live" && stream.id) {
+        const open = appendText(card, "button", "button button-outline youtube-open", "ブラウザで視聴");
+        open.type = "button";
+        open.dataset.youtubeVideo = String(stream.id);
+        open.setAttribute("aria-label", `${stream.title || "配信"}をブラウザで視聴`);
+      }
+      root.append(card);
+    });
+    return entries.length;
+  }
+
+  async function fetchYoutubeStatus() {
+    if (state.youtubeQueryBusy || document.visibilityState === "hidden") return;
+    state.youtubeQueryBusy = true;
+    try {
+      const snapshot = await invoke("youtube_status", {});
+      if (snapshot && Array.isArray(snapshot.channels)) {
+        if (youtubeSnapshotsEqual(state.youtubeSnapshot, snapshot)) {
+          updateYoutubeRefreshControl();
+          return;
+        }
+        state.youtubeSnapshot = snapshot;
+        renderYoutubeManager();
+        if (currentView() === "yp") renderYpDirectory();
+      }
+    } catch (error) {
+      text("youtube-status", `YouTubeの状態を確認できませんでした: ${errorText(error)}`);
+    } finally {
+      state.youtubeQueryBusy = false;
+    }
+  }
+
+  async function youtubeMutation(command, args) {
+    if (state.youtubeBusy) return;
+    state.youtubeBusy = true;
+    const submit = byId("youtube-add");
+    if (submit) submit.disabled = true;
+    try {
+      const snapshot = await invoke(command, args);
+      if (snapshot && Array.isArray(snapshot.channels)) state.youtubeSnapshot = snapshot;
+      text("youtube-status", "YouTube登録を更新しました。");
+      renderYoutubeManager();
+      renderYpDirectory();
+    } catch (error) {
+      text("youtube-status", `YouTubeを更新できませんでした: ${errorText(error)}`);
+    } finally {
+      state.youtubeBusy = false;
+      if (submit) submit.disabled = false;
+      updateYoutubeRefreshControl();
+    }
+  }
+
   function renderYpDirectory() {
     const root = byId("yp-results");
     if (!root) return;
     const filtered = visibleYpChannels();
     ensureVisibleYpSelection(filtered);
     root.replaceChildren();
-    text("yp-count", `${countableYpChannelCount(filtered)} 件の配信`);
+    const youtubeCount = appendYoutubeRows(root);
+    text("yp-count", `${state.ypSource === "youtube" ? 0 : countableYpChannelCount(filtered)} 件の配信 · YouTube ${state.ypSource === "youtube" || state.ypSource === "all" ? youtubeCount : 0} 件`);
     const empty = byId("yp-empty");
     if (empty) {
-      empty.hidden = filtered.length > 0;
-      empty.textContent = state.ypError
-        ? "一覧を取得できませんでした。更新して再試行してください。"
-        : state.ypLoaded && !state.ypChannels.length && !sourcePages().length
+      empty.hidden = filtered.length > 0 || youtubeCount > 0;
+      empty.textContent = state.ypSource === "youtube" && !youtubeChannels().length
+        ? "YouTubeお気に入りを追加すると、配信中や予約がここに表示されます。"
+        : state.ypError
+          ? "一覧を取得できませんでした。更新して再試行してください。"
+          : state.ypLoaded && !state.ypChannels.length && !sourcePages().length
           ? "設定画面でチャンネル一覧を取得するYellow Pageを登録してください。"
           : state.ypLoaded
             ? "条件に一致する掲載情報はありません。"
@@ -485,7 +681,7 @@
   function updateYpControls() {
     updateRefreshControls();
     const source = byId("yp-source");
-    if (source) source.disabled = state.busy || state.ypBusy || !sourcePages().length;
+    if (source) source.disabled = state.busy || state.ypBusy;
     const selected = currentSelectedDirectoryChannel();
     const canPlay = Boolean(state.snapshot?.running && selected && isPlayableYpChannel(selected) && state.snapshot?.playerAvailable !== false);
     ["selected-play"].forEach((id) => {
@@ -1807,13 +2003,42 @@
     state.ypSource = byId("yp-source").value || "all";
     renderYpDirectory();
   });
+  bind("youtube-add-form", "submit", (event) => {
+    event.preventDefault();
+    const input = byId("youtube-url");
+    const url = String(input?.value || "").trim();
+    if (!url) return;
+    void youtubeMutation("youtube_add", { url }).then(() => {
+      if (byId("youtube-status")?.textContent.startsWith("YouTube登録を更新")) input.value = "";
+    });
+  });
+  bind("youtube-subscriptions", "click", (event) => {
+    const button = event.target.closest("[data-youtube-action]");
+    if (!button) return;
+    const id = button.dataset.youtubeId;
+    if (!id) return;
+    if (button.dataset.youtubeAction === "remove") {
+      void youtubeMutation("youtube_remove", { id });
+      return;
+    }
+    const channel = youtubeChannels().find((entry) => String(entry.id) === String(id));
+    if (channel) void youtubeMutation("youtube_set_enabled", { id, enabled: channel.enabled !== true });
+  });
+  bind("youtube-refresh", "click", () => { void youtubeMutation("youtube_refresh", {}); });
   bind("yp-scope", "change", () => { state.ypScope = byId("yp-scope").value || "normal"; renderYpDirectory(); });
   bind("yp-refresh", "click", () => fetchYpChannels(true, true));
   bind("yp-refresh-save", "click", saveDirectoryPreferences);
   document.querySelectorAll('input[name="yp-refresh-mode"]').forEach((input) => input.addEventListener("change", () => { state.ypDirectoryDirty = true; }));
   bind("yp-refresh-interval", "input", () => { state.ypDirectoryDirty = true; });
-  const ypRoot = byId("yp-results");
-  if (ypRoot) ypRoot.addEventListener("click", (event) => {
+
+  function handleYpResultsClick(event) {
+    const youtubeVideo = event.target.closest("[data-youtube-video]");
+    if (youtubeVideo) {
+      void invoke("youtube_open", { videoId: youtubeVideo.dataset.youtubeVideo }).catch((error) => {
+        text("youtube-status", `ブラウザで開けませんでした: ${errorText(error)}`);
+      });
+      return;
+    }
     const row = event.target.closest(".yp-row");
     if (!row) return;
     const channel = state.ypChannels[Number(row.dataset.ypIndex)];
@@ -1824,7 +2049,27 @@
     } else {
       selectYpChannel(channel);
     }
-  });
+  }
+
+  function handleYpResultsContextMenu(event) {
+    if (isEditableContextTarget(event.target)) return;
+    const row = event.target.closest(".yp-row");
+    if (!row) return;
+    const channel = state.ypChannels[Number(row.dataset.ypIndex)];
+    const menu = byId("yp-context-menu");
+    if (!channel?.name || !menu) return;
+    event.preventDefault();
+    closeAllContextMenus();
+    selectYpChannel(channel);
+    state.ypContextChannel = channel;
+    const directFavorite = directFavoriteRuleIndex(state.snapshot?.desktop?.channelRules, channel.name) >= 0;
+    text("yp-context-favorite-label", directFavorite ? "お気に入りから外す" : "お気に入りに入れる");
+    placeContextMenu(menu, event.clientX, event.clientY);
+    byId("yp-context-favorite")?.focus();
+  }
+
+  const ypRoot = byId("yp-results");
+  if (ypRoot) ypRoot.addEventListener("click", handleYpResultsClick);
   function closeYpContextMenu() {
     const menu = byId("yp-context-menu");
     if (menu) menu.hidden = true;
@@ -1845,22 +2090,7 @@
     menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
   }
-  if (ypRoot) ypRoot.addEventListener("contextmenu", (event) => {
-    if (isEditableContextTarget(event.target)) return;
-    const row = event.target.closest(".yp-row");
-    if (!row) return;
-    const channel = state.ypChannels[Number(row.dataset.ypIndex)];
-    const menu = byId("yp-context-menu");
-    if (!channel?.name || !menu) return;
-    event.preventDefault();
-    closeAllContextMenus();
-    selectYpChannel(channel);
-    state.ypContextChannel = channel;
-    const directFavorite = directFavoriteRuleIndex(state.snapshot?.desktop?.channelRules, channel.name) >= 0;
-    text("yp-context-favorite-label", directFavorite ? "お気に入りから外す" : "お気に入りに入れる");
-    placeContextMenu(menu, event.clientX, event.clientY);
-    byId("yp-context-favorite")?.focus();
-  });
+  if (ypRoot) ypRoot.addEventListener("contextmenu", handleYpResultsContextMenu);
   async function setContextChannelPreference(kind) {
     const channel = state.ypContextChannel;
     closeYpContextMenu();
@@ -2046,4 +2276,6 @@
   refresh();
   scheduleApplicationUpdateChecks();
   window.setInterval(() => refresh(false), 1000);
+  void fetchYoutubeStatus();
+  window.setInterval(() => { if (document.visibilityState !== "hidden") void fetchYoutubeStatus(); }, YOUTUBE_STATUS_POLL_MS);
 })();

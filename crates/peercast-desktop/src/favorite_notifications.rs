@@ -73,7 +73,7 @@ impl FavoriteNotificationLedger {
             else {
                 continue;
             };
-            let key = normalize_key(name);
+            let key = notification_key(row).unwrap_or_else(|| normalize_key(name));
             if key.is_empty() || seen.contains(&key) {
                 continue;
             }
@@ -97,7 +97,11 @@ impl FavoriteNotificationLedger {
 
     pub fn mark_sent(&mut self, keys: &[String], now_ms: u64) {
         for key in keys {
-            let normalized = normalize_key(key);
+            let normalized = if key.starts_with("youtube:") {
+                key.clone()
+            } else {
+                normalize_key(key)
+            };
             if !normalized.is_empty() {
                 self.sent_at_ms_by_key.insert(normalized, now_ms);
             }
@@ -160,6 +164,12 @@ fn normalize_key(name: &str) -> String {
     name.trim().nfkc().collect::<String>().to_lowercase()
 }
 
+fn notification_key(row: &Value) -> Option<String> {
+    let key = row["notificationKey"].as_str()?;
+    let id = key.strip_prefix("youtube:")?;
+    crate::youtube_process::valid_channel_id(id).then(|| key.to_owned())
+}
+
 /// A custom rule sound takes precedence over the bundled chime for this batch.
 pub fn preferred_sound_path(rows: &[Value], candidates: &[FavoriteCandidate]) -> Option<String> {
     rows.iter().find_map(|row| {
@@ -172,7 +182,8 @@ pub fn preferred_sound_path(rows: &[Value], candidates: &[FavoriteCandidate]) ->
         {
             return None;
         }
-        let key = normalize_key(row["name"].as_str()?);
+        let key = notification_key(row)
+            .unwrap_or_else(|| normalize_key(row["name"].as_str().unwrap_or_default()));
         if !candidates.iter().any(|candidate| candidate.key == key) {
             return None;
         }
@@ -187,6 +198,27 @@ pub fn preferred_sound_path(rows: &[Value], candidates: &[FavoriteCandidate]) ->
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn youtube_channel_ids_do_not_collide_with_names_or_each_other() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut ledger = FavoriteNotificationLedger::new(temp.path().join("ledger.json"));
+        let yp = json!({"name":"同じ名前", "isFavorite":true});
+        let yt = json!({"name":"同じ名前", "isFavorite":true, "notificationKey":"youtube:UCNsidkYpIAQ4QaufptQBPHQ"});
+        let yt_other = json!({"name":"同じ名前", "isFavorite":true, "notificationKey":"youtube:UCnsidkYpIAQ4QaufptQBPHQ"});
+        let candidates = ledger.due(&[yp.clone(), yt.clone(), yt_other.clone()], 1000);
+        assert_eq!(candidates.len(), 3);
+        ledger.mark_sent(
+            &candidates
+                .iter()
+                .map(|item| item.key.clone())
+                .collect::<Vec<_>>(),
+            1000,
+        );
+        ledger.save().unwrap();
+        let ledger = FavoriteNotificationLedger::load(temp.path().join("ledger.json")).unwrap();
+        assert!(ledger.due(&[yp, yt, yt_other], 2000).is_empty());
+    }
 
     fn row(
         name: &str,

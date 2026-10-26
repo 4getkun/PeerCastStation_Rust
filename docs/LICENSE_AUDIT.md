@@ -71,3 +71,21 @@ The license audit and embedded UI integration are verified by:
    - Verifies security headers (`nosniff`, `SAMEORIGIN`, `Content-Security-Policy`).
    - Verifies that zero external HTTP/HTTPS CDN references exist in any embedded HTML or CSS payload.
    - Verifies complete end-to-end integration: embedded UI client JavaScript calls JSON-RPC 2.0 backend (`getStatus`, `getChannels`, `getSettings`) and succeeds without error.
+
+---
+
+## 6. yt-dlp 2026.08.19 release records
+
+The PeerCast RT 1.1.0 release records the following yt-dlp executable and corresponding source materials:
+
+| Item | Recorded fact |
+|---|---|
+| yt-dlp version | `2026.08.19` |
+| Official executable | Unmodified upstream `yt-dlp.exe` |
+| Executable SHA-256 | `66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a` |
+| yt-dlp project license | Unlicense |
+| License indicated for the executable | GPL-3.0-or-later |
+| Third-party license and dependency notices | [`THIRD_PARTY_LICENSES.txt`](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt) |
+| Corresponding source archive | [`yt-dlp-2026.08.19-sources.7z`](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/yt-dlp-2026.08.19-sources.7z) |
+| Source/build components recorded for the archive | 42 source archives; Python `3.10.11`; PyInstaller commit `70fc17210920bce17f4ab09bbf8104b0dbd45338`; curl-impersonate `2.0.0` and its eight pinned native source inputs |
+| Local maintenance inputs | `tools/prepare-youtube-helper.ps1`; `tools/yt-dlp/lock.json` |
