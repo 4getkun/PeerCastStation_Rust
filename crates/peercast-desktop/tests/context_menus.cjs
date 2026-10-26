@@ -22,6 +22,7 @@ const allRuntimeChannels = appFunction('allRuntimeChannels');
 const connectionChannelKey = appFunction('connectionChannelKey');
 const isEditableContextTarget = appFunction('isEditableContextTarget');
 const suppressNativeContextMenu = appFunction('suppressNativeContextMenu', { isEditableContextTarget });
+const ypContextChannelFor = appFunction('ypContextChannelFor');
 const editable = { closest: (selector) => selector.includes('input') ? {} : null };
 const background = { closest: () => null };
 let prevented = 0;
@@ -29,6 +30,73 @@ suppressNativeContextMenu({ target: background, preventDefault: () => prevented+
 assert.equal(prevented, 1, 'Every non-editable region suppresses the browser menu');
 suppressNativeContextMenu({ target: editable, preventDefault: () => prevented++ });
 assert.equal(prevented, 1, 'Editable controls retain the native menu');
+
+const ypA = { channelId: 'same-id', yellowPage: 'Page A', name: 'A' };
+const ypB = { channelId: 'same-id', yellowPage: 'Page B', name: 'B' };
+assert.equal(ypContextChannelFor(ypA, [ypB, ypA]), ypA, 'A context action must resolve the row target even if another row is selected');
+assert.equal(ypContextChannelFor(ypA, [ypB]), null, 'A vanished context target must not redirect to a different Yellow Page row');
+
+const contextState = { ypChannels: [ypB, ypA], snapshot: { running: true, playerAvailable: true, desktop: { channelRules: [] } }, busy: false, ypBusy: false, recordingBusy: false, ypContextChannel: null };
+const contextMenu = { hidden: true };
+const menuButtons = new Map(['yp-context-play', 'yp-context-record', 'yp-context-favorite', 'yp-context-ng'].map((id) => [id, { disabled: false, focus() {} }]));
+let selectedTarget = null;
+let preventedContext = false;
+const openYpContextMenu = appFunction('handleYpResultsContextMenu', {
+  isEditableContextTarget: () => false,
+  state: contextState,
+  byId: (id) => id === 'yp-context-menu' ? contextMenu : menuButtons.get(id) || { disabled: false },
+  selectYpChannel: (channel) => { selectedTarget = channel; },
+  closeAllContextMenus: () => { contextState.ypContextChannel = null; },
+  isPlayableYpChannel: () => true,
+  directFavoriteRuleIndex: () => -1,
+  text() {}, placeContextMenu: () => { contextMenu.hidden = false; },
+});
+const clickedRow = { dataset: { ypIndex: '1' } };
+openYpContextMenu({ target: { closest: (selector) => selector === '.yp-row' ? clickedRow : null }, preventDefault() { preventedContext = true; } });
+assert.equal(preventedContext, true);
+assert.equal(selectedTarget, ypA, 'Right-click selection must use the exact list row');
+assert.equal(contextState.ypContextChannel, ypA);
+assert.equal(contextMenu.hidden, false);
+contextMenu.hidden = true;
+contextState.ypContextChannel = null;
+selectedTarget = null;
+preventedContext = false;
+openYpContextMenu({ target: { closest: () => null }, preventDefault() { preventedContext = true; } });
+assert.equal(contextMenu.hidden, true, 'YouTube cards must not open the Yellow Page custom menu');
+assert.equal(contextState.ypContextChannel, null);
+assert.equal(preventedContext, false);
+
+let contextClosed = false;
+let playedContextChannel = null;
+const playContext = appFunction('playYpContextChannel', {
+  currentYpContextChannel: () => ypA,
+  closeYpContextMenu: () => { contextClosed = true; },
+  playYpChannel: (channel) => { playedContextChannel = channel; },
+});
+playContext();
+assert.equal(playedContextChannel, ypA, 'Play must receive the captured right-clicked target');
+assert.equal(contextClosed, true);
+let recordedContextChannel = null;
+const recordContext = appFunction('recordYpContextChannel', {
+  currentYpContextChannel: () => ypA,
+  closeYpContextMenu() {},
+  enqueueSelectedRecording: (channel) => { recordedContextChannel = channel; },
+});
+recordContext();
+assert.equal(recordedContextChannel, ypA, 'Recording must receive the captured right-clicked target');
+
+async function testContextRecordingTarget() {
+  const calls = [];
+  const state = { snapshot: { running: true }, recordingBusy: false, busy: false };
+  const enqueue = appFunction('enqueueSelectedRecording', {
+    state, currentSelectedDirectoryChannel: () => ypB, isPlayableYpChannel: () => true,
+    updateRecordingControls() {},
+    invoke: async (command, args) => { calls.push([command, args]); return command === 'enqueue_recording' ? 'job-A' : { recordings: [] }; },
+    renderSnapshot() {}, setNotice() {}, displayValue: String, requestView: async () => {}, errorText: String,
+  });
+  await enqueue(ypA);
+  assert.deepEqual(calls[0], ['enqueue_recording', { channelId: 'same-id', yellowPage: 'Page A', keep: false }], 'Context recording must not follow a later selected row');
+}
 
 const file = { id: 'r1', currentFile: 'C:/recordings/a.ts', status: 'stopped' };
 assert.equal(canUseRecordingFile(file, 'play', false), true);
@@ -61,6 +129,7 @@ function runtimeHarness(channels, key = 'a:s1', overrides = {}) {
 const a = { id: 'a', sessionId: 's1', canReconnect: true, canDisconnect: true };
 const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
 (async () => {
+  await testContextRecordingTarget();
   let h = runtimeHarness([a, b]);
   assert.equal(await h.action('reconnect'), true);
   assert.deepEqual(h.calls[0], ['control_relay_channel', { channelId: 'a', sessionId: 's1', action: 'reconnect' }], 'Selection changes must not redirect action from A to B');

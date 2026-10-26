@@ -24,6 +24,12 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let menu = Menu::with_items(app, &[&show, &exit]).map_err(|error| error.to_string())?;
     let icon = tauri::image::Image::new(include_bytes!("../icons/tray-icon.rgba"), 32, 32);
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        // Use the small-size artwork at runtime as well as in the executable's ICO.
+        window
+            .set_icon(icon.clone())
+            .map_err(|error| error.to_string())?;
+    }
     let tray = TrayIconBuilder::with_id("peercast-rt-tray")
         .icon(icon)
         .tooltip("Peercast RT")

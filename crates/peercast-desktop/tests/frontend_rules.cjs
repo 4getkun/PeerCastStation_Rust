@@ -77,19 +77,29 @@ console.log('Frontend exact-name regression: 4 fixtures passed');
 const normalizeWindowPreferences = settingsFunction('normalizeWindowPreferences');
 const parseWindowPreset = settingsFunction('parseWindowPreset');
 const isValidWindowSize = settingsFunction('isValidWindowSize');
-assert.deepEqual(normalizeWindowPreferences(), { width: 1600, height: 900, logicalSize: false, minimizeToTray: false, launchAtStartup: false });
-assert.deepEqual(normalizeWindowPreferences({ width: 1486, height: 1059, minimizeToTray: true }), { width: 1486, height: 1059, logicalSize: false, minimizeToTray: true, launchAtStartup: false }, 'Existing saved custom sizes must remain physical and preserve their values');
-assert.deepEqual(normalizeWindowPreferences({ width: 1486, height: 1059, logicalSize: true }), { width: 1486, height: 1059, logicalSize: true, minimizeToTray: false, launchAtStartup: false }, 'Saved logical-size mode must load without changing dimensions');
-const presets = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1440'];
-for (const preset of presets) assert(settingsHtml.includes(`<option value="${preset}">`), `The preset ${preset} must be available`);
+assert.deepEqual(normalizeWindowPreferences(), { width: 1600, height: 900, presets: [], logicalSize: false, minimizeToTray: false, launchAtStartup: false });
+const originalWindow = { width: 1486, height: 1059, logicalSize: true, presets: [{ id: 'p1', name: '<img src=x onerror=alert(1)>', width: 3840, height: 2160 }] };
+const normalizedWindow = normalizeWindowPreferences(originalWindow);
+assert.deepEqual(normalizedWindow, { ...originalWindow, presets: [{ ...originalWindow.presets[0] }], minimizeToTray: false, launchAtStartup: false }, 'Saved user presets and DPI mode must load');
+assert.notEqual(normalizedWindow.presets, originalWindow.presets, 'Normalization must clone the presets array');
+assert.notEqual(normalizedWindow.presets[0], originalWindow.presets[0], 'Normalization must clone preset entries');
+assert.deepEqual(normalizeWindowPreferences(JSON.parse(JSON.stringify(normalizedWindow))), normalizedWindow, 'Named presets must survive save/load serialization');
+assert.deepEqual(normalizeWindowPreferences({ width: 1486, height: 1059, minimizeToTray: true }), { width: 1486, height: 1059, presets: [], logicalSize: false, minimizeToTray: true, launchAtStartup: false }, 'Saved dimensions must remain intact');
+const presets = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1440', '3840x2160'];
+for (const preset of presets) assert(settingsHtml.includes(`<option value="${preset}">`), `The standard preset ${preset} must be available`);
+assert.match(settingsHtml, /<select id="window-preset"[\s\S]*<option value="">手動で指定<\/option>[\s\S]*<optgroup id="window-custom-presets" label="登録したプリセット"/);
+assert.match(settingsHtml, /id="window-preset-name" type="text" maxlength="40"/);
+assert.match(settingsHtml, /id="window-preset-add"[^>]*>現在のサイズを登録/);
+assert.match(settingsHtml, /id="window-preset-remove"[^>]*>選択した登録を削除/);
 assert.deepEqual(parseWindowPreset('1366x768'), { width: 1366, height: 768 });
 assert.deepEqual(parseWindowPreset('1486x1059'), { width: 1486, height: 1059 }, 'Nonstandard preset values must remain selectable');
 assert.equal(isValidWindowSize(1280, 720), true);
-assert.equal(isValidWindowSize(2560, 1440), true);
+assert.equal(isValidWindowSize(7680, 4320), true);
 assert.equal(isValidWindowSize(1279, 720), false);
-assert.equal(isValidWindowSize(1600, 1441), false);
-assert.match(settingsHtml, /id="window-width" type="number" min="1280" max="2560"[^>]*value="1600"/);
-assert.match(settingsHtml, /id="window-height" type="number" min="720" max="1440"[^>]*value="900"/);
+assert.equal(isValidWindowSize(7681, 4320), false);
+assert.equal(isValidWindowSize(1600, 4321), false);
+assert.match(settingsHtml, /id="window-width" type="number" min="1280" max="7680"[^>]*value="1600"/);
+assert.match(settingsHtml, /id="window-height" type="number" min="720" max="4320"[^>]*value="900"/);
 assert.match(settingsHtml, /<input id="window-logical-size" type="checkbox"><span>Windowsの表示倍率に合わせる（論理サイズ）/);
 assert.match(source, /\$\("window-logical-size"\)\.addEventListener\("change", updateWindowLogicalSize\)/,
   'Changing the checkbox must update the saved window preferences');
@@ -111,13 +121,37 @@ updateWindowLogicalSize();
 assert.deepEqual(logicalWindowState.window, { width: 1486, height: 1059, logicalSize: false }, 'Disabling logical size must preserve the same dimensions');
 assert.equal(logicalWindowState.dirty, true);
 assert.match(source, /window:\s*\{ \.\.\.state\.window \}/, 'Saved preferences must include the logical-size setting');
-console.log('Frontend window size regression: physical default, logical mode toggle/save/load, dimensions preserved, presets and range passed');
+const addWindowPreset = settingsFunction('addWindowPreset', { isValidWindowSize });
+const removeWindowPreset = settingsFunction('removeWindowPreset');
+const applyWindowPreset = settingsFunction('applyWindowPreset');
+const base = { width: 1920, height: 1080, logicalSize: true, presets: [] };
+const namedPresetResult = addWindowPreset(base, '  4K <img>  ', 'preset-4k', 3840, 2160);
+assert.equal(namedPresetResult.error, undefined, 'A valid named preset within the maximum size must be accepted');
+assert.deepEqual(namedPresetResult.window.presets, [{ id: 'preset-4k', name: '4K <img>', width: 3840, height: 2160 }]);
+assert.deepEqual(base.presets, [], 'Adding must use a fresh array and preserve the source settings');
+const applied = applyWindowPreset(namedPresetResult.window, namedPresetResult.preset);
+assert.deepEqual([applied.width, applied.height, applied.logicalSize], [3840, 2160, true], 'Applying a named size must leave global DPI mode unchanged');
+const removed = removeWindowPreset(applied, 'preset-4k');
+assert.deepEqual([removed.width, removed.height, removed.presets], [3840, 2160, []], 'Removing a selected preset must preserve current dimensions');
+assert.notEqual(removed.presets, applied.presets, 'Removing must use a fresh presets array');
+assert.match(addWindowPreset(base, ' '.repeat(1), 'empty').error, /1〜40文字/);
+assert.match(addWindowPreset(base, 'x'.repeat(41), 'long').error, /1〜40文字/);
+assert.match(addWindowPreset(base, 'bad size', 'bad', 1279, 720).error, /サイズ/);
+assert.match(addWindowPreset({ ...base, presets: [{ id: 'old', name: 'Custom', width: 1280, height: 720 }] }, ' custom ', 'new').error, /同じ名前/);
+assert.match(addWindowPreset(base, 'Custom', 'i'.repeat(81)).error, /ID/);
+assert.match(addWindowPreset({ ...base, presets: Array.from({ length: 32 }, (_, i) => ({ id: `${i}`, name: `${i}`, width: 1280, height: 720 })) }, '33rd', '33').error, /32件/);
+assert.match(source, /option\.textContent = preset\.name/, 'User-controlled preset names must be assigned as text, never HTML');
+assert.match(source, /const discard = \$\("discard-dialog"\)\.returnValue === "discard";[\s\S]*if \(discard\)[\s\S]*applySnapshot\(state\.snapshot, true\)/, 'Cancel and discard must reload the saved snapshot, including presets');
+assert.match(source, /state\.window = \{ \.\.\.snapshotWindow \}/, 'Loading/canceling must replace unsaved preset arrays with normalized snapshot state');
+console.log('Frontend named window presets: validation, immutable add/remove, DPI preservation, safe labels, serialization and discard checks passed');
 
 const appSource = fs.readFileSync(path.join(__dirname, '../frontend/app.js'), 'utf8');
 const appHtml = fs.readFileSync(path.join(__dirname, '../frontend/index.html'), 'utf8');
-for (const id of ['yp-context-menu', 'yp-context-favorite', 'yp-context-ng']) {
+for (const id of ['yp-context-menu', 'yp-context-play', 'yp-context-record', 'yp-context-favorite', 'yp-context-ng']) {
   assert(appHtml.includes(`id="${id}"`), `The channel context menu must include #${id}`);
 }
+assert.doesNotMatch(appHtml, /id="selected-play"/, 'The detail pane must not repeat the list play action');
+assert.match(appSource, /play\.className = "yp-play-button"/, 'The list-row play action must remain available');
 assert.match(appSource, /addEventListener\("contextmenu"/,
   'Right-clicking a channel must open the direct action menu');
 assert.match(appSource, /invoke\("set_channel_preference"/,
@@ -208,22 +242,22 @@ assert.equal(countableYpChannelCount(countFixtures), 1);
 assert.deepEqual(countFixtures.filter(isCountableYpChannel).map(({ name }) => name), ['有効配信・視聴者数不明']);
 assert.match(appHtml, /class="yp-heading-channel"[\s\S]*id="yp-header-count"/);
 assert.match(appHtml, /id="status-count-divider" class="status-divider"/);
-assert.match(appSource, /renderYpHeaderCount\(filtered, youtubeCount\)/);
+assert.match(appSource, /renderYpHeaderCount\(filtered\)/);
 const ypHeaderCount = { textContent: '' };
 const renderYpHeaderCount = appFunction('renderYpHeaderCount', {
   state: { ypSource: 'all' },
   countableYpChannelCount,
   text: (_id, value) => { ypHeaderCount.textContent = value; },
 });
-renderYpHeaderCount(countFixtures, 3);
-assert.equal(ypHeaderCount.textContent, '1 件の配信 · YouTube 3 件', 'The header count must reflect current filtered channels and visible YouTube entries');
+renderYpHeaderCount(countFixtures);
+assert.equal(ypHeaderCount.textContent, '1 件の配信', 'The channel header count must exclude YouTube detail counts');
 const youtubeOnlyHeader = appFunction('renderYpHeaderCount', {
   state: { ypSource: 'youtube' },
   countableYpChannelCount,
   text: (_id, value) => { ypHeaderCount.textContent = value; },
 });
-youtubeOnlyHeader(countFixtures, 2);
-assert.equal(ypHeaderCount.textContent, '0 件の配信 · YouTube 2 件', 'The YouTube source must not retain the prior channel count');
+youtubeOnlyHeader(countFixtures);
+assert.equal(ypHeaderCount.textContent, '0 件の配信', 'The YouTube source must not retain the prior channel count or add a YouTube subcount');
 const footerCount = { hidden: false };
 const footerDivider = { hidden: false };
 const visibilityById = (id) => id === 'yp-count' ? footerCount : footerDivider;

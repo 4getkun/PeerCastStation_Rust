@@ -1,7 +1,7 @@
 use peercast_app::ConfigManager;
 use peercast_desktop::backend::{DesktopBackend, Limits, YellowPageEntry};
 use peercast_desktop::player::PlayerSettings;
-use peercast_desktop::preferences::{DesktopPreferences, WindowSettings};
+use peercast_desktop::preferences::{DesktopPreferences, WindowSettings, WindowSizePreset};
 use peercast_desktop::rules::ChannelRule;
 use std::fs;
 use std::time::Duration;
@@ -18,6 +18,7 @@ fn logical_window_size_defaults_to_physical_and_round_trips() {
     assert_eq!(legacy.width, 1486);
     assert_eq!(legacy.height, 1059);
     assert!(!legacy.logical_size);
+    assert!(legacy.presets.is_empty());
 
     let logical = WindowSettings {
         logical_size: true,
@@ -26,6 +27,84 @@ fn logical_window_size_defaults_to_physical_and_round_trips() {
     let round_trip: WindowSettings =
         serde_json::from_value(serde_json::to_value(&logical).unwrap()).unwrap();
     assert_eq!(round_trip, logical);
+}
+
+fn preset(id: &str, name: &str, width: u32, height: u32) -> WindowSizePreset {
+    WindowSizePreset {
+        id: id.into(),
+        name: name.into(),
+        width,
+        height,
+    }
+}
+
+#[test]
+fn custom_window_presets_normalize_and_support_4k_sizes() {
+    let mut desktop = DesktopPreferences {
+        window: WindowSettings {
+            width: 3840,
+            height: 2160,
+            presets: vec![preset("large-screen", "  Large screen  ", 7680, 4320)],
+            ..WindowSettings::default()
+        },
+        ..DesktopPreferences::default()
+    };
+    desktop = desktop.normalize().unwrap();
+    assert_eq!(desktop.window.width, 3840);
+    assert_eq!(desktop.window.height, 2160);
+    assert_eq!(desktop.window.presets[0].name, "Large screen");
+    let round_trip: DesktopPreferences =
+        serde_json::from_value(serde_json::to_value(&desktop).unwrap()).unwrap();
+    assert_eq!(round_trip, desktop);
+}
+
+#[test]
+fn invalid_custom_window_presets_are_rejected() {
+    let invalid_presets = [
+        vec![preset("", "Name", 1280, 720)],
+        vec![preset("x".repeat(81).as_str(), "Name", 1280, 720)],
+        vec![preset("one", "  ", 1280, 720)],
+        vec![preset("one", &"n".repeat(41), 1280, 720)],
+        vec![
+            preset("same", "One", 1280, 720),
+            preset("same", "Two", 1280, 720),
+        ],
+        vec![
+            preset("one", "Same", 1280, 720),
+            preset("two", " same ", 1280, 720),
+        ],
+        vec![preset("one", "Too small", 1279, 720)],
+        vec![preset("one", "Too large", 7681, 4320)],
+        (0..=32)
+            .map(|index| {
+                preset(
+                    &format!("id-{index}"),
+                    &format!("Preset {index}"),
+                    1280,
+                    720,
+                )
+            })
+            .collect(),
+    ];
+    for presets in invalid_presets {
+        let desktop = DesktopPreferences {
+            window: WindowSettings {
+                presets,
+                ..WindowSettings::default()
+            },
+            ..DesktopPreferences::default()
+        };
+        assert!(desktop.normalize().is_err());
+    }
+
+    let invalid_dimensions = DesktopPreferences {
+        window: WindowSettings {
+            width: 7681,
+            ..WindowSettings::default()
+        },
+        ..DesktopPreferences::default()
+    };
+    assert!(invalid_dimensions.normalize().is_err());
 }
 
 fn limits(directs: u32, relays: u32, upstream: u32) -> Limits {
@@ -101,6 +180,10 @@ async fn custom_player_and_rules_survive_limits_and_yp_saves_and_reopen() {
             arguments: "\"<stream/>\" \"<channelname/>\" \"<direct/>\"".into(),
         },
         channel_rules: vec![rule("favorite", "Favorite", "Rock")],
+        window: WindowSettings {
+            presets: vec![preset("monitor", "Monitor", 3840, 2160)],
+            ..WindowSettings::default()
+        },
         ..DesktopPreferences::default()
     };
     let saved = backend
@@ -152,6 +235,7 @@ async fn desktop_only_save_keeps_the_active_runtime_and_endpoint() {
     );
     let mut desktop = initial.desktop.clone();
     desktop.channel_rules = vec![rule("rock", "Rock", "Rock")];
+    desktop.window.presets = vec![preset("monitor", "Monitor", 3840, 2160)];
     let updated = backend
         .apply_desktop_preferences(initial.limits, initial.yellow_pages, desktop.clone())
         .await

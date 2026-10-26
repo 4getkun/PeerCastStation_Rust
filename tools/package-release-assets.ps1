@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PackageStage,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [string]$Version = '1.1.1'
+    [string]$Version = '1.1.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +37,9 @@ foreach ($name in @('LICENSE-GPL-3.0.txt', 'LICENSE_AUDIT.md', 'NotoSansJP-OFL.t
     Copy-Item -LiteralPath (Join-Path $stageRoot $name) -Destination (Join-Path $licenseRoot $name)
 }
 Copy-Item -LiteralPath (Join-Path $stageRoot 'PCRPlayer\LICENSE.txt') -Destination (Join-Path $licenseRoot 'PCRPlayer-LICENSE.txt')
+if (Test-Path -LiteralPath (Join-Path $stageRoot 'PCRPlayer\licenses')) {
+    Copy-Item -LiteralPath (Join-Path $stageRoot 'PCRPlayer\licenses') -Destination (Join-Path $licenseRoot 'PCRPlayer') -Recurse
+}
 Copy-Item -LiteralPath (Join-Path $stageRoot 'licenses/yt-dlp') -Destination $licenseRoot -Recurse
 
 $installerHash = (Get-FileHash -LiteralPath $installerAsset -Algorithm SHA256).Hash.ToLowerInvariant()

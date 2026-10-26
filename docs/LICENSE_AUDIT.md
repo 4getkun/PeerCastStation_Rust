@@ -89,3 +89,12 @@ The PeerCast RT 1.1.0 release records the following yt-dlp executable and corres
 | Corresponding source archive | [`yt-dlp-2026.08.19-sources.7z`](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/yt-dlp-2026.08.19-sources.7z) |
 | Source/build components recorded for the archive | 42 source archives; Python `3.10.11`; PyInstaller commit `70fc17210920bce17f4ab09bbf8104b0dbd45338`; curl-impersonate `2.0.0` and its eight pinned native source inputs |
 | Local maintenance inputs | `tools/prepare-youtube-helper.ps1`; `tools/yt-dlp/lock.json` |
+
+## 7. PCRPlayer 1.1.2 corresponding source
+
+The packaged PCRPlayer source archive is published with the PeerCast RT 1.1.2 release:
+
+| Item | Recorded fact |
+|---|---|
+| Corresponding source archive | [`PCRPlayer-PeerCastRT-1.1.2-sources.7z`](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PCRPlayer-PeerCastRT-1.1.2-sources.7z) |
+| Packaged license records | `PCRPlayer/LICENSE.txt` and any files under `PCRPlayer/licenses/` are included in the release asset license folder when present. |

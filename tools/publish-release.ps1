@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PlayerArchive,
-    [string]$Version = '1.1.1',
+    [string]$Version = '1.1.2',
     [string]$ReleaseNotes = '自動更新と新しいインストーラーデザインを追加しました。',
     [string]$WorkDirectory = '',
     [string]$ReleaseDirectory = '',
@@ -12,6 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'release-updater-artifacts.ps1')
+. (Join-Path $PSScriptRoot 'release-player-source-assets.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $desktopRoot = Join-Path $repoRoot 'crates/peercast-desktop'
 $tauriPath = Join-Path $desktopRoot 'tauri.conf.json'
@@ -176,6 +177,13 @@ foreach ($source in @(@{File=$ytSourceFile;Name=$ytSourceName;Type='application/
 foreach ($notice in Get-ChildItem -LiteralPath (Join-Path $licenseRoot 'yt-dlp') -File) {
     $noticeType = if ($notice.Extension -eq '.json') { 'application/json' } else { 'text/plain; charset=utf-8' }
     $immutable += @{Bucket='peercast-rt-downloads';Base=$dedicatedBase;Key="releases/$Version/licenses/yt-dlp/$($notice.Name)";File=$notice.FullName;Type=$noticeType}
+}
+
+$immutable += @(Get-PeerCastPlayerSourceAssets -RepoRoot $repoRoot -Version $Version -WorkRoot $workRoot -LicenseRoot $licenseRoot -PublicBase $dedicatedBase)
+foreach ($item in $immutable) {
+    if (-not (Test-Path -LiteralPath $item.File -PathType Leaf) -or (Get-Item -LiteralPath $item.File).Length -eq 0) {
+        throw "Missing or empty release input: $($item.File)"
+    }
 }
 
 foreach ($item in $immutable) { Invoke-WranglerPut $item.Bucket $item.Key $item.File $item.Type }

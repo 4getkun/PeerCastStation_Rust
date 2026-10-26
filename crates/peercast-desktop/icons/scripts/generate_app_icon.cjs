@@ -4,6 +4,7 @@ const sharp = require("C:/Users/onem4/.cache/codex-runtimes/codex-primary-runtim
 
 const root = path.resolve(__dirname, "..");
 const sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256];
+const previewDirectory = process.env.PEERCAST_ICON_PREVIEW_DIR;
 
 async function main() {
   const { data, info } = await sharp(path.join(root, "../frontend/assets/peer-loop.png"))
@@ -20,16 +21,26 @@ async function main() {
   }
   const crop = { left, top, width: right - left, height: bottom - top };
   const logo = await sharp(data, { raw: info }).extract(crop).png().toBuffer();
+  // At notification-area sizes the 3D shading loses its contour. Keep the
+  // original silhouette, using a flat light mark on a contrasting violet tile.
+  const smallLogo = await sharp(logo).linear([0, 0, 0, 1], [248, 246, 255, 0]).png().toBuffer();
   const frames = [];
   for (const size of sizes) {
-    const inset = Math.max(1, Math.round(size * 0.055));
+    const compact = size <= 40;
+    const inset = compact ? Math.max(1, Math.round(size * 0.085)) : Math.max(1, Math.round(size * 0.055));
     const width = size - inset * 2;
-    const height = Math.round(width * crop.height / crop.width);
-    const mark = await sharp(logo).resize(width, height, { kernel: "lanczos3" })
+    const height = Math.round(width * crop.height / crop.width * (compact ? 1.12 : 1));
+    const mark = await sharp(compact ? smallLogo : logo).resize(width, height, { kernel: "lanczos3" })
       .sharpen({ sigma: 0.5, m1: 0.4, m2: 1.2 }).png().toBuffer();
-    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect x="0.5" y="0.5" width="${size - 1}" height="${size - 1}" rx="${size * 0.22}" fill="#eee8ff" stroke="#c9bbf4" stroke-width="1"/></svg>`);
+    const fill = compact ? "#6045d5" : "#eee8ff";
+    const stroke = compact ? "#5136c3" : "#c9bbf4";
+    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect x="0.5" y="0.5" width="${size - 1}" height="${size - 1}" rx="${size * 0.22}" fill="${fill}" stroke="${stroke}" stroke-width="1"/></svg>`);
     const png = await sharp(svg).composite([{ input: mark, left: inset, top: Math.floor((size - height) / 2) }]).png().toBuffer();
     frames.push({ size, png });
+    if (previewDirectory) {
+      fs.mkdirSync(previewDirectory, { recursive: true });
+      fs.writeFileSync(path.join(previewDirectory, `${size}.png`), png);
+    }
     if (size === 32) {
       fs.writeFileSync(path.join(root, "tray-icon.rgba"), await sharp(png).ensureAlpha().raw().toBuffer());
     }

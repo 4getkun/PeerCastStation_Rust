@@ -56,6 +56,10 @@
     return {
       width: Number.isFinite(width) ? Math.trunc(width) : 1600,
       height: Number.isFinite(height) ? Math.trunc(height) : 900,
+      presets: Array.isArray(value.presets) ? value.presets.map((preset) => ({
+        id: String(preset?.id ?? ""), name: String(preset?.name ?? ""),
+        width: Number(preset?.width), height: Number(preset?.height),
+      })) : [],
       logicalSize: Boolean(value.logicalSize),
       minimizeToTray: Boolean(value.minimizeToTray),
       launchAtStartup: Boolean(value.launchAtStartup),
@@ -66,8 +70,31 @@
     return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
   }
   function isValidWindowSize(width, height) {
-    return Number.isInteger(width) && width >= 1280 && width <= 2560
-      && Number.isInteger(height) && height >= 720 && height <= 1440;
+    return Number.isInteger(width) && width >= 1280 && width <= 7680
+      && Number.isInteger(height) && height >= 720 && height <= 4320;
+  }
+  function addWindowPreset(windowSettings, name, id, width = windowSettings.width, height = windowSettings.height) {
+    const normalizedName = String(name ?? "").trim();
+    if (!normalizedName || [...normalizedName].length > 40) return { error: "プリセット名は1〜40文字で入力してください。" };
+    if (!isValidWindowSize(width, height)) return { error: "サイズは幅1280〜7680、高さ720〜4320pxで入力してください。" };
+    const current = Array.isArray(windowSettings.presets) ? windowSettings.presets : [];
+    if (current.length >= 32) return { error: "プリセットは32件まで登録できます。" };
+    if (!String(id).trim() || [...String(id)].length > 80) return { error: "プリセットIDを作成できませんでした。" };
+    if (current.some((preset) => preset.id === String(id))) return { error: "プリセットIDが重複しています。" };
+    if (current.some((preset) => String(preset.name).trim().toLowerCase() === normalizedName.toLowerCase())) return { error: "同じ名前のプリセットがすでにあります。" };
+    const preset = { id: String(id), name: normalizedName, width, height };
+    return { window: { ...windowSettings, presets: [...current, preset] }, preset };
+  }
+  function removeWindowPreset(windowSettings, id) {
+    const current = Array.isArray(windowSettings.presets) ? windowSettings.presets : [];
+    return { ...windowSettings, presets: current.filter((preset) => preset.id !== id) };
+  }
+  function applyWindowPreset(windowSettings, preset) {
+    return { ...windowSettings, width: preset.width, height: preset.height };
+  }
+  function windowPresetKeyForSize(windowSettings) {
+    const selected = windowSettings.presets.find((preset) => preset.width === windowSettings.width && preset.height === windowSettings.height);
+    return selected ? `user:${selected.id}` : `${windowSettings.width}x${windowSettings.height}`;
   }
   function formatBackendUptime(seconds) {
     if (seconds === null || seconds === undefined || seconds === "") return "—";
@@ -85,11 +112,12 @@
   const ruleFields = ["name", "details", "comment", "contactUrl", "yellowPage", "streamUrl", "contentType", "listeners", "bitrate"];
   const recordingDefaults = { enabled: false, directory: "recordings", channelSubfolders: true, limitConcurrent: true, maxConcurrent: 5, retryCount: 30, retryIntervalSecs: 10, disconnectEveryRetries: 5, disconnectOnRetryEnd: true, splitMinutes: null, splitSizeMb: null, allDay: true, watchStart: "00:00", watchEnd: "23:59", monitorIntervalSecs: 60, rules: [] };
   function cloneRecording(value) { return { ...value, rules: (value.rules || []).map((rule) => ({ ...rule, fields: [...rule.fields] })) }; }
-  const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), window: normalizeWindowPreferences(), selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
+  const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
+  Object.assign(state, { youtubeSnapshot: null, youtubeLoaded: false, youtubeLoading: false, youtubeBusy: false, youtubeMessage: "読み込み中" });
   const meta = {
     general: ["全般", "現在のバックエンド状態と設定ファイルを確認します。"],
     connection: ["接続", "接続上限を変更します。保存時に実バックエンドへ反映します。"],
-    "yellow-pages": ["イエローページ", "チャンネル一覧の取得先を管理します。\nSPへの掲載は、配信画面で掲載を選んだ場合に行われます。"],
+    "yellow-pages": ["イエローページ", "チャンネル一覧の取得先とYouTubeお気に入りを管理します。\nSPへの掲載は、配信画面で掲載を選んだ場合に行われます。"],
     player: ["プレイヤー", "視聴時に起動するプレイヤーと引数を設定します。"],
     "channel-rules": ["NG・お気に入り", "チャンネル情報に一致する条件と表示・通知方法を設定します。"],
     recording: ["録画", "保存先、録画の再試行と自動監視条件を設定します。"],
@@ -182,6 +210,15 @@
     $("delete-page").disabled = !editable || state.selected === null;
     $("save-button").disabled = !editable || !state.dirty;
     $("cancel-button").disabled = state.busy;
+    const youtubeDisabled = !state.ready || state.loading || state.busy || state.youtubeLoading || state.youtubeBusy;
+    ["youtube-url", "youtube-add", "youtube-refresh"].forEach((id) => { $(id).disabled = youtubeDisabled; });
+    root.querySelectorAll("[data-youtube-action]").forEach((button) => { button.disabled = youtubeDisabled; });
+    const refreshState = youtubeRefreshState(state.youtubeSnapshot, Date.now());
+    $("youtube-refresh").disabled = youtubeDisabled || refreshState.disabled;
+    $("youtube-refresh").title = refreshState.remainingSeconds > 0 ? `手動確認はあと${refreshState.remainingSeconds}秒後にできます` : "登録チャンネルを今すぐ確認します";
+    ["window-preset", "window-width", "window-height", "window-logical-size", "window-minimize-to-tray", "window-launch-at-startup", "window-preset-name"].forEach((id) => { $(id).disabled = !editable; });
+    $("window-preset-add").disabled = !editable || state.window.presets.length >= 32;
+    $("window-preset-remove").disabled = !editable || !state.selectedWindowPreset.startsWith("user:");
     root.querySelectorAll(".yp-row").forEach((button) => { button.disabled = state.loading || state.busy; });
     const hasRule = state.selectedRule !== null && state.rules[state.selectedRule];
     ["use-bundled-player", "player-arguments", "rule-name", "rule-pattern", "rule-enabled", "rule-regex", "rule-normalize-width", "rule-match-case", "rule-favorite", "rule-hidden", "rule-mute", "rule-text-color-enabled", "rule-text-color", "rule-background-color-enabled", "rule-background-color", "rule-sound-path", "preview-rule-sound", "preview-rules", ...ruleFields.map((field) => `rule-field-${field}`)].forEach((id) => { const element = $(id); if (element) element.disabled = !editable || (id.startsWith("rule-") && !hasRule); });
@@ -222,6 +259,131 @@
     state.dirty = true;
     setStatus("未保存の変更があります");
     renderControls();
+  }
+  function renderWindowPresetOptions(selectedKey = state.selectedWindowPreset) {
+    const group = $("window-custom-presets");
+    group.replaceChildren();
+    for (const preset of state.window.presets) {
+      const option = document.createElement("option");
+      option.value = `user:${preset.id}`;
+      option.textContent = preset.name;
+      group.append(option);
+    }
+    const select = $("window-preset");
+    select.value = selectedKey;
+    if (select.value !== selectedKey) select.value = "";
+    state.selectedWindowPreset = select.value;
+  }
+  function renderYoutubeSubscriptions() {
+    const rootElement = $("youtube-subscriptions");
+    const channels = Array.isArray(state.youtubeSnapshot?.channels) ? state.youtubeSnapshot.channels : [];
+    const focused = rootElement.contains(rootElement.ownerDocument.activeElement)
+      ? [rootElement.ownerDocument.activeElement?.dataset?.youtubeAction, rootElement.ownerDocument.activeElement?.dataset?.youtubeId]
+      : null;
+    rootElement.replaceChildren();
+    if (!channels.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "YouTubeチャンネルはまだ登録されていません。";
+      rootElement.append(empty);
+    }
+    for (const channel of channels) {
+      const row = document.createElement("div");
+      row.className = "youtube-settings-subscription";
+      const label = document.createElement("span");
+      label.className = "youtube-settings-subscription-name";
+      const name = document.createElement("strong");
+      name.textContent = String(channel.name || channel.url || "登録チャンネル");
+      label.append(name);
+      const url = document.createElement("span");
+      url.className = "youtube-settings-subscription-url";
+      url.textContent = String(channel.url || "");
+      label.append(url);
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "button button-secondary";
+      toggle.textContent = channel.enabled === true ? "監視を無効にする" : "監視を有効にする";
+      toggle.dataset.youtubeAction = "enabled";
+      toggle.dataset.youtubeId = String(channel.id || "");
+      toggle.setAttribute("aria-pressed", String(channel.enabled === true));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button-secondary youtube-remove";
+      remove.textContent = "解除";
+      remove.dataset.youtubeAction = "remove";
+      remove.dataset.youtubeId = String(channel.id || "");
+      row.append(label, toggle, remove);
+      rootElement.append(row);
+    }
+    if (focused?.[0]) {
+      const nextFocus = [...rootElement.querySelectorAll("[data-youtube-action]")]
+        .find((button) => button.dataset.youtubeAction === focused[0] && button.dataset.youtubeId === focused[1]);
+      nextFocus?.focus();
+    }
+    $("youtube-status").textContent = state.youtubeMessage;
+    renderControls();
+  }
+  function youtubeRefreshState(snapshot, nowMs) {
+    const lastRefresh = Number(snapshot?.lastRefreshMs);
+    const remainingSeconds = Number.isFinite(lastRefresh) && lastRefresh > 0
+      ? Math.max(0, Math.ceil((lastRefresh + 30_000 - nowMs) / 1000))
+      : 0;
+    return { disabled: !Array.isArray(snapshot?.channels) || snapshot.channels.length === 0 || snapshot.refreshing === true || remainingSeconds > 0, remainingSeconds };
+  }
+  function acceptYoutubeSnapshot(snapshot, message) {
+    if (!snapshot || !Array.isArray(snapshot.channels)) return false;
+    state.youtubeSnapshot = snapshot;
+    state.youtubeLoaded = true;
+    state.youtubeMessage = message;
+    renderYoutubeSubscriptions();
+    window.dispatchEvent(new CustomEvent("youtube-snapshot-updated", { detail: snapshot }));
+    return true;
+  }
+  async function loadYoutubeSettings() {
+    if (state.youtubeLoaded || state.youtubeLoading) return;
+    state.youtubeLoading = true;
+    state.youtubeMessage = "YouTube登録を読み込み中です…";
+    renderControls();
+    window.dispatchEvent(new Event("youtube-snapshot-requested"));
+  }
+  window.addEventListener("youtube-snapshot-polled", (event) => {
+    const snapshot = event.detail;
+    if (!snapshot || !Array.isArray(snapshot.channels)) return;
+    const fingerprint = (channels) => JSON.stringify(channels.map((channel) => [channel.id, channel.url, channel.name, channel.enabled]));
+    const changed = fingerprint(state.youtubeSnapshot?.channels || []) !== fingerprint(snapshot.channels);
+    state.youtubeSnapshot = snapshot;
+    const firstLoad = !state.youtubeLoaded;
+    state.youtubeLoaded = true;
+    state.youtubeLoading = false;
+    if (firstLoad) state.youtubeMessage = "YouTube登録を読み込みました。";
+    else if (state.youtubeMessage.startsWith("YouTubeの状態を確認できませんでした:")) state.youtubeMessage = "YouTube登録を読み込みました。";
+    $("youtube-status").textContent = state.youtubeMessage;
+    if (changed) renderYoutubeSubscriptions();
+    else renderControls();
+  });
+  window.addEventListener("youtube-snapshot-error", (event) => {
+    state.youtubeLoading = false;
+    state.youtubeMessage = `YouTubeの状態を確認できませんでした: ${String(event.detail || "")}`;
+    $("youtube-status").textContent = state.youtubeMessage;
+    renderControls();
+  });
+  async function youtubeSettingsMutation(command, args) {
+    if (state.youtubeBusy || !state.ready) return false;
+    state.youtubeBusy = true;
+    state.youtubeMessage = "YouTube登録を更新しています…";
+    renderYoutubeSubscriptions();
+    try {
+      const snapshot = await invoke(command, args);
+      acceptYoutubeSnapshot(snapshot, "YouTube登録を更新しました。");
+      return true;
+    } catch (error) {
+      state.youtubeMessage = `YouTubeを更新できませんでした: ${error.message || error}`;
+      renderYoutubeSubscriptions();
+      return false;
+    } finally {
+      state.youtubeBusy = false;
+      renderControls();
+    }
   }
   function pageValue() {
     return { name: $("page-name").value, channelsUrl: $("page-url").value };
@@ -529,9 +691,10 @@
       state.recording = { ...snapshotRecording, rules: snapshotRecording.rules.map((rule) => ({ ...rule, fields: [...rule.fields] })) };
       state.savedRecording = cloneRecording(state.recording);
       state.window = { ...snapshotWindow };
+      state.selectedWindowPreset = windowPresetKeyForSize(state.window);
       $("window-width").value = String(state.window.width);
       $("window-height").value = String(state.window.height);
-      $("window-preset").value = `${state.window.width}x${state.window.height}`;
+      renderWindowPresetOptions(state.selectedWindowPreset);
       $("window-logical-size").checked = state.window.logicalSize;
       $("window-minimize-to-tray").checked = state.window.minimizeToTray;
       $("window-launch-at-startup").checked = state.window.launchAtStartup;
@@ -683,6 +846,7 @@
     if (page === "channel-rules" && state.selectedRule !== null) $("saved-rules-disclosure").open = true;
     if (state.updateViewActive) ensureUpdateStatus();
     else stopUpdatePolling();
+    if (page === "yellow-pages" && !state.youtubeLoaded) void loadYoutubeSettings();
   }
   $("saved-rules-disclosure").addEventListener("toggle", handleRuleDisclosureToggle);
   async function save() {
@@ -700,7 +864,17 @@
     const formError = $("form-error");
     const invalidPage = state.pages.find((page) => !page.name.trim() || !page.channelsUrl.trim());
     if (!isValidWindowSize(state.window.width, state.window.height)) {
-      setNotice("ウィンドウサイズは幅1280〜2560px、高さ720〜1440pxで入力してください。", true);
+      setNotice("ウィンドウサイズは幅1280〜7680px、高さ720〜4320pxで入力してください。", true);
+      activate("appearance");
+      return;
+    }
+    const invalidPreset = state.window.presets.length > 32 || state.window.presets.some((preset, index, presets) =>
+      !preset.id.trim() || [...preset.id].length > 80 || !preset.name.trim() || [...preset.name.trim()].length > 40
+      || !isValidWindowSize(preset.width, preset.height)
+      || presets.findIndex((candidate) => candidate.id === preset.id) !== index
+      || presets.findIndex((candidate) => candidate.name.trim().toLowerCase() === preset.name.trim().toLowerCase()) !== index);
+    if (invalidPreset) {
+      setNotice("登録プリセットの名前、サイズ、重複または登録数を確認してください。", true);
       activate("appearance");
       return;
     }
@@ -804,18 +978,53 @@
   window.addEventListener("pagehide", onUpdatePageHide, { once: true });
   ["max-directs", "max-relays", "max-upstream-rate"].forEach((id) => $(id).addEventListener("input", setDirty));
   $("window-preset").addEventListener("change", () => {
-    const preset = parseWindowPreset($("window-preset").value);
-    if (preset) { $("window-width").value = String(preset.width); $("window-height").value = String(preset.height); }
-    state.window.width = Number($("window-width").value);
-    state.window.height = Number($("window-height").value);
+    const key = $("window-preset").value;
+    let preset;
+    if (key.startsWith("user:")) {
+      preset = state.window.presets.find((item) => `user:${item.id}` === key);
+      if (!preset) return;
+      state.window = applyWindowPreset(state.window, preset);
+    } else {
+      preset = parseWindowPreset(key);
+      if (preset) state.window = applyWindowPreset(state.window, preset);
+    }
+    state.selectedWindowPreset = key;
+    $("window-width").value = String(state.window.width);
+    $("window-height").value = String(state.window.height);
+    renderControls();
     setDirty();
   });
   ["window-width", "window-height"].forEach((id) => $(id).addEventListener("input", () => {
     state.window.width = Number($("window-width").value);
     state.window.height = Number($("window-height").value);
-    $("window-preset").value = `${$("window-width").value}x${$("window-height").value}`;
+    state.selectedWindowPreset = windowPresetKeyForSize(state.window);
+    renderWindowPresetOptions(state.selectedWindowPreset);
+    renderControls();
     setDirty();
   }));
+  $("window-preset-add").addEventListener("click", () => {
+    const uuid = window.crypto?.randomUUID?.() || `window-preset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const result = addWindowPreset(state.window, $("window-preset-name").value, uuid);
+    const error = $("window-preset-error");
+    error.textContent = result.error || "";
+    error.hidden = !result.error;
+    if (result.error) return;
+    state.window = result.window;
+    state.selectedWindowPreset = `user:${result.preset.id}`;
+    $("window-preset-name").value = "";
+    renderWindowPresetOptions();
+    renderControls();
+    setDirty();
+  });
+  $("window-preset-remove").addEventListener("click", () => {
+    if (!state.selectedWindowPreset.startsWith("user:")) return;
+    const id = state.selectedWindowPreset.slice("user:".length);
+    state.window = removeWindowPreset(state.window, id);
+    state.selectedWindowPreset = windowPresetKeyForSize(state.window);
+    renderWindowPresetOptions();
+    renderControls();
+    setDirty();
+  });
   ["window-minimize-to-tray", "window-launch-at-startup"].forEach((id) => $(id).addEventListener("change", () => {
     state.window.minimizeToTray = $("window-minimize-to-tray").checked;
     state.window.launchAtStartup = $("window-launch-at-startup").checked;
@@ -826,6 +1035,26 @@
     setDirty();
   }
   $("window-logical-size").addEventListener("change", updateWindowLogicalSize);
+  $("youtube-add-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("youtube-url");
+    const url = String(input.value || "").trim();
+    if (!url) return;
+    void youtubeSettingsMutation("youtube_add", { url }).then((saved) => { if (saved) input.value = ""; });
+  });
+  $("youtube-subscriptions").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-youtube-action]");
+    if (!button || state.youtubeBusy) return;
+    const id = button.dataset.youtubeId;
+    if (!id) return;
+    if (button.dataset.youtubeAction === "remove") {
+      void youtubeSettingsMutation("youtube_remove", { id });
+      return;
+    }
+    const channel = state.youtubeSnapshot?.channels?.find((entry) => String(entry.id) === String(id));
+    if (channel) void youtubeSettingsMutation("youtube_set_enabled", { id, enabled: channel.enabled !== true });
+  });
+  $("youtube-refresh").addEventListener("click", () => { void youtubeSettingsMutation("youtube_refresh", {}); });
   $("page-name").addEventListener("input", () => { commitEditor(); setDirty(); });
   $("page-url").addEventListener("input", () => { commitEditor(); setDirty(); });
   $("add-page").addEventListener("click", () => {
@@ -982,6 +1211,7 @@
     setNotice(`設定を読み込めませんでした: ${error.message || error}`, true);
     renderControls();
   });
+  void loadYoutubeSettings();
   return {
     requestLeave, updateSnapshot, isDirty: () => state.dirty,
     addChannelRule(channel, kind = "favorite") {

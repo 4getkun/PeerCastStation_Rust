@@ -7,6 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $packageRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$releaseVersion = (Get-Content -LiteralPath (Join-Path $packageRoot 'crates/peercast-desktop/tauri.conf.json') -Raw | ConvertFrom-Json).version
 $sourceRoot = (Resolve-Path -LiteralPath $PlayerSource).Path
 $outputRoot = [IO.Path]::GetFullPath($Destination)
 if ($outputRoot.StartsWith($sourceRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or $outputRoot -eq $sourceRoot) {
@@ -51,6 +52,18 @@ foreach ($file in Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Rec
     New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
     Copy-Item -LiteralPath $file.FullName -Destination $target -Force
 }
+$playerLicenseFiles = @()
+$playerLicenseRoot = Join-Path $sourceRoot 'licenses'
+if (Test-Path -LiteralPath $playerLicenseRoot) {
+    foreach ($file in Get-ChildItem -LiteralPath $playerLicenseRoot -Recurse -File) {
+        if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Player license symlinks are not supported.' }
+        $relative = [IO.Path]::GetRelativePath($sourceRoot, $file.FullName)
+        $target = Join-Path $playerRoot $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+        $playerLicenseFiles += $relative
+    }
+}
 Copy-Item -LiteralPath (Join-Path $packageRoot 'crates\peercast-desktop\frontend\fonts\OFL.txt') -Destination (Join-Path $outputRoot 'NotoSansJP-OFL.txt') -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot 'crates\peercast-desktop\frontend\assets\tabler\LICENSE.txt') -Destination (Join-Path $outputRoot 'Tabler-Icons-MIT.txt') -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot 'crates\peercast-desktop\icons\LICENSE.txt') -Destination (Join-Path $outputRoot 'LICENSE-GPL-3.0.txt') -Force
@@ -68,8 +81,11 @@ Copy-Item -LiteralPath (Join-Path $packageRoot 'docs\LICENSE_AUDIT.md') -Destina
     'https://github.com/4getkun/PeerCastStation_Rust'
     ''
     'This binary is distributed under GNU General Public License version 3 or later.'
+    ''
+    'Bundled modified PCRPlayer corresponding source and build inputs:'
+    "https://peercast-rt-downloads.fourgetkun.com/releases/$releaseVersion/PCRPlayer-PeerCastRT-$releaseVersion-sources.7z"
 ) | Set-Content -LiteralPath (Join-Path $outputRoot 'SOURCE.txt') -Encoding utf8
-$packagedFiles = @('PCRPlayer64.exe', 'LICENSE.txt') + @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($sourceRoot, $_.FullName) })
+$packagedFiles = @('PCRPlayer64.exe', 'LICENSE.txt') + @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($sourceRoot, $_.FullName) }) + $playerLicenseFiles
 $manifest = foreach ($relative in $packagedFiles) {
     $sourceHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot $relative) -Algorithm SHA256).Hash
     $copyHash = (Get-FileHash -LiteralPath (Join-Path $playerRoot $relative) -Algorithm SHA256).Hash

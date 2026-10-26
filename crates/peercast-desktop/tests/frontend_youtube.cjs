@@ -6,10 +6,18 @@ const root = path.join(__dirname, '../frontend');
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+const settings = fs.readFileSync(path.join(root, 'settings.js'), 'utf8');
+const settingsHtml = fs.readFileSync(path.join(root, 'settings.html'), 'utf8');
+const settingsCss = fs.readFileSync(path.join(root, 'settings.css'), 'utf8');
 
 function appFunction(name, bindings = {}) {
   const match = app.match(new RegExp(`  (?:async )?function ${name}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n  \\}`));
   assert(match, `The ${name} helper must exist`);
+  return new Function(...Object.keys(bindings), `return (${match[0].trim()})`)(...Object.values(bindings));
+}
+function settingsFunction(name, bindings = {}) {
+  const match = settings.match(new RegExp(`  (?:async )?function ${name}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n  \\}`));
+  assert(match, `The ${name} settings helper must exist`);
   return new Function(...Object.keys(bindings), `return (${match[0].trim()})`)(...Object.values(bindings));
 }
 
@@ -24,7 +32,7 @@ assert.equal(stateLabel({ enabled: true, lastCheckedMs: 100 }, { status: 'live' 
 assert.equal(stateLabel({ enabled: true, lastCheckedMs: 100 }, { status: 'upcoming' }), '予約');
 assert.equal(stateLabel({ enabled: true, error: 'refresh failed' }, { status: 'live' }), '確認できず', 'A stale cached live result must not mask a channel error');
 assert.equal(stateLabel({ enabled: false, lastCheckedMs: 100 }, { status: 'live' }), '監視無効', 'Disabled channels must not be labeled live');
-const refreshState = appFunction('youtubeRefreshState');
+const refreshState = settingsFunction('youtubeRefreshState');
 const hasMonitoredChannel = { channels: [{ id: 'a', enabled: true }] };
 assert.deepEqual(refreshState({ ...hasMonitoredChannel, refreshing: true, lastRefreshMs: 10_000 }, 50_000), { disabled: true, remainingSeconds: 0 });
 assert.deepEqual(refreshState({ ...hasMonitoredChannel, refreshing: false, lastRefreshMs: 50_000 }, 79_999), { disabled: true, remainingSeconds: 1 });
@@ -58,14 +66,26 @@ const searchState = {
 const searched = appFunction('youtubeStreamRows', { state: searchState, youtubeChannels: appFunction('youtubeChannels', { state: searchState }) });
 assert.deepEqual(searched().map(({ channel }) => channel.id), ['b'], 'Search matches stream titles without exposing unrelated streams');
 
-for (const command of ['youtube_status', 'youtube_add', 'youtube_remove', 'youtube_set_enabled', 'youtube_refresh', 'youtube_open']) {
-  assert(app.includes(`"${command}"`), `The frontend must wire ${command}`);
+for (const command of ['youtube_add', 'youtube_remove', 'youtube_set_enabled', 'youtube_refresh']) {
+  assert(settings.includes(`"${command}"`), `Settings must wire ${command}`);
 }
-for (const id of ['youtube-manager', 'youtube-add-form', 'youtube-subscriptions', 'youtube-refresh']) {
-  assert(html.includes(`id="${id}"`), `The YouTube manager must include #${id}`);
+for (const command of ['youtube_status', 'youtube_open']) assert(app.includes(`"${command}"`), `Channel display must wire ${command}`);
+for (const id of ['youtube-add-form', 'youtube-subscriptions', 'youtube-refresh']) {
+  assert(settingsHtml.includes(`id="${id}"`), `The settings YouTube manager must include #${id}`);
 }
+assert(!html.includes('YouTubeお気に入りを追加') && !html.includes('id="youtube-add-form"'), 'Channel screen must not contain YouTube registration or management UI');
+assert(settingsHtml.includes('追加・監視切替・解除はすぐに保存'), 'The settings panel must explain that YouTube management saves immediately');
+assert(!app.includes('youtube_add') && !app.includes('youtube_remove') && !app.includes('youtube_set_enabled'), 'Channel screen must leave YouTube management actions to settings');
+assert.match(settings, /name\.textContent = String\(channel\.name/ , 'Registered names must be inserted as text');
+assert.match(app, /window\.dispatchEvent\(new CustomEvent\("youtube-snapshot-polled"/);
+assert.match(settings, /addEventListener\("youtube-snapshot-polled"/);
+assert.match(settings, /youtubeMessage = "YouTube登録を読み込みました。";[\s\S]*\$\("youtube-status"\)\.textContent = state\.youtubeMessage/ , 'The polled snapshot updates the status even when the channel list is unchanged');
+assert.match(settings, /dispatchEvent\(new Event\("youtube-snapshot-requested"\)\)/);
+assert.doesNotMatch(settings, /invoke\("youtube_status"/, 'Settings must reuse the existing polling stream instead of adding another status poll');
+assert.match(settingsCss, /#panel-yellow-pages\.yp-content\{grid-template-rows:max-content max-content;align-content:start\}/, 'The YP management card must not collapse the list/editor row on short windows');
 assert(html.includes('id="yp-source"'), 'YouTube uses the existing source selector');
-assert(css.includes('.youtube-stream-card') && css.includes('.youtube-manager'), 'YouTube cards and collapsed management have styling');
+assert(css.includes('.youtube-stream-card') && !css.includes('.youtube-manager'), 'Live cards remain styled and channel-screen manager styling is removed');
+assert(settingsCss.includes('.youtube-settings-manager'), 'Settings YouTube manager has scoped styling');
 assert(!/youtube(?:Channels|Rows|Manager)[\s\S]{0,1800}\.innerHTML/.test(app), 'YouTube user content must not use HTML insertion');
 
 // Tiny DOM fixture: exercise the real card renderer and delegated YP-list handlers without jsdom.
@@ -142,37 +162,33 @@ async function testYoutubeStatusPolling() {
     channels: [{ id: 'channel-a', enabled: true, streams: [{ id: 'v-live', title: 'live', status: 'live' }] }],
     intervalMinutes: 5, refreshing: false, lastRefreshMs: null, nextRefreshMs: 100,
   };
-  const pollState = { youtubeQueryBusy: false, youtubeSnapshot: null };
+  const pollState = { youtubeQueryBusy: false, youtubeSnapshot: null, youtubeRevision: 0 };
   let response = sameSnapshot;
-  let managerRenders = 0;
   let listRenders = 0;
-  let refreshControlUpdates = 0;
+  const polledSnapshots = [];
   const poll = appFunction('fetchYoutubeStatus', {
     state: pollState,
     document: { visibilityState: 'visible' },
+    window: { dispatchEvent(event) { polledSnapshots.push(event.detail); } },
     youtubeSnapshotsEqual: appFunction('youtubeSnapshotsEqual'),
     invoke: async () => response,
-    renderYoutubeManager: () => { managerRenders += 1; refreshControlUpdates += 1; },
     currentView: () => 'yp',
     renderYpDirectory: () => { listRenders += 1; },
-    updateYoutubeRefreshControl: () => { refreshControlUpdates += 1; },
-    errorText: String,
-    text: () => {},
   });
   await poll();
-  assert.deepEqual([managerRenders, listRenders], [1, 1], 'The first snapshot populates the manager and list');
+  assert.equal(listRenders, 1, 'The first snapshot populates the channel list');
+  assert.equal(polledSnapshots.length, 1, 'Settings receives the existing poll snapshot for its cooldown and refreshing state');
   response = equalSnapshot;
   await poll();
-  assert.deepEqual([managerRenders, listRenders], [1, 1], 'An equivalent snapshot with reordered JSON keys skips both render functions');
-  assert.equal(refreshControlUpdates, 2, 'A skipped poll still updates the cooldown countdown');
+  assert.equal(listRenders, 1, 'An equivalent snapshot with reordered JSON keys skips the list render');
+  assert.equal(polledSnapshots.length, 2, 'Settings receives unchanged poll snapshots to update cooldown state');
   response = changedSnapshot;
   await poll();
-  assert.deepEqual([managerRenders, listRenders], [2, 2], 'A changed stream snapshot redraws the manager/list');
-  assert.equal(refreshControlUpdates, 3);
+  assert.equal(listRenders, 2, 'A changed stream snapshot redraws the channel list');
 }
 
 testYoutubeStatusPolling().then(() => {
-  console.log('Frontend YouTube regression: rendered states, delegated event boundaries, unchanged-poll render skipping, changed-poll rendering, and empty/cooldown refresh gating passed');
+  console.log('Frontend YouTube regression: moved management, live rows, unchanged-poll render skipping, changed-poll rendering, and refresh gating passed');
 }).catch((error) => {
   console.error(error);
   process.exitCode = 1;

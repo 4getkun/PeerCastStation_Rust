@@ -27,3 +27,10 @@
   .update-card{padding:14px 18px}.update-card-heading h3{font-size:15px}
   .update-actions{margin-top:12px}.update-notes{max-height:90px}
 }
+
+/* Only the selected tab has a filled background; hover stays within its text and icon. */
+.rail-nav{align-items:center}
+.rail-nav>.nav-item{flex:0 0 auto}
+.rail-nav>.nav-item:not(.active):hover{background:transparent;color:#6043a4}
+.rail-nav>.nav-item:not(.active):hover .icon{color:#765ac2}
+.rail-nav>.nav-item.active:hover{background:#eee8ff;color:#6043a4}
