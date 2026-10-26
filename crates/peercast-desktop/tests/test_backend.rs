@@ -21,6 +21,38 @@ async fn close_backend(backend: &DesktopBackend) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_logs_only_clears_runtime_entries_and_rejects_closed_backend() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = DesktopBackend::open(dir.path().join("desktop.json"))
+        .await
+        .unwrap();
+    let before = backend.snapshot().await.unwrap();
+    assert!(before
+        .logs
+        .iter()
+        .any(|entry| entry.message.contains("GUI test backend started")));
+
+    backend.clear_logs().unwrap();
+    let cleared = backend.snapshot().await.unwrap();
+    assert!(cleared.logs.is_empty());
+    assert_eq!(cleared.endpoint, before.endpoint);
+    assert_eq!(cleared.running, before.running);
+    assert_eq!(cleared.limits, before.limits);
+    assert_eq!(cleared.yellow_pages, before.yellow_pages);
+
+    let after_probe = tokio::time::timeout(Duration::from_secs(10), backend.run_probe())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(after_probe.logs.iter().any(|entry| entry
+        .message
+        .contains("HTTP Push -> runtime -> HTTP playback verified")));
+
+    close_backend(&backend).await;
+    assert!(backend.clear_logs().is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn probe_and_limits_survive_backend_restart() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("desktop.json");

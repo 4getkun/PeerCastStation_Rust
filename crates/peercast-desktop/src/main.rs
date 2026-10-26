@@ -183,7 +183,8 @@ async fn apply_preferences(
     match result {
         Ok(saved) => {
             let changed = before.desktop.window.width != saved.desktop.window.width
-                || before.desktop.window.height != saved.desktop.window.height;
+                || before.desktop.window.height != saved.desktop.window.height
+                || before.desktop.window.logical_size != saved.desktop.window.logical_size;
             peercast_desktop::native_window::apply(&app, &saved.desktop.window, changed)?;
             Ok(saved)
         }
@@ -531,6 +532,14 @@ async fn snapshot(backend: State<'_, Backend>) -> Result<Snapshot, String> {
 }
 
 #[tauri::command]
+fn clear_logs(window: tauri::WebviewWindow, backend: State<'_, Backend>) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    backend.clear_logs()
+}
+
+#[tauri::command]
 async fn apply_limits(backend: State<'_, Backend>, limits: Limits) -> Result<Snapshot, String> {
     backend.apply_limits(limits).await
 }
@@ -664,6 +673,7 @@ fn main() {
             updater::cancel_update_download,
             updater::install_update,
             snapshot,
+            clear_logs,
             start_broadcast,
             stop_broadcast,
             get_yp_channels,

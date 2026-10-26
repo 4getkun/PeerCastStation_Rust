@@ -1,12 +1,32 @@
 use peercast_app::ConfigManager;
 use peercast_desktop::backend::{DesktopBackend, Limits, YellowPageEntry};
 use peercast_desktop::player::PlayerSettings;
-use peercast_desktop::preferences::DesktopPreferences;
+use peercast_desktop::preferences::{DesktopPreferences, WindowSettings};
 use peercast_desktop::rules::ChannelRule;
 use std::fs;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+
+#[test]
+fn logical_window_size_defaults_to_physical_and_round_trips() {
+    let legacy: WindowSettings = serde_json::from_value(serde_json::json!({
+        "width": 1486,
+        "height": 1059
+    }))
+    .unwrap();
+    assert_eq!(legacy.width, 1486);
+    assert_eq!(legacy.height, 1059);
+    assert!(!legacy.logical_size);
+
+    let logical = WindowSettings {
+        logical_size: true,
+        ..WindowSettings::default()
+    };
+    let round_trip: WindowSettings =
+        serde_json::from_value(serde_json::to_value(&logical).unwrap()).unwrap();
+    assert_eq!(round_trip, logical);
+}
 
 fn limits(directs: u32, relays: u32, upstream: u32) -> Limits {
     Limits {

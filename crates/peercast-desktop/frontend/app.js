@@ -51,6 +51,8 @@
     detailTab: "info",
     logQuery: "",
     logFingerprint: "",
+    clearingLogs: false,
+    logClearGeneration: 0,
     settingsView: null,
     settingsMountPromise: null,
     viewTransition: false,
@@ -165,6 +167,20 @@
     const minutes = Math.floor((total % 3600) / 60);
     const secs = total % 60;
     return days ? `${days}日 ${hours}時間` : hours ? `${hours}時間 ${minutes}分` : minutes ? `${minutes}分 ${secs}秒` : `${secs}秒`;
+  }
+
+  function formatAppUptime(seconds) {
+    if (seconds === null || seconds === undefined || seconds === "") return "—";
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value < 0) return "—";
+    const total = Math.floor(value);
+    const secs = total % 60;
+    if (total < 60) return `${total}秒`;
+    const minutes = Math.floor(total / 60);
+    if (total < 3600) return `${minutes}分 ${secs}秒`;
+    const hours = Math.floor(total / 3600);
+    const remainingMinutes = Math.floor((total % 3600) / 60);
+    return `${hours}時間 ${remainingMinutes}分 ${secs}秒`;
   }
 
   function displayValue(value) {
@@ -577,7 +593,7 @@
     ensureVisibleYpSelection(filtered);
     root.replaceChildren();
     const youtubeCount = appendYoutubeRows(root);
-    text("yp-count", `${state.ypSource === "youtube" ? 0 : countableYpChannelCount(filtered)} 件の配信 · YouTube ${state.ypSource === "youtube" || state.ypSource === "all" ? youtubeCount : 0} 件`);
+    renderYpHeaderCount(filtered, youtubeCount);
     const empty = byId("yp-empty");
     if (empty) {
       empty.hidden = filtered.length > 0 || youtubeCount > 0;
@@ -666,6 +682,11 @@
     renderSelectedDetail();
     updateYpControls();
   }
+  function renderYpHeaderCount(filtered, youtubeCount) {
+    const channelCount = state.ypSource === "youtube" ? 0 : countableYpChannelCount(filtered);
+    const visibleYoutubeCount = state.ypSource === "youtube" || state.ypSource === "all" ? youtubeCount : 0;
+    text("yp-header-count", `${channelCount} 件の配信 · YouTube ${visibleYoutubeCount} 件`);
+  }
   function safeRuleColor(value) { return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : ""; }
 
   function renderYpSelectionStyles() {
@@ -679,6 +700,7 @@
   }
 
   function updateYpControls() {
+    syncYpFooterCountVisibility();
     updateRefreshControls();
     const source = byId("yp-source");
     if (source) source.disabled = state.busy || state.ypBusy;
@@ -698,6 +720,13 @@
       button.disabled = state.busy || state.ypBusy || !state.snapshot?.running || !channel || !isPlayableYpChannel(channel) || state.snapshot?.playerAvailable === false;
     });
     updateRecordingControls();
+  }
+  function syncYpFooterCountVisibility() {
+    const hidden = currentView() === "yp";
+    const count = byId("yp-count");
+    const divider = byId("status-count-divider");
+    if (count) count.hidden = hidden;
+    if (divider) divider.hidden = hidden;
   }
 
   function selectYpChannel(channel, redraw = false) {
@@ -726,11 +755,11 @@
       return;
     }
     if (!beginYpFetch(state, refresh)) return;
-    const startedAt = performance.now();
     state.ypRefreshing = true;
     const previousSelection = state.ypSelectionKey;
     state.ypError = "";
-    renderYpDirectory();
+    text("yp-status", "チャンネル一覧を取得しています…");
+    updateYpControls();
     try {
       const channels = await invoke("get_yp_channels", { refresh: Boolean(refresh), notifyFavorites: Boolean(refresh || !state.ypLoaded) });
       if (!Array.isArray(channels)) throw new Error("一覧の応答形式が正しくありません。");
@@ -744,7 +773,6 @@
       state.ypError = errorText(error);
       state.ypLoaded = true;
     } finally {
-      await finishRefreshFeedback(startedAt);
       state.ypRefreshing = false;
       state.ypBusy = false;
       state.ypRefreshCooldownUntil = performance.now() + YP_REFRESH_COOLDOWN_MS;
@@ -982,6 +1010,7 @@
     if (settingsView) settingsView.hidden = view !== "settings";
     text("view-title", viewTitles[view]);
     text("titlebar-view", viewTitles[view]);
+    syncYpFooterCountVisibility();
     if (view === "recordings") text("yp-count", `${Array.isArray(state.snapshot?.recordings) ? state.snapshot.recordings.length : 0} 件の録画`);
     else if (view === "yp") text("yp-count", `${countableYpChannelCount(visibleYpChannels())} 件の配信`);
     else if (view === "channels") text("yp-count", `${broadcastingChannels(state.snapshot).length} 件の配信`);
@@ -1755,7 +1784,7 @@
     const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "Peercast RT");
     text("state-label", `${backendLabel} ${running ? "稼働中" : "停止中"}`);
     text("endpoint", snapshot.endpoint || "停止中");
-    text("uptime", running ? formatDuration(snapshot.uptimeSecs) : "停止中");
+    text("uptime", running ? formatAppUptime(snapshot.uptimeSecs) : "停止中");
     text("active-tasks", String(Number(snapshot.activeTasks) || 0));
     text("last-updated", `最終更新 ${state.ypLastUpdatedAt === null ? "—" : new Date(state.ypLastUpdatedAt).toLocaleTimeString("ja-JP")}`);
     text("limit-directs", String(Number(snapshot.limits?.maxDirects) || 0));
@@ -1834,7 +1863,10 @@
     const startedAt = performance.now();
     updateRefreshControls();
     try {
-      renderSnapshot(await invoke("snapshot"), { initial: !state.snapshot });
+      const logGeneration = state.logClearGeneration;
+      const snapshot = await invoke("snapshot");
+      if (logGeneration !== state.logClearGeneration) snapshot.logs = state.snapshot?.logs || [];
+      renderSnapshot(snapshot, { initial: !state.snapshot });
       if (state.manualRefreshing) setNotice("状態を更新しました。");
     } catch (error) {
       setNotice(`状態の取得に失敗しました: ${errorText(error)}`, true);
@@ -1949,7 +1981,12 @@
       activateConnectionTab(tabs[next].dataset.connectionTab);
     });
   });
-  bind("about-button", "click", () => byId("about-dialog")?.showModal());
+  bind("about-button", "click", () => {
+    byId("about-dialog")?.showModal();
+    void invoke("update_status").then((status) => {
+      text("about-version", status?.currentVersion ? `バージョン ${status.currentVersion}` : "バージョン情報を取得できませんでした");
+    }).catch(() => text("about-version", "バージョン情報を取得できませんでした"));
+  });
   bind("close-about", "click", () => byId("about-dialog")?.close());
   bind("about-dialog", "click", (event) => {
     const dialog = byId("about-dialog");
@@ -2171,20 +2208,45 @@
     const row = event.target.closest("[data-connection-channel-id]");
     if (row) state.connectionSelectionId = row.dataset.connectionChannelId;
     const channel = allRuntimeChannels(state.snapshot).find((entry) => connectionChannelKey(entry) === String(state.connectionSelectionId));
-    if (!channel || !connectionMenu) return;
-    if (channel.canReconnect !== true && channel.canDisconnect !== true) return;
+    if (!connectionMenu) return;
     event.preventDefault(); closeAllContextMenus();
-    state.runtimeContextKey = connectionChannelKey(channel);
+    state.runtimeContextKey = channel ? connectionChannelKey(channel) : null;
     renderConnections(state.snapshot || { channels: [] });
-    byId("runtime-context-reconnect").disabled = channel.canReconnect !== true || state.recordingBusy || state.busy;
-    byId("runtime-context-disconnect").disabled = channel.canDisconnect !== true || state.recordingBusy || state.busy;
+    byId("runtime-context-reconnect").disabled = channel?.canReconnect !== true || state.recordingBusy || state.busy;
+    byId("runtime-context-disconnect").disabled = channel?.canDisconnect !== true || state.recordingBusy || state.busy;
+    byId("runtime-context-clear").disabled = Boolean(state.clearingLogs);
     placeContextMenu(connectionMenu, event.clientX, event.clientY);
-    (channel.canReconnect === true ? byId("runtime-context-reconnect") : byId("runtime-context-disconnect"))?.focus();
+    const firstAction = ["runtime-context-reconnect", "runtime-context-disconnect", "runtime-context-clear"].map(byId).find((button) => !button.disabled);
+    firstAction?.focus();
   }
-  connectionList?.addEventListener("contextmenu", openRuntimeContextMenu);
-  byId("connections-detail")?.addEventListener("contextmenu", openRuntimeContextMenu);
+  async function clearMessagesAndLogs() {
+    closeAllContextMenus();
+    if (state.clearingLogs) return false;
+    state.clearingLogs = true;
+    byId("runtime-context-clear").disabled = true;
+    try {
+      await invoke("clear_logs");
+      state.logClearGeneration++;
+      if (state.snapshot) state.snapshot.logs = [];
+      state.logFingerprint = "";
+      setNotice("");
+      renderLogs();
+      return true;
+    } catch (error) {
+      setNotice(`クリアできませんでした: ${errorText(error)}`, true);
+      return false;
+    } finally {
+      state.clearingLogs = false;
+      byId("runtime-context-clear").disabled = false;
+    }
+  }
+  byId("view-connections")?.addEventListener("contextmenu", openRuntimeContextMenu);
+  byId("notice")?.addEventListener("contextmenu", (event) => {
+    if (currentView() === "connections") openRuntimeContextMenu(event);
+  });
   byId("runtime-context-reconnect")?.addEventListener("click", () => { void controlRuntimeChannel("reconnect"); });
   byId("runtime-context-disconnect")?.addEventListener("click", () => { void controlRuntimeChannel("disconnect"); });
+  byId("runtime-context-clear")?.addEventListener("click", () => { void clearMessagesAndLogs(); });
   bind("selected-play", "click", () => playYpChannel(currentSelectedDirectoryChannel()));
   bind("selected-record", "click", () => { void enqueueSelectedRecording(); });
   async function addSelectedChannelRule(kind) {

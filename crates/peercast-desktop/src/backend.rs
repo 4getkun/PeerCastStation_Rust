@@ -505,6 +505,12 @@ impl DesktopBackend {
         }
     }
 
+    pub fn clear_logs(&self) -> Result<(), String> {
+        self.check_open()?;
+        self.log.clear();
+        Ok(())
+    }
+
     pub async fn start_broadcast(&self, request: BroadcastRequest) -> Result<Snapshot, String> {
         let _operation = self.operation.lock().await;
         self.check_open()?;

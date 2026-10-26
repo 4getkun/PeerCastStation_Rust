@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    AppHandle, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewWindow, Window, WindowEvent,
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow, Window,
+    WindowEvent,
 };
 
 const MAIN_WINDOW: &str = "main";
@@ -22,10 +23,7 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
     let exit = MenuItem::with_id(app, EXIT_ITEM, "終了", true, None::<&str>)
         .map_err(|error| error.to_string())?;
     let menu = Menu::with_items(app, &[&show, &exit]).map_err(|error| error.to_string())?;
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .ok_or_else(|| "アプリのトレイアイコンが設定されていません".to_owned())?;
+    let icon = tauri::image::Image::new(include_bytes!("../icons/tray-icon.rgba"), 32, 32);
     let tray = TrayIconBuilder::with_id("peercast-rt-tray")
         .icon(icon)
         .tooltip("Peercast RT")
@@ -74,7 +72,7 @@ pub fn apply(app: &AppHandle, settings: &WindowSettings, size_changed: bool) -> 
         let window = app
             .get_webview_window(MAIN_WINDOW)
             .ok_or_else(|| "メインウィンドウが見つかりません".to_owned())?;
-        apply_size(&window, settings.width, settings.height)?;
+        apply_size(&window, settings)?;
     }
     Ok(())
 }
@@ -101,11 +99,29 @@ pub fn restore_main<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-fn apply_size(
-    window: &WebviewWindow,
+fn physical_size(
     requested_width: u32,
     requested_height: u32,
-) -> Result<(), String> {
+    logical: bool,
+    scale: f64,
+    max_width: u32,
+    max_height: u32,
+) -> (u32, u32, u32, u32) {
+    let factor = if logical && scale.is_finite() {
+        scale.max(0.25)
+    } else {
+        1.0
+    };
+    let max_width = max_width.max(1);
+    let max_height = max_height.max(1);
+    let min_width = ((MIN_WIDTH as f64 * factor).round() as u32).min(max_width);
+    let min_height = ((MIN_HEIGHT as f64 * factor).round() as u32).min(max_height);
+    let width = ((requested_width as f64 * factor).round() as u32).clamp(min_width, max_width);
+    let height = ((requested_height as f64 * factor).round() as u32).clamp(min_height, max_height);
+    (width, height, min_width, min_height)
+}
+
+fn apply_size(window: &WebviewWindow, settings: &WindowSettings) -> Result<(), String> {
     if window.is_maximized().unwrap_or(false) {
         window.unmaximize().map_err(|error| error.to_string())?;
     }
@@ -123,17 +139,17 @@ fn apply_size(
     let (width, height, min_width, min_height, position) = if let Some(monitor) = monitor {
         let work = monitor.work_area();
         let scale = monitor.scale_factor().max(0.25);
-        let max_width =
-            ((work.size.width.saturating_sub(frame_width) as f64 / scale).floor() as u32).max(1);
-        let max_height =
-            ((work.size.height.saturating_sub(frame_height) as f64 / scale).floor() as u32).max(1);
-        let min_width = MIN_WIDTH.min(max_width);
-        let min_height = MIN_HEIGHT.min(max_height);
-        let width = requested_width.clamp(min_width, max_width);
-        let height = requested_height.clamp(min_height, max_height);
+        let (width, height, min_width, min_height) = physical_size(
+            settings.width,
+            settings.height,
+            settings.logical_size,
+            scale,
+            work.size.width.saturating_sub(frame_width),
+            work.size.height.saturating_sub(frame_height),
+        );
         let old_position = window.outer_position().unwrap_or(*monitor.position());
-        let physical_width = (width as f64 * scale).round() as u32 + frame_width;
-        let physical_height = (height as f64 * scale).round() as u32 + frame_height;
+        let physical_width = width.saturating_add(frame_width);
+        let physical_height = height.saturating_add(frame_height);
         let max_x = work
             .position
             .x
@@ -148,20 +164,22 @@ fn apply_size(
         );
         (width, height, min_width, min_height, Some(position))
     } else {
-        (
-            requested_width.max(MIN_WIDTH),
-            requested_height.max(MIN_HEIGHT),
-            MIN_WIDTH,
-            MIN_HEIGHT,
-            None,
-        )
+        let (width, height, min_width, min_height) = physical_size(
+            settings.width,
+            settings.height,
+            settings.logical_size,
+            window.scale_factor().unwrap_or(1.0),
+            u32::MAX,
+            u32::MAX,
+        );
+        (width, height, min_width, min_height, None)
     };
 
     window
-        .set_min_size(Some(LogicalSize::new(min_width as f64, min_height as f64)))
+        .set_min_size(Some(PhysicalSize::new(min_width, min_height)))
         .map_err(|error| error.to_string())?;
     window
-        .set_size(LogicalSize::new(width as f64, height as f64))
+        .set_size(PhysicalSize::new(width, height))
         .map_err(|error| error.to_string())?;
     if let Some(position) = position {
         window
@@ -169,4 +187,41 @@ fn apply_size(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::physical_size;
+
+    #[test]
+    fn physical_dimensions_ignore_windows_display_scale() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            assert_eq!(
+                physical_size(1600, 900, false, scale, 3840, 2100),
+                (1600, 900, 1280, 720)
+            );
+        }
+    }
+
+    #[test]
+    fn logical_dimensions_opt_in_to_display_scale() {
+        assert_eq!(
+            physical_size(1600, 900, true, 1.5, 3840, 2100),
+            (2400, 1350, 1920, 1080)
+        );
+        assert_eq!(
+            physical_size(1600, 900, true, 2.0, 3840, 2100),
+            (3200, 1800, 2560, 1440)
+        );
+    }
+
+    #[test]
+    fn both_modes_fit_the_monitor_work_area_even_below_minimum() {
+        for logical in [false, true] {
+            assert_eq!(
+                physical_size(2560, 1440, logical, 1.5, 1000, 600),
+                (1000, 600, 1000, 600)
+            );
+        }
+    }
 }

@@ -23,6 +23,9 @@ ManifestDPIAwareness PerMonitorV2
 {{/if}}
 
 !include MUI2.nsh
+!define MUI_BGCOLOR "F8F6FD"
+!define MUI_TEXTCOLOR "241C35"
+!define MUI_INSTFILESPAGE_COLORS "514A5E F8F6FD"
 !include nsDialogs.nsh
 !include WinMessages.nsh
 !include FileFunc.nsh
@@ -516,7 +519,7 @@ Function un.ConfirmPage
   Push $UninstallDialog
   Push 0
   Call un.PeerCastPrepareFullWindow
-  SetCtlColors $UninstallDialog "241C35" "FFFFFF"
+  SetCtlColors $UninstallDialog "241C35" "F8F6FD"
   ${If} $(^RTL) = 1
     nsDialogs::SetRTL 1
   ${EndIf}
@@ -533,21 +536,21 @@ Function un.ConfirmPage
   CreateFont $UninstallBodyFont "Yu Gothic UI" 9 400
   ${NSD_CreateLabel} 120u 18u $InstallerContentWidth 15u "$(uninstallerSubtitle)"
   Pop $0
-  SetCtlColors $0 "6F56D9" "FFFFFF"
+  SetCtlColors $0 "6F56D9" "F8F6FD"
   SendMessage $0 ${WM_SETFONT} $UninstallSmallFont 1
   ${NSD_CreateHLine} 120u 42u $InstallerContentWidth 1u ""
   Pop $0
   ${NSD_CreateLabel} 120u 56u $InstallerContentWidth 24u "$(uninstallerTitle)"
   Pop $0
-  SetCtlColors $0 "17131F" "FFFFFF"
+  SetCtlColors $0 "17131F" "F8F6FD"
   SendMessage $0 ${WM_SETFONT} $UninstallTitleFont 1
   ${NSD_CreateLabel} 120u 91u $InstallerContentWidth 14u "$(uninstallerLocation)"
   Pop $0
-  SetCtlColors $0 "514A5E" "FFFFFF"
+  SetCtlColors $0 "514A5E" "F8F6FD"
   SendMessage $0 ${WM_SETFONT} $UninstallBodyFont 1
   ${NSD_CreateText} 120u 109u $InstallerContentWidth 18u "$INSTDIR"
   Pop $UninstallPathControl
-  SetCtlColors $UninstallPathControl "514A5E" "FFFFFF"
+  SetCtlColors $UninstallPathControl "514A5E" "F8F6FD"
   SendMessage $UninstallPathControl ${WM_SETFONT} $UninstallBodyFont 1
   ${NSD_Edit_SetReadOnly} $UninstallPathControl 1
   ${NSD_CreateLabel} 123u 140u 3u 24u ""
@@ -555,12 +558,12 @@ Function un.ConfirmPage
   SetCtlColors $0 "6F56D9" "6F56D9"
   ${NSD_CreateLabel} 132u 145u 270u 16u "$(uninstallerProtection)"
   Pop $0
-  SetCtlColors $0 "302A3C" "FFFFFF"
+  SetCtlColors $0 "302A3C" "F8F6FD"
   SendMessage $0 ${WM_SETFONT} $UninstallBodyFont 1
 
   ${NSD_CreateCheckBox} 120u 174u $InstallerContentWidth 14u "$(uninstallerDeleteCache)"
   Pop $DeleteAppDataCheckbox
-  SetCtlColors $DeleteAppDataCheckbox "302A3C" "FFFFFF"
+  SetCtlColors $DeleteAppDataCheckbox "302A3C" "F8F6FD"
   ${NSD_AddStyle} $DeleteAppDataCheckbox ${WS_CLIPSIBLINGS}
   ${NSD_SetState} $DeleteAppDataCheckbox ${BST_UNCHECKED}
   nsDialogs::Show
@@ -690,7 +693,7 @@ Function PageReady
     GetDlgItem $0 $HWNDPARENT 1
     SendMessage $0 ${WM_SETTEXT} 0 "STR:$(installerInstall)"
   !endif
-  SetCtlColors $ReadyDialog "241C35" "FFFFFF"
+  SetCtlColors $ReadyDialog "241C35" "F8F6FD"
   ${If} $(^RTL) = 1
     nsDialogs::SetRTL 1
   ${EndIf}
@@ -704,8 +707,8 @@ Function PageReady
   Pop $2
   ${NSD_SetStretchedBitmap} $2 "$PLUGINSDIR\peercast-installer-sidebar.bmp" $InstallerLogoHandle
 
-  ; Use the white dialog surface directly instead of overlapping background
-  ; controls that can cover labels and checkboxes on native-dialog repaints.
+  ; A continuous pale surface keeps native label rectangles and the brand
+  ; artwork from reading as separate white panels.
 
   CreateFont $InstallerSmallFont "Yu Gothic UI" 8 700
   CreateFont $InstallerTitleFont "Yu Gothic UI" 13 700
@@ -714,10 +717,8 @@ Function PageReady
 
   ${NSD_CreateLabel} 120u 15u 84u 12u "セットアップ"
   Pop $3
-  SetCtlColors $3 "6F56D9" "FFFFFF"
+  SetCtlColors $3 "6F56D9" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
-  ${NSD_CreateHLine} 120u 31u $InstallerContentWidth 1u ""
-  Pop $3
 
   ${If} $ReadyExistingMode = 1
     StrCpy $0 "$(installerUpdateTitle)"
@@ -730,39 +731,36 @@ Function PageReady
   ${EndIf}
   ${NSD_CreateLabel} 120u 47u $InstallerContentWidth 27u "$0"
   Pop $3
-  SetCtlColors $3 "17131F" "FFFFFF"
+  SetCtlColors $3 "17131F" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerTitleFont 1
 
   ${NSD_CreateLabel} 120u 78u $InstallerContentWidth 15u "PeerCast RTをこのPCにインストールします。"
   Pop $3
-  SetCtlColors $3 "514A5E" "FFFFFF"
+  SetCtlColors $3 "514A5E" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
   ${NSD_CreateLabel} 120u 94u $InstallerContentWidth 15u "必要なファイルをこのPCに準備します。"
   Pop $3
-  SetCtlColors $3 "514A5E" "FFFFFF"
+  SetCtlColors $3 "514A5E" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
 
-  ${NSD_CreateLabel} 120u 119u 3u 43u ""
-  Pop $3
-  SetCtlColors $3 "6F56D9" "6F56D9"
   ${NSD_CreateLabel} 129u 125u 280u 15u "$(installerProtection)"
   Pop $3
-  SetCtlColors $3 "302A3C" "FFFFFF"
+  SetCtlColors $3 "302A3C" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerHeadingFont 1
   ${NSD_CreateLabel} 129u 143u 280u 13u "$(installerProtectionNote)"
   Pop $3
-  SetCtlColors $3 "7C748A" "FFFFFF"
+  SetCtlColors $3 "7C748A" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
 
   ${If} $ReadyExistingMode != 0
     ${NSD_CreateLabel} 120u 167u $InstallerContentWidth 12u "$(installerExistingNote)"
     Pop $3
-    SetCtlColors $3 "514A5E" "FFFFFF"
+    SetCtlColors $3 "514A5E" "F8F6FD"
     SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
   ${Else}
     ${NSD_CreateLabel} 120u 171u $InstallerContentWidth 13u "$(installerFirstRun)"
     Pop $3
-    SetCtlColors $3 "514A5E" "FFFFFF"
+    SetCtlColors $3 "514A5E" "F8F6FD"
     SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
   ${EndIf}
 
@@ -903,7 +901,7 @@ Function PageFinish
   ShowWindow $0 ${SW_HIDE}
   GetDlgItem $0 $HWNDPARENT 1
   SendMessage $0 ${WM_SETTEXT} 0 "STR:$(installerFinish)"
-  SetCtlColors $FinishDialog "241C35" "FFFFFF"
+  SetCtlColors $FinishDialog "241C35" "F8F6FD"
   ${If} $(^RTL) = 1
     nsDialogs::SetRTL 1
   ${EndIf}
@@ -919,35 +917,30 @@ Function PageFinish
   CreateFont $InstallerSmallFont "Yu Gothic UI" 8 700
   ${NSD_CreateLabel} 120u 16u 90u 12u "セットアップ完了"
   Pop $3
-  SetCtlColors $3 "6F56D9" "FFFFFF"
+  SetCtlColors $3 "6F56D9" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerSmallFont 1
-  ${NSD_CreateHLine} 120u 31u $InstallerContentWidth 1u ""
-  Pop $3
   ${NSD_CreateLabel} 120u 49u $InstallerContentWidth 28u "$(installerComplete)"
   Pop $3
-  SetCtlColors $3 "17131F" "FFFFFF"
+  SetCtlColors $3 "17131F" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerTitleFont 1
-  ${NSD_CreateLabel} 123u 88u 3u 36u ""
-  Pop $3
-  SetCtlColors $3 "6F56D9" "6F56D9"
   ${NSD_CreateLabel} 129u 98u 280u 14u "設定と録画ファイルはそのまま保持されています。"
   Pop $3
-  SetCtlColors $3 "514A5E" "FFFFFF"
+  SetCtlColors $3 "514A5E" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
   ${NSD_CreateCheckBox} 120u 139u $InstallerContentWidth 14u "$(installerLaunch)"
   Pop $FinishLaunchCheckbox
-  SetCtlColors $FinishLaunchCheckbox "302A3C" "FFFFFF"
+  SetCtlColors $FinishLaunchCheckbox "302A3C" "F8F6FD"
   ${NSD_AddStyle} $FinishLaunchCheckbox ${WS_CLIPSIBLINGS}
   ${NSD_CreateCheckBox} 120u 156u $InstallerContentWidth 14u "$(installerDesktop)"
   Pop $FinishDesktopCheckbox
-  SetCtlColors $FinishDesktopCheckbox "302A3C" "FFFFFF"
+  SetCtlColors $FinishDesktopCheckbox "302A3C" "F8F6FD"
   ${NSD_AddStyle} $FinishDesktopCheckbox ${WS_CLIPSIBLINGS}
   ${If} $NoShortcutMode = 1
     EnableWindow $FinishDesktopCheckbox 0
   ${EndIf}
   ${NSD_CreateLabel} 120u 177u $InstallerContentWidth 13u "「完了」をクリックしてセットアップを閉じます。"
   Pop $3
-  SetCtlColors $3 "514A5E" "FFFFFF"
+  SetCtlColors $3 "514A5E" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
   ${If} $ReadyLaunch = 1
     ${NSD_SetState} $FinishLaunchCheckbox ${BST_CHECKED}
@@ -1075,7 +1068,7 @@ FunctionEnd
 !macro PeerCastProgressShowBody PREFIX TITLE
   Call ${PREFIX}muiPageLoadFullWindow
   ShowWindow $mui.Line.FullWindow ${SW_HIDE}
-  SetCtlColors $mui.InstFilesPage "241C35" "FFFFFF"
+  SetCtlColors $mui.InstFilesPage "241C35" "F8F6FD"
   System::Call '*(i 0, i 0, i 0, i 0)p.r0'
   System::Call 'user32::GetClientRect(p $HWNDPARENT, p r0)'
   System::Call '*$0(i.r1, i.r2, i.r3, i.r4)'
@@ -1094,23 +1087,26 @@ FunctionEnd
   !if "${PREFIX}" == "un."
     File /oname=$PLUGINSDIR\peercast-progress.bmp "${PEERCAST_UNINSTALLRAIL}"
   !else
-    File /oname=$PLUGINSDIR\peercast-progress.bmp "${PEERCAST_BRANDRAIL}"
+    File /oname=$PLUGINSDIR\peercast-progress.bmp "${PEERCAST_PROGRESSRAIL}"
   !endif
   System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x5400000E, i 0, i 0, i 0, i 0, p $mui.InstFilesPage, p 1200, p 0, p 0)p.r9'
   !insertmacro PeerCastMove $9 5 5 96 190
   ${NSD_SetStretchedBitmap} $9 "$PLUGINSDIR\peercast-progress.bmp" $ProgressLogoHandle
   System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${TITLE}", i 0x54000000, i 0, i 0, i 0, i 0, p $mui.InstFilesPage, p 1202, p 0, p 0)p.r9'
-  SetCtlColors $9 "17131F" "FFFFFF"
+  SetCtlColors $9 "17131F" "F8F6FD"
   SendMessage $9 ${WM_SETFONT} $ProgressTitleFont 1
   !insertmacro PeerCastMove $9 120 47 280 25
   System::Call 'user32::SetWindowPos(p r9, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
   !insertmacro PeerCastMove $mui.InstFilesPage.Text 120 82 280 14
-  SetCtlColors $mui.InstFilesPage.Text "514A5E" "FFFFFF"
+  SetCtlColors $mui.InstFilesPage.Text "514A5E" "F8F6FD"
   SendMessage $mui.InstFilesPage.Text ${WM_SETFONT} $ProgressBodyFont 1
   !insertmacro PeerCastMove $mui.InstFilesPage.ProgressBar 120 104 280 9
+  System::Call 'uxtheme::SetWindowTheme(p $mui.InstFilesPage.ProgressBar, w "", w "")'
+  SendMessage $mui.InstFilesPage.ProgressBar 0x0409 0 0x00D9566F
+  SendMessage $mui.InstFilesPage.ProgressBar 0x2001 0 0x00EDE4E8
   !insertmacro PeerCastMove $mui.InstFilesPage.ShowLogButton 120 125 80 16
   !insertmacro PeerCastMove $mui.InstFilesPage.Log 120 147 280 38
-  SetCtlColors $mui.InstFilesPage.Log "514A5E" "FFFFFF"
+  SetCtlColors $mui.InstFilesPage.Log "514A5E" "F8F6FD"
   ; Static backgrounds must stay behind the built-in progress controls.
   System::Call 'user32::SetWindowPos(p $mui.InstFilesPage.Text, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
   System::Call 'user32::SetWindowPos(p $mui.InstFilesPage.ProgressBar, p 0, i 0, i 0, i 0, i 0, i 0x0003)'
@@ -1137,9 +1133,11 @@ Function un.PeerCastProgressLeave
 FunctionEnd
 
 !macro PeerCastGUIInitBody
-  ; Windows 11: request a white caption so the native frame belongs to the
-  ; same white/lavender visual system as the installer content.
-  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, *i 0x00FFFFFF, i 4)'
+  SetCtlColors $HWNDPARENT "241C35" "F8F6FD"
+  SetCtlColors $mui.Branding.Text "7C748A" "F8F6FD"
+  SetCtlColors $mui.Branding.Background "241C35" "F8F6FD"
+  ; Use the same pale surface for the frame, footer, custom pages and labels.
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, *i 0x00FDF6F8, i 4)'
   System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 36, *i 0x00241C35, i 4)'
 
   ; The stock NSIS dialog becomes too tall and narrow on high-DPI displays.

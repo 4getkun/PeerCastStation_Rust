@@ -188,8 +188,8 @@ export function App() {
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/PCRPlayer-LICENSE.txt">PCRPlayer</a>
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/NotoSansJP-OFL.txt">Noto Sans JP — OFL</a>
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/Tabler-Icons-MIT.txt">Tabler Icons — MIT</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
               </div>
               <div className="third-party-license">
                 <strong>このページのアイコン</strong>
@@ -220,17 +220,17 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.1.0 <span>/</span> 7z形式</p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.1.1 <span>/</span> 7z形式</p>
                 <p className="download-note">インストーラーとライセンス文書をひとつにまとめています。展開して、フォルダー内のセットアップを実行してください。</p>
-                <p className="download-checksum">SHA-256: <code>ee36fc812e6eaadbc535fe578b553aa34bd202a3d2e413b92c98430aa80b246b</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/PeerCastRT-1.1.0-windows-x64-installer.7z.sha256">チェックサム</a></p>
+                <p className="download-checksum">SHA-256: <code>eb33e40fac59e6ce3359d9fd81ef1c7e824fc23ef89841ec940ed53528c91082</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/PeerCastRT-1.1.1-windows-x64-installer.7z.sha256">チェックサム</a></p>
                 <p className="download-note">セットアップにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/PeerCastRT-1.1.0-windows-x64-installer.7z">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/PeerCastRT-1.1.1-windows-x64-installer.7z">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
                 Windows版をダウンロード
               </a>
-              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
+              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
               </div>
             </div>
           </div>

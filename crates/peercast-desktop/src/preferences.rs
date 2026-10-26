@@ -36,6 +36,7 @@ impl Default for DirectorySettings {
 pub struct WindowSettings {
     pub width: u32,
     pub height: u32,
+    pub logical_size: bool,
     pub minimize_to_tray: bool,
     pub launch_at_startup: bool,
 }
@@ -45,6 +46,7 @@ impl Default for WindowSettings {
         Self {
             width: 1600,
             height: 900,
+            logical_size: false,
             minimize_to_tray: false,
             launch_at_startup: false,
         }

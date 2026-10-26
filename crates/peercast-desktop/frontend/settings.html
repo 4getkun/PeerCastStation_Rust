@@ -106,10 +106,13 @@
 
       <section class="page-content rules-content" id="panel-channel-rules" role="tabpanel" aria-labelledby="tab-channel-rules" hidden>
         <div class="rules-list-pane">
-          <div class="section-title"><div><h2>チャンネル条件</h2><p id="rules-count">読み込み中</p></div><button id="add-rule" class="add-button" type="button" disabled><span class="icon icon-plus" aria-hidden="true"></span>追加</button></div>
-          <label class="rules-search" for="rules-search"><span class="icon icon-search" aria-hidden="true"></span><input id="rules-search" type="search" placeholder="名前・条件で検索" aria-label="ルールを検索"></label>
-          <ul id="rules-list" class="rules-list" aria-label="チャンネル条件一覧"></ul><div id="rules-empty" class="empty-state" hidden>条件はありません。</div>
-          <p class="field-hint">一覧の下にある条件ほど優先されます。検索中は順序を変更できません。</p>
+          <div class="section-title"><div><h2>チャンネル条件</h2></div><button id="add-rule" class="add-button" type="button" disabled><span class="icon icon-plus" aria-hidden="true"></span>追加</button></div>
+          <details id="saved-rules-disclosure" class="saved-rules-disclosure">
+            <summary><span>登録済みの条件を表示</span><span id="rules-count">読み込み中</span></summary>
+            <label class="rules-search" for="rules-search"><span class="icon icon-search" aria-hidden="true"></span><input id="rules-search" type="search" placeholder="名前・条件で検索" aria-label="ルールを検索"></label>
+            <ul id="rules-list" class="rules-list" aria-label="チャンネル条件一覧"></ul><div id="rules-empty" class="empty-state" hidden>条件はありません。</div>
+            <p class="field-hint">一覧の下にある条件ほど優先されます。検索中は順序を変更できません。</p>
+          </details>
         </div>
         <div class="rules-editor-pane">
           <div class="section-title editor-title"><div><h2 id="rules-editor-heading">条件を選択</h2><p>保存前の変更はこの画面内だけに反映されます。</p></div><div class="rule-order-actions"><button id="move-rule-up" class="button button-secondary" type="button" disabled>上へ</button><button id="move-rule-down" class="button button-secondary" type="button" disabled>下へ</button><button id="delete-rule" class="delete-button" type="button" disabled><span class="icon icon-trash" aria-hidden="true"></span>削除</button></div></div>
@@ -189,6 +192,8 @@
             </div>
           </div>
           <div class="field-group window-behavior-group">
+            <label class="check-row" for="window-logical-size"><input id="window-logical-size" type="checkbox"><span>Windowsの表示倍率に合わせる（論理サイズ）</span></label>
+            <p class="field-hint">オフでは指定した物理ピクセルで表示します。オンではWindowsの表示倍率に合わせ、150%なら1.5倍の大きさになります。切り替えても幅・高さの値は変わりません。</p>
             <label class="check-row" for="window-minimize-to-tray"><input id="window-minimize-to-tray" type="checkbox"><span>最小化時に通知領域へ格納</span></label>
             <label class="check-row" for="window-launch-at-startup"><input id="window-launch-at-startup" type="checkbox"><span>Windows起動時にPeercast RTを起動</span></label>
           </div>
@@ -198,7 +203,27 @@
       <section class="page-content" id="panel-version" role="tabpanel" aria-labelledby="tab-version" hidden>
         <div class="content-column">
           <div class="section-title"><div><h2>バージョン情報</h2><p>このアプリについて</p></div></div>
-          <div class="about-card"><img src="assets/peer-loop.png" alt="" class="about-logo"><div><h3>Peercast RT</h3><p>バージョン 1.0.5</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーション</p><p>日本語フォント: Noto Sans JP</p><details class="license-details"><summary>フォントのライセンス</summary><pre class="license-text">Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
+        </div>
+        <div class="content-column update-column">
+          <section class="update-card" aria-labelledby="update-card-title">
+            <div class="update-card-heading"><span class="icon icon-refresh" aria-hidden="true"></span><div><h3 id="update-card-title">ソフトウェア更新</h3><p id="update-current-version">現在のバージョンを確認しています</p></div><span id="update-loading" class="update-spinner" aria-label="読み込み中" hidden></span></div>
+            <div class="update-actions">
+              <button id="update-check" class="button update-button-primary" type="button" disabled>更新を確認</button>
+              <button id="update-download" class="button update-button-primary" type="button" hidden>ダウンロード</button>
+              <button id="update-cancel" class="button button-secondary" type="button" hidden>ダウンロードを中止</button>
+              <button id="update-install" class="button update-button-primary" type="button" hidden>再起動して更新</button>
+              <button id="update-later" class="button button-secondary" type="button" hidden>後で適用</button>
+            </div>
+            <p id="update-status" class="update-status" role="status" aria-live="polite">更新状態を確認します。</p>
+            <div id="update-notes" class="update-notes">更新内容はありません。</div>
+            <progress id="update-progress" class="update-progress" max="100" value="0" hidden></progress>
+            <p id="update-progress-label" class="update-progress-label" aria-live="polite"></p>
+            <p id="update-ready-note" class="update-ready-note" hidden></p>
+            <p id="update-warning" class="update-warning" hidden>更新を適用するとアプリが再起動し、現在の録画・配信は終了します。</p>
+          </section>
+        </div>
+        <div class="content-column version-about">
+          <div class="about-card"><img src="assets/peer-loop.png" alt="" class="about-logo"><div><h3>Peercast RT</h3><p id="about-current-version">バージョンを確認しています</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーション</p><p>日本語フォント: Noto Sans JP</p><details class="license-details"><summary>フォントのライセンス</summary><pre class="license-text">Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
@@ -312,24 +337,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.</pre></details></div></div>
-        </div>
-        <div class="content-column update-column">
-          <section class="update-card" aria-labelledby="update-card-title">
-            <div class="update-card-heading"><span class="icon icon-refresh" aria-hidden="true"></span><div><h3 id="update-card-title">ソフトウェア更新</h3><p id="update-current-version">現在のバージョンを確認しています</p></div><span id="update-loading" class="update-spinner" aria-label="読み込み中" hidden></span></div>
-            <p id="update-status" class="update-status" role="status" aria-live="polite">更新状態を確認します。</p>
-            <div id="update-notes" class="update-notes">更新内容はありません。</div>
-            <progress id="update-progress" class="update-progress" max="100" value="0" hidden></progress>
-            <p id="update-progress-label" class="update-progress-label" aria-live="polite"></p>
-            <p id="update-ready-note" class="update-ready-note" hidden></p>
-            <div class="update-actions">
-              <button id="update-check" class="button update-button-primary" type="button" disabled>更新を確認</button>
-              <button id="update-download" class="button update-button-primary" type="button" hidden>ダウンロード</button>
-              <button id="update-cancel" class="button button-secondary" type="button" hidden>ダウンロードを中止</button>
-              <button id="update-install" class="button update-button-primary" type="button" hidden>再起動して更新</button>
-              <button id="update-later" class="button button-secondary" type="button" hidden>後で適用</button>
-            </div>
-            <p id="update-warning" class="update-warning" hidden>更新を適用するとアプリが再起動し、現在の録画・配信は終了します。</p>
-          </section>
         </div>
       </section>
 

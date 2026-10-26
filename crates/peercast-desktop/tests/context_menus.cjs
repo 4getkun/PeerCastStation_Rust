@@ -72,7 +72,7 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   assert.equal(h.calls.length, 0, 'Busy state prevents duplicate actions');
 
   const menu = { hidden: true };
-  const controls = new Map(['runtime-context-reconnect', 'runtime-context-disconnect'].map((id) => [id, { disabled: false, focus() {} }]));
+  const controls = new Map(['runtime-context-reconnect', 'runtime-context-disconnect', 'runtime-context-clear'].map((id) => [id, { disabled: false, focus() {} }]));
   const menuState = { connectionSelectionId: 'b:s2', runtimeContextKey: null, recordingContextId: null, ypContextChannel: null, snapshot: { channels: [a, b] }, recordingBusy: false, busy: false };
   const open = appFunction('openRuntimeContextMenu', {
     isEditableContextTarget, state: menuState, connectionMenu: menu, allRuntimeChannels, connectionChannelKey,
@@ -87,10 +87,68 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   const denied = { ...a, canReconnect: false, canDisconnect: false };
   menuState.snapshot = { channels: [denied] }; menu.hidden = true;
   open({ target: rowTarget, preventDefault() { this.prevented = true; } });
-  assert.equal(menu.hidden, true, 'A channel with neither capability does not open a menu');
+  assert.equal(menu.hidden, false, 'Clear remains available when a channel cannot be controlled');
+  assert.equal(controls.get('runtime-context-reconnect').disabled, true);
+  assert.equal(controls.get('runtime-context-disconnect').disabled, true);
+  assert.equal(controls.get('runtime-context-clear').disabled, false);
+  menuState.snapshot = { channels: [] }; menu.hidden = true;
+  open({ target: background, preventDefault() {} });
+  assert.equal(menu.hidden, false, 'An empty Connections view must still offer Clear');
+  assert.equal(menuState.runtimeContextKey, null);
   const beforeEditable = menuState.runtimeContextKey;
   open({ target: editable, preventDefault() { throw new Error('editable context must not be intercepted'); } });
   assert.equal(menuState.runtimeContextKey, beforeEditable);
+
+  const clearState = { clearingLogs: false, logClearGeneration: 0, snapshot: { channels: [a], desktop: { channelRules: ['keep'] }, logs: [{ message: 'old' }] } };
+  const clearCalls = [], clearNotices = [];
+  let finishClear, logRenders = 0;
+  const clear = appFunction('clearMessagesAndLogs', {
+    state: clearState, closeAllContextMenus() {}, byId: (id) => controls.get(id),
+    invoke: (...args) => { clearCalls.push(args); return new Promise((resolve) => { finishClear = resolve; }); },
+    renderLogs: () => logRenders++, setNotice: (...args) => clearNotices.push(args), errorText: String,
+  });
+  const clearing = clear();
+  assert.equal(await clear(), false, 'Repeated clear requests must coalesce');
+  finishClear();
+  assert.equal(await clearing, true);
+  assert.deepEqual(clearCalls, [['clear_logs']], 'Clear must not invoke channel or settings operations');
+  assert.deepEqual(clearState.snapshot.logs, []);
+  assert.deepEqual(clearState.snapshot.channels, [a]);
+  assert.deepEqual(clearState.snapshot.desktop.channelRules, ['keep']);
+  assert.deepEqual(clearNotices.at(-1), [''], 'A success notice must not replace the notice just cleared');
+  assert.equal(logRenders, 1);
+  assert.equal(clearState.logClearGeneration, 1);
+  clearState.snapshot.logs = [{ message: 'keep on error' }];
+  const failClear = appFunction('clearMessagesAndLogs', {
+    state: clearState, closeAllContextMenus() {}, byId: (id) => controls.get(id),
+    invoke: async () => { throw new Error('failed'); }, renderLogs() {},
+    setNotice: (...args) => clearNotices.push(args), errorText: String,
+  });
+  assert.equal(await failClear(), false);
+  assert.equal(clearState.snapshot.logs[0].message, 'keep on error');
+  assert.equal(clearNotices.at(-1)[1], true);
+  assert.equal(clearState.clearingLogs, false);
+
+  let finishSnapshot;
+  const refreshState = { snapshot: { logs: [] }, logClearGeneration: 0 };
+  const refresh = appFunction('refresh', {
+    state: refreshState, performance: { now: () => 0 }, updateRefreshControls() {},
+    invoke: () => new Promise((resolve) => { finishSnapshot = resolve; }),
+    renderSnapshot: (snapshot) => { refreshState.snapshot = snapshot; },
+    setNotice() {}, errorText: String, finishRefreshFeedback: async () => {},
+  });
+  const oldRefresh = refresh();
+  refreshState.logClearGeneration++;
+  finishSnapshot({ logs: [{ message: 'stale before clear' }] });
+  await oldRefresh;
+  assert.deepEqual(refreshState.snapshot.logs, [], 'A refresh already in flight must not resurrect cleared logs');
+  const newRefresh = refresh();
+  finishSnapshot({ logs: [{ message: 'new after clear' }] });
+  await newRefresh;
+  assert.equal(refreshState.snapshot.logs[0].message, 'new after clear', 'New logs must still appear after clearing');
+
+  assert.match(html, /id="runtime-context-clear"[^>]*>クリア/);
+  assert.match(app, /byId\("view-connections"\)\?\.addEventListener\("contextmenu", openRuntimeContextMenu\)/, 'The whole Connections view offers Clear');
 
   const recordingHarness = (jobs, contextId, busy = false) => {
     const live = { recordingContextId: contextId, recordingSelectionId: 'B', snapshot: { recordings: jobs }, recordingBusy: busy, busy: false };

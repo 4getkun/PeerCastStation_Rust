@@ -1,7 +1,7 @@
-param([string]$Version = '1.0.5')
+param([string]$Version = '1.1.1', [string]$RenderedScript = '')
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$renderedPath = Join-Path $repoRoot 'target\release\nsis\x64\installer.nsi'
+$renderedPath = if ($RenderedScript) { (Resolve-Path -LiteralPath $RenderedScript).Path } else { Join-Path $repoRoot 'target\release\nsis\x64\installer.nsi' }
 $source = Get-Content -LiteralPath $renderedPath -Raw
 if ($source -notmatch ('!define VERSION "' + [regex]::Escape($Version) + '"')) {
     throw 'Bundle the current version before generating a layout preview.'

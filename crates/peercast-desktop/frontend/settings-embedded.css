@@ -18,3 +18,12 @@
 #window-preset{min-height:42px}#window-minimize-to-tray,#window-launch-at-startup{accent-color:#8066c2}
 
 .window-settings-column{width:100%;max-width:640px}.window-settings-column>.section-title{margin-bottom:20px}.window-settings-column .field-group{display:grid;gap:9px;margin-top:0}.window-settings-column .window-size-group{padding:18px;border:1px solid var(--line);border-radius:9px;background:#fcfbff}.window-settings-column .window-size-group>label,.window-settings-column .window-dimension{display:grid;gap:7px;color:#24214f;font-size:13px;font-weight:600}.window-settings-column #window-preset,.window-settings-column .window-dimension input{width:100%;max-width:none;min-width:0;min-height:42px;padding:0 12px;border:1px solid #d9d7ee;border-radius:7px;background:#fff;color:#29264f;font:inherit;font-size:13px;font-weight:400}.window-settings-column #window-preset:focus,.window-settings-column .window-dimension input:focus{outline:2px solid #8979ff66;border-color:#8979ff}.window-settings-column .window-dimensions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:5px}.window-settings-column .window-dimension span{color:#8582a5;font-size:11px;font-weight:400}.window-settings-column .window-behavior-group{gap:13px;margin-top:20px;padding:17px 18px;border:1px solid var(--line);border-radius:9px;background:#fff}.window-settings-column .window-behavior-group .check-row{display:flex;align-items:center;gap:10px;width:100%;color:#302b58;font-size:13px;line-height:1.55}.window-settings-column .window-behavior-group .check-row input{flex:none;width:17px;height:17px;margin:0;accent-color:#7660e8}@media(max-width:560px){.window-settings-column .window-dimensions{grid-template-columns:minmax(0,1fr)}}
+
+@media(max-height:650px){
+  .settings-window>.rail{padding:7px 14px}.rail-nav{gap:5px}
+  .nav-item{min-height:36px;padding:0 10px;font-size:12px}
+  .bottom-bar{min-height:56px;padding:8px 16px}.bottom-bar .button{min-height:38px}
+  .page-content{padding:16px}.section-title{margin-bottom:14px}
+  .update-card{padding:14px 18px}.update-card-heading h3{font-size:15px}
+  .update-actions{margin-top:12px}.update-notes{max-height:90px}
+}

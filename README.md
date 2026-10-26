@@ -48,18 +48,20 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 download is one 7z archive containing the installer, checksums, and a `licenses/` folder:
 
-- [PeerCast RT 1.1.0 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/PeerCastRT-1.1.0-windows-x64-installer.7z)
-- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/PeerCastRT-1.1.0-windows-x64-installer.7z.sha256) (`ee36fc812e6eaadbc535fe578b553aa34bd202a3d2e413b92c98430aa80b246b`)
-- [yt-dlp 2026.08.19 corresponding source archive](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.0/yt-dlp-2026.08.19-sources.7z)
+- [PeerCast RT 1.1.1 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/PeerCastRT-1.1.1-windows-x64-installer.7z)
+- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/PeerCastRT-1.1.1-windows-x64-installer.7z.sha256) (`eb33e40fac59e6ce3359d9fd81ef1c7e824fc23ef89841ec940ed53528c91082`)
+- [yt-dlp 2026.08.19 corresponding source archive](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.1/yt-dlp-2026.08.19-sources.7z)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
-Extract the archive and run `PeercastRT_1.1.0_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
+The window size uses physical pixels by default; enable the logical-size checkbox in Appearance to follow Windows display scaling. The Connections context menu can clear transient messages and the in-memory log without changing active connections or channel rules.
+
+Extract the archive and run `PeercastRT_1.1.1_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
 
 ## YouTube favorites
 
 YouTube favorites monitoring accepts up to 20 public channel URLs in `@handle` or `UC...` form. While the app is running, it checks every five minutes; manual checks have a 30-second cooldown. The list distinguishes live streams, upcoming streams, and check errors. Windows notifications and sounds are identified by `channelId` and limited to one notification per channel every 12 hours. Viewing opens in a browser, and YouTube streams are not recording targets. Continuous monitoring and notification delivery have not been operationally guaranteed.
 
-Before building a Windows installer, run `pwsh -File tools/prepare-youtube-helper.ps1 -ReleaseVersion 1.1.0`. This prepares the hash-pinned helper, license notices, and corresponding-source archive used by the existing packaging and publishing scripts. `tools/yt-dlp/lock.json` records all upstream source URLs and SHA-256 hashes; update it together with the helper version and embedded digest when changing yt-dlp.
+Before building a Windows installer, run `pwsh -File tools/prepare-youtube-helper.ps1 -ReleaseVersion 1.1.1`. This prepares the hash-pinned helper, license notices, and corresponding-source archive used by the existing packaging and publishing scripts. `tools/yt-dlp/lock.json` records all upstream source URLs and SHA-256 hashes; update it together with the helper version and embedded digest when changing yt-dlp.
 
 Version 1.0.4 improves relay startup, adds a copy button for filtered logs and a direct-favorite removal action, and notifies Windows when a favorite broadcaster appears on a channel-list update. Notifications play one short original chime per batch, with custom rule sounds taking priority. They are limited to once per broadcaster every 12 hours, with history retained across restarts; hidden or muted channels are excluded.
 

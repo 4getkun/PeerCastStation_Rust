@@ -61,3 +61,7 @@ for (const command of ['update_status', 'check_update', 'download_update', 'canc
   assert(source.includes(`invoke("${command}")`) || source.includes(`runUpdateAction("${command}")`), `The UI must call ${command}`);
 }
 console.log('Updater UI regression: phases, busy states, progress, actions, and safe notes passed');
+
+const versionPanel = html.slice(html.indexOf('id="panel-version"'), html.indexOf('<footer class="bottom-bar">'));
+assert(versionPanel.indexOf('id="update-check"') < versionPanel.indexOf('class="about-card"'), 'Update actions must precede app information and lengthy license text');
+assert(versionPanel.indexOf('id="update-check"') < versionPanel.indexOf('id="update-notes"'), 'Long release notes must not push update actions below the fold');

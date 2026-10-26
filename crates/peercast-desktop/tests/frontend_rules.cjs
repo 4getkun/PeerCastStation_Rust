@@ -5,11 +5,61 @@ const path = require('node:path');
 // Exercise the shipped pure helper without adding browser dependencies.
 const source = fs.readFileSync(path.join(__dirname, '../frontend/settings.js'), 'utf8');
 const settingsHtml = fs.readFileSync(path.join(__dirname, '../frontend/settings.html'), 'utf8');
-function settingsFunction(name) {
+assert.match(settingsHtml, /<details id="saved-rules-disclosure" class="saved-rules-disclosure">\s*<summary>/,
+  'Saved channel rules must start in the native, collapsed disclosure');
+assert.match(settingsHtml, /<summary>[\s\S]*id="rules-count"[\s\S]*<\/summary>[\s\S]*id="rules-list"/,
+  'The saved rule names must stay inside the user-controlled disclosure');
+assert.match(source, /state\.selectedRule = null;\s*state\.recording =/,
+  'Loading saved preferences must not preselect and expose the first rule');
+assert.match(source, /\$\("saved-rules-disclosure"\)\.addEventListener\("toggle", handleRuleDisclosureToggle\)/,
+  'The native disclosure close action must clear any selected rule');
+assert.match(source, /state\.selectedRule = state\.rules\.length - 1; \$\("saved-rules-disclosure"\)\.open = true;/,
+  'Explicit rule creation must reveal the list and select the new rule');
+console.log('Frontend channel-rule disclosure regression: collapsed load, hidden names on return, explicit add passed');
+function settingsFunction(name, bindings = {}) {
   const match = source.match(new RegExp(`  function ${name}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n  \\}`));
   assert(match, `The ${name} settings helper must exist`);
-  return new Function(`return (${match[0].trim()})`)();
+  return new Function(...Object.keys(bindings), `return (${match[0].trim()})`)(...Object.values(bindings));
 }
+{
+  const ruleState = { selectedRule: 0, dirty: false };
+  const rule = { name: 'Before edit' };
+  const editor = { name: 'Edited NG name' };
+  let commits = 0;
+  let syncs = 0;
+  const clearRuleSelection = settingsFunction('clearRuleSelection', {
+    state: ruleState,
+    commitRuleEditor: () => { commits += 1; rule.name = editor.name; },
+    syncRuleFields: () => { syncs += 1; },
+  });
+  const disclosure = { open: false };
+  const handleToggle = settingsFunction('handleRuleDisclosureToggle', {
+    $: () => disclosure,
+    clearRuleSelection,
+  });
+  handleToggle();
+  assert.equal(rule.name, 'Edited NG name', 'Closing the disclosure must commit the active editor into the existing rule');
+  assert.equal(ruleState.selectedRule, null, 'Closing the disclosure must clear the selection so the editor does not expose its name');
+  assert.equal(commits, 1);
+  assert.equal(syncs, 1);
+  assert.equal(ruleState.dirty, false, 'Disclosure close must not mark settings dirty when no other action did so');
+
+  const controls = { 'saved-rules-disclosure': { open: true }, 'page-title': {}, 'page-description': {} };
+  const root = { querySelectorAll: () => [] };
+  const activate = settingsFunction('activate', {
+    meta: { appearance: ['外観', '説明'] },
+    state: { selectedRule: null, updateViewActive: false },
+    clearRuleSelection: () => {},
+    $: (id) => controls[id],
+    root,
+    ensureUpdateStatus: () => {},
+    stopUpdatePolling: () => {},
+  });
+  activate('appearance');
+  assert.equal(controls['saved-rules-disclosure'].open, false,
+    'Leaving the rules page must collapse the list even when the user never selected a row');
+}
+console.log('Frontend channel-rule disclosure behavior: manual close clears selection and leaving page always collapses');
 const helper = source.match(/  function exactNamePattern\(name\) \{([\s\S]*?)\n  \}/);
 assert(helper, 'The exact-name helper must exist');
 const exactNamePattern = new Function('name', helper[1]);
@@ -27,8 +77,9 @@ console.log('Frontend exact-name regression: 4 fixtures passed');
 const normalizeWindowPreferences = settingsFunction('normalizeWindowPreferences');
 const parseWindowPreset = settingsFunction('parseWindowPreset');
 const isValidWindowSize = settingsFunction('isValidWindowSize');
-assert.deepEqual(normalizeWindowPreferences(), { width: 1600, height: 900, minimizeToTray: false, launchAtStartup: false });
-assert.deepEqual(normalizeWindowPreferences({ width: 1486, height: 1059, minimizeToTray: true }), { width: 1486, height: 1059, minimizeToTray: true, launchAtStartup: false }, 'Existing saved custom sizes must be preserved');
+assert.deepEqual(normalizeWindowPreferences(), { width: 1600, height: 900, logicalSize: false, minimizeToTray: false, launchAtStartup: false });
+assert.deepEqual(normalizeWindowPreferences({ width: 1486, height: 1059, minimizeToTray: true }), { width: 1486, height: 1059, logicalSize: false, minimizeToTray: true, launchAtStartup: false }, 'Existing saved custom sizes must remain physical and preserve their values');
+assert.deepEqual(normalizeWindowPreferences({ width: 1486, height: 1059, logicalSize: true }), { width: 1486, height: 1059, logicalSize: true, minimizeToTray: false, launchAtStartup: false }, 'Saved logical-size mode must load without changing dimensions');
 const presets = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1440'];
 for (const preset of presets) assert(settingsHtml.includes(`<option value="${preset}">`), `The preset ${preset} must be available`);
 assert.deepEqual(parseWindowPreset('1366x768'), { width: 1366, height: 768 });
@@ -39,7 +90,28 @@ assert.equal(isValidWindowSize(1279, 720), false);
 assert.equal(isValidWindowSize(1600, 1441), false);
 assert.match(settingsHtml, /id="window-width" type="number" min="1280" max="2560"[^>]*value="1600"/);
 assert.match(settingsHtml, /id="window-height" type="number" min="720" max="1440"[^>]*value="900"/);
-console.log('Frontend window size regression: defaults, five presets, saved custom size, and range passed');
+assert.match(settingsHtml, /<input id="window-logical-size" type="checkbox"><span>Windowsの表示倍率に合わせる（論理サイズ）/);
+assert.match(source, /\$\("window-logical-size"\)\.addEventListener\("change", updateWindowLogicalSize\)/,
+  'Changing the checkbox must update the saved window preferences');
+assert.match(source, /\$\("window-logical-size"\)\.checked = state\.window\.logicalSize/,
+  'Loading saved preferences must synchronize the checkbox');
+const logicalWindowState = { window: { width: 1486, height: 1059, logicalSize: false }, dirty: false };
+const logicalWindowControl = { checked: true };
+const updateWindowLogicalSize = settingsFunction('updateWindowLogicalSize', {
+  state: logicalWindowState,
+  $: () => logicalWindowControl,
+  setDirty: () => { logicalWindowState.dirty = true; },
+});
+updateWindowLogicalSize();
+assert.deepEqual(logicalWindowState.window, { width: 1486, height: 1059, logicalSize: true }, 'Enabling logical size must preserve physical dimension values');
+assert.equal(logicalWindowState.dirty, true, 'Changing logical-size mode must mark the preferences for saving');
+logicalWindowState.dirty = false;
+logicalWindowControl.checked = false;
+updateWindowLogicalSize();
+assert.deepEqual(logicalWindowState.window, { width: 1486, height: 1059, logicalSize: false }, 'Disabling logical size must preserve the same dimensions');
+assert.equal(logicalWindowState.dirty, true);
+assert.match(source, /window:\s*\{ \.\.\.state\.window \}/, 'Saved preferences must include the logical-size setting');
+console.log('Frontend window size regression: physical default, logical mode toggle/save/load, dimensions preserved, presets and range passed');
 
 const appSource = fs.readFileSync(path.join(__dirname, '../frontend/app.js'), 'utf8');
 const appHtml = fs.readFileSync(path.join(__dirname, '../frontend/index.html'), 'utf8');
@@ -134,7 +206,34 @@ const countFixtures = [
 ];
 assert.equal(countableYpChannelCount(countFixtures), 1);
 assert.deepEqual(countFixtures.filter(isCountableYpChannel).map(({ name }) => name), ['有効配信・視聴者数不明']);
-console.log('Frontend YP count regression: 5 fixtures passed');
+assert.match(appHtml, /class="yp-heading-channel"[\s\S]*id="yp-header-count"/);
+assert.match(appHtml, /id="status-count-divider" class="status-divider"/);
+assert.match(appSource, /renderYpHeaderCount\(filtered, youtubeCount\)/);
+const ypHeaderCount = { textContent: '' };
+const renderYpHeaderCount = appFunction('renderYpHeaderCount', {
+  state: { ypSource: 'all' },
+  countableYpChannelCount,
+  text: (_id, value) => { ypHeaderCount.textContent = value; },
+});
+renderYpHeaderCount(countFixtures, 3);
+assert.equal(ypHeaderCount.textContent, '1 件の配信 · YouTube 3 件', 'The header count must reflect current filtered channels and visible YouTube entries');
+const youtubeOnlyHeader = appFunction('renderYpHeaderCount', {
+  state: { ypSource: 'youtube' },
+  countableYpChannelCount,
+  text: (_id, value) => { ypHeaderCount.textContent = value; },
+});
+youtubeOnlyHeader(countFixtures, 2);
+assert.equal(ypHeaderCount.textContent, '0 件の配信 · YouTube 2 件', 'The YouTube source must not retain the prior channel count');
+const footerCount = { hidden: false };
+const footerDivider = { hidden: false };
+const visibilityById = (id) => id === 'yp-count' ? footerCount : footerDivider;
+appFunction('syncYpFooterCountVisibility', { currentView: () => 'yp', byId: visibilityById })();
+assert.equal(footerCount.hidden, true);
+assert.equal(footerDivider.hidden, true, 'The divider must hide with the duplicate YP footer count');
+appFunction('syncYpFooterCountVisibility', { currentView: () => 'connections', byId: visibilityById })();
+assert.equal(footerCount.hidden, false, 'Other views must restore the status footer count');
+assert.equal(footerDivider.hidden, false);
+console.log('Frontend YP count regression: count rules, search/source header updates, and footer visibility passed');
 
 const channelAnnotation = (channel) => channel?.annotation && typeof channel.annotation === 'object' ? channel.annotation : channel || {};
 const ypChannelKey = appFunction('ypChannelKey');

@@ -56,6 +56,7 @@
     return {
       width: Number.isFinite(width) ? Math.trunc(width) : 1600,
       height: Number.isFinite(height) ? Math.trunc(height) : 900,
+      logicalSize: Boolean(value.logicalSize),
       minimizeToTray: Boolean(value.minimizeToTray),
       launchAtStartup: Boolean(value.launchAtStartup),
     };
@@ -67,6 +68,19 @@
   function isValidWindowSize(width, height) {
     return Number.isInteger(width) && width >= 1280 && width <= 2560
       && Number.isInteger(height) && height >= 720 && height <= 1440;
+  }
+  function formatBackendUptime(seconds) {
+    if (seconds === null || seconds === undefined || seconds === "") return "—";
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value < 0) return "—";
+    const total = Math.floor(value);
+    const secs = total % 60;
+    if (total < 60) return `${total}秒`;
+    const minutes = Math.floor(total / 60);
+    if (total < 3600) return `${minutes}分 ${secs}秒`;
+    const hours = Math.floor(total / 3600);
+    const remainingMinutes = Math.floor((total % 3600) / 60);
+    return `${hours}時間 ${remainingMinutes}分 ${secs}秒`;
   }
   const ruleFields = ["name", "details", "comment", "contactUrl", "yellowPage", "streamUrl", "contentType", "listeners", "bitrate"];
   const recordingDefaults = { enabled: false, directory: "recordings", channelSubfolders: true, limitConcurrent: true, maxConcurrent: 5, retryCount: 30, retryIntervalSecs: 10, disconnectEveryRetries: 5, disconnectOnRetryEnd: true, splitMinutes: null, splitSizeMb: null, allDay: true, watchStart: "00:00", watchEnd: "23:59", monitorIntervalSecs: 60, rules: [] };
@@ -250,6 +264,15 @@
     $("rule-sound-path").value = rule?.soundPath || "";
     $("rules-editor-heading").textContent = rule?.name || "条件を選択";
     renderControls();
+  }
+  function clearRuleSelection() {
+    if (state.selectedRule === null) return;
+    commitRuleEditor();
+    state.selectedRule = null;
+    syncRuleFields();
+  }
+  function handleRuleDisclosureToggle() {
+    if (!$("saved-rules-disclosure").open) clearRuleSelection();
   }
   function renderRulesList() {
     const list = $("rules-list");
@@ -502,13 +525,14 @@
       state.savedPlayer = { ...snapshotPlayer };
       state.rules = snapshotRules;
       state.savedRules = snapshotRules.map((rule) => ({ ...rule, fields: [...rule.fields] }));
-      state.selectedRule = state.rules.length ? Math.min(state.selectedRule ?? 0, state.rules.length - 1) : null;
+      state.selectedRule = null;
       state.recording = { ...snapshotRecording, rules: snapshotRecording.rules.map((rule) => ({ ...rule, fields: [...rule.fields] })) };
       state.savedRecording = cloneRecording(state.recording);
       state.window = { ...snapshotWindow };
       $("window-width").value = String(state.window.width);
       $("window-height").value = String(state.window.height);
       $("window-preset").value = `${state.window.width}x${state.window.height}`;
+      $("window-logical-size").checked = state.window.logicalSize;
       $("window-minimize-to-tray").checked = state.window.minimizeToTray;
       $("window-launch-at-startup").checked = state.window.launchAtStartup;
       state.selectedRecordingRule = state.recording.rules.length ? Math.min(state.selectedRecordingRule ?? 0, state.recording.rules.length - 1) : null;
@@ -525,7 +549,7 @@
     const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "Peercast RT");
     $("backend-status").textContent = `${backendLabel} · ${snapshot.running ? "稼働中" : "停止中"}`;
     $("backend-endpoint").textContent = snapshot.endpoint || "—";
-    $("backend-uptime").textContent = snapshot.running ? `${Number(snapshot.uptimeSecs) || 0} 秒` : "—";
+    $("backend-uptime").textContent = snapshot.running ? formatBackendUptime(snapshot.uptimeSecs) : "—";
     $("backend-tasks").textContent = snapshot.running ? String(Number(snapshot.activeTasks) || 0) : "—";
     $("config-path").textContent = snapshot.configPath || "—";
     const configuredPlayer = typeof snapshot.desktop?.player?.executable === "string" && snapshot.desktop.player.executable.trim() ? snapshot.desktop.player.executable : null;
@@ -555,6 +579,7 @@
     const currentVersion = $("update-current-version");
     if (!currentVersion) return;
     currentVersion.textContent = status?.currentVersion ? `現在のバージョン ${status.currentVersion}` : "現在のバージョンを確認しています";
+    $("about-current-version").textContent = status?.currentVersion ? `バージョン ${status.currentVersion}` : "バージョンを確認しています";
     $("update-status").textContent = model.message;
     renderUpdateNotes($("update-notes"), status?.notes);
     const progress = $("update-progress");
@@ -641,6 +666,10 @@
   }
   function activate(page) {
     if (!meta[page]) return;
+    if (page !== "channel-rules") {
+      clearRuleSelection();
+      $("saved-rules-disclosure").open = false;
+    }
     root.querySelectorAll(".nav-item").forEach((tab) => {
       const active = tab.dataset.page === page;
       tab.classList.toggle("active", active);
@@ -651,9 +680,11 @@
     $("page-title").textContent = meta[page][0];
     $("page-description").textContent = meta[page][1];
     state.updateViewActive = page === "version";
+    if (page === "channel-rules" && state.selectedRule !== null) $("saved-rules-disclosure").open = true;
     if (state.updateViewActive) ensureUpdateStatus();
     else stopUpdatePolling();
   }
+  $("saved-rules-disclosure").addEventListener("toggle", handleRuleDisclosureToggle);
   async function save() {
     if (state.loading || state.busy || !state.dirty) return;
     commitEditor();
@@ -790,6 +821,11 @@
     state.window.launchAtStartup = $("window-launch-at-startup").checked;
     setDirty();
   }));
+  function updateWindowLogicalSize() {
+    state.window.logicalSize = $("window-logical-size").checked;
+    setDirty();
+  }
+  $("window-logical-size").addEventListener("change", updateWindowLogicalSize);
   $("page-name").addEventListener("input", () => { commitEditor(); setDirty(); });
   $("page-url").addEventListener("input", () => { commitEditor(); setDirty(); });
   $("add-page").addEventListener("click", () => {
@@ -824,7 +860,7 @@
   $("rules-search").addEventListener("input", () => { state.rulesSearch = $("rules-search").value; state.rulesFingerprint = null; renderRulesList(); });
   $("add-rule").addEventListener("click", () => {
     if (state.rules.length >= 128) return;
-    commitRuleEditor(); state.rules.push(newRule()); state.selectedRule = state.rules.length - 1; syncRuleFields(); setDirty(); renderRulesList(); $("rule-name").focus();
+    commitRuleEditor(); state.rules.push(newRule()); state.selectedRule = state.rules.length - 1; $("saved-rules-disclosure").open = true; syncRuleFields(); setDirty(); renderRulesList(); $("rule-name").focus();
   });
   $("delete-rule").addEventListener("click", () => {
     if (state.selectedRule === null) return;
@@ -951,7 +987,7 @@
     addChannelRule(channel, kind = "favorite") {
       const rule = newRule(kind === "ng" ? "ng" : "favorite", channel);
       if (state.rules.length >= 128) { activate("channel-rules"); setNotice("条件は128件まで登録できます。", true); return false; }
-      state.rules.push(rule); state.selectedRule = state.rules.length - 1; state.rulesSearch = ""; $("rules-search").value = ""; activate("channel-rules"); syncRuleFields(); setDirty(); renderRulesList(); return true;
+      state.rules.push(rule); state.selectedRule = state.rules.length - 1; state.rulesSearch = ""; $("rules-search").value = ""; activate("channel-rules"); $("saved-rules-disclosure").open = true; syncRuleFields(); setDirty(); renderRulesList(); return true;
     },
   };
   };

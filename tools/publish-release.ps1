@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PlayerArchive,
-    [string]$Version = '1.1.0',
+    [string]$Version = '1.1.1',
     [string]$ReleaseNotes = '自動更新と新しいインストーラーデザインを追加しました。',
     [string]$WorkDirectory = '',
     [string]$ReleaseDirectory = '',

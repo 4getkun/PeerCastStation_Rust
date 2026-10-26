@@ -2,7 +2,7 @@
 param(
     [string]$CacheDirectory = '',
     [string]$OutputDirectory = '',
-    [string]$ReleaseVersion = '1.1.0'
+    [string]$ReleaseVersion = '1.1.1'
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
