@@ -48,12 +48,14 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 download is one 7z archive containing the installer, checksums, and a `licenses/` folder:
 
-- [PeerCast RT 1.0.4 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.4/PeerCastRT-1.0.4-windows-x64-installer.7z)
-- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.4/PeerCastRT-1.0.4-windows-x64-installer.7z.sha256) (`5245c9f2e460a8982313bedfc54edaa5a5da349dd9e454d3ce168943779306f5`)
+- [PeerCast RT 1.0.5 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.5/PeerCastRT-1.0.5-windows-x64-installer.7z)
+- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.0.5/PeerCastRT-1.0.5-windows-x64-installer.7z.sha256) (`ec9e89301738d3591994c444b26927d79be3e8ee037c4b975f73d51a2cf4a2dd`)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
-Extract the archive and run `PeercastRT_1.0.4_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
+Extract the archive and run `PeercastRT_1.0.5_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
 
 Version 1.0.4 improves relay startup, adds a copy button for filtered logs and a direct-favorite removal action, and notifies Windows when a favorite broadcaster appears on a channel-list update. Notifications play one short original chime per batch, with custom rule sounds taking priority. They are limited to once per broadcaster every 12 hours, with history retained across restarts; hidden or muted channels are excluded.
+
+Version 1.0.5 adds channel reconnect/disconnect and recording playback, Explorer, and Recycle Bin actions to context menus. It fixes FLV recording timestamps and saves WMV streams as `.wmv` without re-encoding. Recorded paths use ordinary Windows notation in the UI. Update requests now negotiate HTTP/2, which the download host requires; version 1.0.4 needs a one-time manual update because its HTTP/1.1 client cannot retrieve the update manifest.
 
 Update artifacts are signed for PeerCast RT's built-in updater. The installer does not have an Authenticode publisher signature, and the 7z format does not guarantee that Chrome or Windows warnings will be absent. Verify the SHA-256 checksum before running it.

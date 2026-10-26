@@ -362,6 +362,11 @@ async fn recording_names_number_only_files_after_the_first_and_keep_session_meta
     let target = create_recording_target(&app, &settings, &no_title, "WMV", 1).unwrap();
     assert_eq!(
         target.path.file_name().unwrap().to_str().unwrap(),
+        "チャンネル名_20261025_213005.wmv"
+    );
+    let asf = create_recording_target(&app, &settings, &no_title, "ASF", 1).unwrap();
+    assert_eq!(
+        asf.path.file_name().unwrap().to_str().unwrap(),
         "チャンネル名_20261025_213005.asf"
     );
 }

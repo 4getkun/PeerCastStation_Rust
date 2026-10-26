@@ -79,7 +79,8 @@ pub fn safe_channel_name(value: &str) -> String {
 pub fn media_extension(content_type: &str) -> &'static str {
     match content_type.to_ascii_uppercase().as_str() {
         "FLV" => "flv",
-        "WMV" | "ASF" => "asf",
+        "WMV" => "wmv",
+        "ASF" => "asf",
         "MP3" => "mp3",
         "OGG" => "ogg",
         "MKV" | "WEBM" => "mkv",

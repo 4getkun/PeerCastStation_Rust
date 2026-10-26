@@ -1,4 +1,4 @@
-param([string]$Version = '1.0.4')
+param([string]$Version = '1.0.5')
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $renderedPath = Join-Path $repoRoot 'target\release\nsis\x64\installer.nsi'

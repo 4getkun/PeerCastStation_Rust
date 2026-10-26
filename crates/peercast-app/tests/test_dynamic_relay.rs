@@ -14,15 +14,23 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 
 fn make_runtime() -> (Arc<AppRuntime>, TaskTracker) {
+    let (runtime, tracker, _) = make_runtime_with_config(AppConfig::default());
+    (runtime, tracker)
+}
+
+fn make_runtime_with_config(
+    config: AppConfig,
+) -> (Arc<AppRuntime>, TaskTracker, Arc<BoundedLogBuffer>) {
     let tracker = TaskTracker::new();
+    let logs = Arc::new(BoundedLogBuffer::default());
     let runtime = AppRuntime::new(
-        &AppConfig::default(),
+        &config,
         tracker.clone(),
-        Arc::new(BoundedLogBuffer::default()),
+        Arc::clone(&logs),
         Arc::new(RwLock::new(RpcState::default())),
     )
     .unwrap();
-    (runtime, tracker)
+    (runtime, tracker, logs)
 }
 
 fn relay(id: &str) -> ChannelConfig {
@@ -36,12 +44,66 @@ fn relay(id: &str) -> ChannelConfig {
     }
 }
 
+fn relay_at(id: &str, endpoint: SocketAddr) -> ChannelConfig {
+    let mut config = relay(id);
+    config.source = ChannelSource::Relay { endpoint };
+    config
+}
+
 async fn drain(runtime: &AppRuntime, tracker: &TaskTracker) {
     runtime.shutdown().await;
     tracker
         .wait_for_drain(Duration::from_secs(2))
         .await
         .expect("tracked workers should drain");
+}
+
+async fn loopback_acceptor() -> (
+    SocketAddr,
+    tokio::sync::mpsc::UnboundedReceiver<TcpStream>,
+    tokio::task::JoinHandle<()>,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = listener.local_addr().unwrap();
+    let (accepted_tx, accepted_rx) = tokio::sync::mpsc::unbounded_channel();
+    let task = tokio::spawn(async move {
+        loop {
+            let Ok(accepted) =
+                tokio::time::timeout(Duration::from_secs(20), listener.accept()).await
+            else {
+                break;
+            };
+            let (mut stream, _) = accepted.unwrap();
+            let mut request = [0u8; 1024];
+            let received = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut request))
+                .await
+                .expect("relay request should arrive")
+                .expect("relay request should be readable");
+            let _request_bytes = received;
+            if accepted_tx.send(stream).is_err() {
+                break;
+            }
+        }
+    });
+    (endpoint, accepted_rx, task)
+}
+
+async fn next_connection(
+    accepted: &mut tokio::sync::mpsc::UnboundedReceiver<TcpStream>,
+) -> TcpStream {
+    tokio::time::timeout(Duration::from_secs(3), accepted.recv())
+        .await
+        .expect("relay TCP connection should arrive")
+        .expect("acceptor should stay available")
+}
+
+async fn assert_closed(stream: &mut TcpStream) {
+    let mut byte = [0u8; 1];
+    let read = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut byte))
+        .await
+        .expect("relay socket should close promptly")
+        .expect("relay socket should close cleanly");
+    assert_eq!(read, 0, "relay socket should reach EOF after stop");
 }
 
 #[tokio::test]
@@ -165,6 +227,217 @@ async fn shutdown_racing_add_leaves_no_worker_or_live_channel() {
         .expect("workers should drain after shutdown");
     let channel = runtime.channel("4123456789abcdef0123456789abcdef").unwrap();
     assert!(!channel.snapshot().await.available);
+}
+
+#[tokio::test]
+async fn relay_control_api_disconnects_and_reconnects_dynamic_channel() {
+    const ID: &str = "6123456789abcdef0123456789abcdef";
+    let (endpoint, mut accepted, acceptor) = loopback_acceptor().await;
+    let (runtime, tracker) = make_runtime();
+    runtime.start().await.unwrap();
+    runtime
+        .add_relay_channel(relay_at(ID, endpoint))
+        .await
+        .unwrap();
+    let mut first = next_connection(&mut accepted).await;
+
+    runtime.disconnect_relay_channel(ID).await.unwrap();
+    assert_closed(&mut first).await;
+    let channel = runtime.channel(ID).unwrap();
+    assert!(!channel.snapshot().await.relay_active);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(channel.snapshot().await.connection_attempts, 1);
+    assert!(matches!(
+        accepted.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+
+    runtime.reconnect_relay_channel(ID).await.unwrap();
+    let mut second = next_connection(&mut accepted).await;
+    assert!(channel.snapshot().await.relay_active);
+    runtime.disconnect_relay_channel(ID).await.unwrap();
+    assert_closed(&mut second).await;
+    drain(&runtime, &tracker).await;
+    acceptor.abort();
+    let _ = acceptor.await;
+}
+
+#[tokio::test]
+async fn disconnect_during_backoff_prevents_the_next_attempt() {
+    const ID: &str = "7123456789abcdef0123456789abcdef";
+    let (endpoint, mut accepted, acceptor) = loopback_acceptor().await;
+    let mut config = AppConfig::default();
+    config.runtime.reconnect.max_attempts_per_cycle = 1;
+    config.runtime.reconnect.base_backoff_ms = 500;
+    config.runtime.reconnect.max_backoff_ms = 500;
+    let (runtime, tracker, logs) = make_runtime_with_config(config);
+    runtime.start().await.unwrap();
+    let channel = runtime
+        .add_relay_channel(relay_at(ID, endpoint))
+        .await
+        .unwrap();
+    let first = next_connection(&mut accepted).await;
+    drop(first);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if logs
+                .snapshot()
+                .iter()
+                .any(|entry| entry.target == "relay" && entry.message.contains("next connection"))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("worker should enter its retry backoff");
+
+    runtime.disconnect_relay_channel(ID).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(channel.snapshot().await.connection_attempts, 1);
+    assert!(!channel.snapshot().await.relay_active);
+    assert!(matches!(
+        accepted.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    drain(&runtime, &tracker).await;
+    acceptor.abort();
+    let _ = acceptor.await;
+}
+
+#[tokio::test]
+async fn concurrent_reconnects_leave_only_one_worker() {
+    const ID: &str = "8123456789abcdef0123456789abcdef";
+    let (endpoint, mut accepted, acceptor) = loopback_acceptor().await;
+    let (runtime, tracker) = make_runtime();
+    runtime.start().await.unwrap();
+    let channel = runtime
+        .add_relay_channel(relay_at(ID, endpoint))
+        .await
+        .unwrap();
+    let mut first = next_connection(&mut accepted).await;
+
+    let runtime_a = Arc::clone(&runtime);
+    let runtime_b = Arc::clone(&runtime);
+    let (a, b) = tokio::join!(
+        tokio::spawn(async move { runtime_a.reconnect_relay_channel(ID).await }),
+        tokio::spawn(async move { runtime_b.reconnect_relay_channel(ID).await }),
+    );
+    a.unwrap().unwrap();
+    b.unwrap().unwrap();
+    assert_closed(&mut first).await;
+
+    let mut sockets = vec![next_connection(&mut accepted).await];
+    while let Ok(Some(socket)) =
+        tokio::time::timeout(Duration::from_millis(150), accepted.recv()).await
+    {
+        sockets.push(socket);
+    }
+    assert!(
+        sockets.len() <= 2,
+        "two reconnects may create at most two replacement TCP connections"
+    );
+    let mut active_socket = None;
+    for mut socket in sockets {
+        let mut byte = [0u8; 1];
+        match tokio::time::timeout(Duration::from_millis(50), socket.read(&mut byte)).await {
+            Err(_) => {
+                assert!(
+                    active_socket.replace(socket).is_none(),
+                    "only one worker may stay connected"
+                );
+            }
+            Ok(Ok(0)) | Ok(Err(_)) => {}
+            Ok(Ok(_)) => panic!("fixture should not send media bytes"),
+        }
+    }
+    let mut last = active_socket.expect("one relay worker should remain connected");
+    assert!(channel.snapshot().await.relay_active);
+
+    runtime.disconnect_relay_channel(ID).await.unwrap();
+    assert_closed(&mut last).await;
+    drain(&runtime, &tracker).await;
+    acceptor.abort();
+    let _ = acceptor.await;
+}
+
+#[tokio::test]
+async fn configured_relay_can_be_disconnected_and_reconnected() {
+    const ID: &str = "9123456789abcdef0123456789abcdef";
+    let (endpoint, mut accepted, acceptor) = loopback_acceptor().await;
+    let mut config = AppConfig::default();
+    config.runtime.channels.push(relay_at(ID, endpoint));
+    let (runtime, tracker, _) = make_runtime_with_config(config);
+    runtime.start().await.unwrap();
+    let mut first = next_connection(&mut accepted).await;
+
+    runtime.disconnect_relay_channel(ID).await.unwrap();
+    assert_closed(&mut first).await;
+    runtime.reconnect_relay_channel(ID).await.unwrap();
+    let mut second = next_connection(&mut accepted).await;
+    assert!(runtime.channel(ID).unwrap().snapshot().await.relay_active);
+    runtime.disconnect_relay_channel(ID).await.unwrap();
+    assert_closed(&mut second).await;
+    drain(&runtime, &tracker).await;
+    acceptor.abort();
+    let _ = acceptor.await;
+}
+
+#[tokio::test]
+async fn relay_controls_reject_http_push_and_shutdown() {
+    const PUSH_ID: &str = "a123456789abcdef0123456789abcdef";
+    const RELAY_ID: &str = "b123456789abcdef0123456789abcdef";
+    let (endpoint, mut accepted, acceptor) = loopback_acceptor().await;
+    let mut config = AppConfig::default();
+    config.runtime.channels.push(ChannelConfig {
+        channel_id: PUSH_ID.to_owned(),
+        source: ChannelSource::HttpPush {
+            bind_address: "127.0.0.1:0".parse().unwrap(),
+            auth_token: None,
+        },
+        ..ChannelConfig::default()
+    });
+    let (runtime, tracker, _) = make_runtime_with_config(config);
+    runtime.start().await.unwrap();
+    assert_eq!(
+        runtime
+            .disconnect_relay_channel(PUSH_ID)
+            .await
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+    assert_eq!(
+        runtime
+            .reconnect_relay_channel(PUSH_ID)
+            .await
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    runtime
+        .add_relay_channel(relay_at(RELAY_ID, endpoint))
+        .await
+        .unwrap();
+    let mut first = next_connection(&mut accepted).await;
+    runtime.shutdown().await;
+    assert_eq!(
+        runtime
+            .reconnect_relay_channel(RELAY_ID)
+            .await
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::BrokenPipe
+    );
+    tracker
+        .wait_for_drain(Duration::from_secs(2))
+        .await
+        .unwrap();
+    assert_closed(&mut first).await;
+    acceptor.abort();
+    let _ = acceptor.await;
 }
 
 #[tokio::test]

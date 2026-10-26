@@ -102,3 +102,5 @@ dialog{width:min(620px,calc(100vw - 40px));max-height:80vh;padding:25px;border:1
 .connection-tree .connection-port-unknown,.connection-tree .connection-port-unavailable{color:#897b94}
 @media(max-width:1250px){.connections-view,.workspace.connections-view-active{grid-template-columns:minmax(240px,.72fr) minmax(0,1.7fr)}.connections-channel-heading{padding:17px 18px 14px}.connection-tab-panel{padding:14px 16px 20px}}
 .yp-row-copy{position:relative;padding-left:26px}.yp-row-title-line{position:relative;min-width:0}.yp-row-title-line .yp-row-select{display:block}.yp-row-newcomer{position:absolute;left:-26px;top:50%;width:18px;height:18px;transform:translateY(-50%);object-fit:contain;pointer-events:none}
+
+.context-menu button:disabled{opacity:.45;cursor:not-allowed}.context-menu button:disabled:hover{background:transparent}

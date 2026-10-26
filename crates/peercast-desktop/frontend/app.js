@@ -789,7 +789,7 @@
     if (view === "recordings") text("yp-count", `${Array.isArray(state.snapshot?.recordings) ? state.snapshot.recordings.length : 0} 件の録画`);
     else if (view === "yp") text("yp-count", `${countableYpChannelCount(visibleYpChannels())} 件の配信`);
     else if (view === "channels") text("yp-count", `${broadcastingChannels(state.snapshot).length} 件の配信`);
-    else if (view === "connections") text("yp-count", `${allRuntimeChannels(state.snapshot).length} 件の稼働チャンネル`);
+    else if (view === "connections") text("yp-count", `${allRuntimeChannels(state.snapshot).length} 件の接続チャンネル`);
     if (view === "yp") {
       ensureVisibleYpSelection(visibleYpChannels());
       state.detailKind = state.ypSelectionKey ? "yp" : null;
@@ -947,6 +947,20 @@
     return `${channel.id}:${channel.sessionId || ""}`;
   }
 
+  function recordingIsActive(job) {
+    return Boolean(job && ["queued", "connecting", "recording", "retrying"].includes(job.status));
+  }
+  function displayRecordingPath(value) {
+    const path = String(value ?? "");
+    if (/^\\\\\?\\UNC\\/i.test(path)) return path.replace(/^\\\\\?\\UNC\\/i, "\\\\");
+    if (/^\\\\\?\\[A-Za-z]:\\/.test(path)) return path.slice(4);
+    return path;
+  }
+  function canUseRecordingFile(job, action, busy) {
+    if (!job?.currentFile || busy) return false;
+    return action !== "trash" || !recordingIsActive(job);
+  }
+
   function renderConnections(snapshot) {
     const channels = allRuntimeChannels(snapshot);
     const list = byId("connections-channel-list");
@@ -958,7 +972,7 @@
         state.connectionSelectionId = channels[0] ? connectionChannelKey(channels[0]) : null;
       }
       list.replaceChildren();
-      if (!channels.length) appendText(list, "p", "connections-list-empty", "稼働中のチャンネルはありません。");
+      if (!channels.length) appendText(list, "p", "connections-list-empty", "接続チャンネルはありません。");
       channels.forEach((channel) => {
         const id = connectionChannelKey(channel);
         const selected = id === String(state.connectionSelectionId ?? "");
@@ -1413,7 +1427,7 @@
       row.querySelector(".recording-bytes-cell").textContent = formatBytes(job.bytesWritten);
       row.querySelector(".recording-segments-cell").textContent = String(Number(job.segments) || 0);
       row.querySelector(".recording-retries-cell").textContent = String(Number(job.retries) || 0);
-      row.querySelector(".recording-file-cell").textContent = displayValue(job.currentFile);
+      row.querySelector(".recording-file-cell").textContent = displayRecordingPath(job.currentFile);
       row.querySelector(".recording-error-cell").textContent = displayValue(job.error);
     });
     byId("recordings-empty").hidden = jobs.length > 0;
@@ -1425,7 +1439,7 @@
       if (!selected) summary.textContent = "録画を選択してください。";
       else {
         const started = Number.isFinite(Number(selected.startedAtMs)) && selected.startedAtMs !== null ? new Date(Number(selected.startedAtMs)).toLocaleString("ja-JP") : "未開始";
-        summary.textContent = `${recordingStatusLabels[selected.status] || displayValue(selected.status)} · 開始 ${started} · キープ ${selected.keep ? "オン" : "オフ"}${selected.currentFile ? ` · ${selected.currentFile}` : ""}${selected.error ? ` · ${selected.error}` : ""}`;
+        summary.textContent = `${recordingStatusLabels[selected.status] || displayValue(selected.status)} · 開始 ${started} · キープ ${selected.keep ? "オン" : "オフ"}${selected.currentFile ? ` · ${displayRecordingPath(selected.currentFile)}` : ""}${selected.error ? ` · ${selected.error}` : ""}`;
       }
     }
     const keep = byId("recording-keep");
@@ -1438,7 +1452,7 @@
     const index = jobs.findIndex((job) => job.id === state.recordingSelectionId);
     const job = index < 0 ? null : jobs[index];
     const busy = state.busy || state.recordingBusy;
-    const active = job && ["queued", "connecting", "recording", "retrying"].includes(job.status);
+    const active = recordingIsActive(job);
     const set = (id, disabled) => { const control = byId(id); if (control) control.disabled = Boolean(disabled); };
     set("recording-start", busy || !state.snapshot?.running || !job || Boolean(active));
     set("recording-stop", busy || !active);
@@ -1555,7 +1569,7 @@
     renderChannels(snapshot);
     renderConnections(snapshot);
     if (currentView() === "channels") text("yp-count", `${broadcastingChannels(snapshot).length} 件の配信`);
-    if (currentView() === "connections") text("yp-count", `${allRuntimeChannels(snapshot).length} 件の稼働チャンネル`);
+    if (currentView() === "connections") text("yp-count", `${allRuntimeChannels(snapshot).length} 件の接続チャンネル`);
     if (currentView() === "logs") renderLogs();
     renderProbe(snapshot.lastProbe || null);
     const csharpBackend = snapshot.backendKind === "csharp";
@@ -1816,22 +1830,35 @@
     if (menu) menu.hidden = true;
     state.ypContextChannel = null;
   }
+  function closeAllContextMenus() {
+    ["yp-context-menu", "runtime-context-menu", "recording-context-menu"].forEach((id) => { const menu = byId(id); if (menu) menu.hidden = true; });
+    state.ypContextChannel = null;
+    state.runtimeContextKey = null;
+    state.recordingContextId = null;
+  }
+  function isEditableContextTarget(target) {
+    return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']"));
+  }
+  function placeContextMenu(menu, x, y) {
+    menu.hidden = false;
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  }
   if (ypRoot) ypRoot.addEventListener("contextmenu", (event) => {
+    if (isEditableContextTarget(event.target)) return;
     const row = event.target.closest(".yp-row");
     if (!row) return;
     const channel = state.ypChannels[Number(row.dataset.ypIndex)];
     const menu = byId("yp-context-menu");
     if (!channel?.name || !menu) return;
     event.preventDefault();
+    closeAllContextMenus();
     selectYpChannel(channel);
     state.ypContextChannel = channel;
     const directFavorite = directFavoriteRuleIndex(state.snapshot?.desktop?.channelRules, channel.name) >= 0;
     text("yp-context-favorite-label", directFavorite ? "お気に入りから外す" : "お気に入りに入れる");
-    menu.hidden = false;
-    const width = 190;
-    const height = 84;
-    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8))}px`;
-    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8))}px`;
+    placeContextMenu(menu, event.clientX, event.clientY);
     byId("yp-context-favorite")?.focus();
   });
   async function setContextChannelPreference(kind) {
@@ -1870,11 +1897,17 @@
   bind("yp-context-favorite", "click", () => { void setContextChannelPreference("favorite"); });
   bind("yp-context-ng", "click", () => { void setContextChannelPreference("ng"); });
   document.addEventListener("click", (event) => {
-    if (!event.target.closest("#yp-context-menu")) closeYpContextMenu();
+    if (!event.target.closest(".context-menu")) closeAllContextMenus();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeYpContextMenu();
+    if (event.key === "Escape") closeAllContextMenus();
   });
+  document.addEventListener("scroll", closeAllContextMenus, true);
+  window.addEventListener("blur", closeAllContextMenus);
+  function suppressNativeContextMenu(event) {
+    if (!isEditableContextTarget(event.target)) event.preventDefault();
+  }
+  document.addEventListener("contextmenu", suppressNativeContextMenu);
   const channelsRoot = byId("channels-list");
   if (channelsRoot) channelsRoot.addEventListener("click", (event) => {
     const row = event.target.closest("[data-channel-id]");
@@ -1887,6 +1920,41 @@
     state.connectionSelectionId = row.dataset.connectionChannelId;
     renderConnections(state.snapshot || { channels: [] });
   });
+  async function controlRuntimeChannel(action) {
+    const targetKey = state.runtimeContextKey;
+    const channel = allRuntimeChannels(state.snapshot).find((entry) => connectionChannelKey(entry) === String(targetKey));
+    const allowed = action === "reconnect" ? channel?.canReconnect === true : channel?.canDisconnect === true;
+    closeAllContextMenus();
+    if (!channel || !allowed || state.recordingBusy || state.busy) return false;
+    state.recordingBusy = true;
+    updateRecordingControls();
+    try {
+      const snapshot = await invoke("control_relay_channel", { channelId: channel.id, sessionId: channel.sessionId, action });
+      renderSnapshot(snapshot);
+      return true;
+    } catch (error) { setNotice(`接続を操作できませんでした: ${errorText(error)}`, true); return false; }
+    finally { state.recordingBusy = false; updateRecordingControls(); }
+  }
+  const connectionMenu = byId("runtime-context-menu");
+  function openRuntimeContextMenu(event) {
+    if (isEditableContextTarget(event.target)) return;
+    const row = event.target.closest("[data-connection-channel-id]");
+    if (row) state.connectionSelectionId = row.dataset.connectionChannelId;
+    const channel = allRuntimeChannels(state.snapshot).find((entry) => connectionChannelKey(entry) === String(state.connectionSelectionId));
+    if (!channel || !connectionMenu) return;
+    if (channel.canReconnect !== true && channel.canDisconnect !== true) return;
+    event.preventDefault(); closeAllContextMenus();
+    state.runtimeContextKey = connectionChannelKey(channel);
+    renderConnections(state.snapshot || { channels: [] });
+    byId("runtime-context-reconnect").disabled = channel.canReconnect !== true || state.recordingBusy || state.busy;
+    byId("runtime-context-disconnect").disabled = channel.canDisconnect !== true || state.recordingBusy || state.busy;
+    placeContextMenu(connectionMenu, event.clientX, event.clientY);
+    (channel.canReconnect === true ? byId("runtime-context-reconnect") : byId("runtime-context-disconnect"))?.focus();
+  }
+  connectionList?.addEventListener("contextmenu", openRuntimeContextMenu);
+  byId("connections-detail")?.addEventListener("contextmenu", openRuntimeContextMenu);
+  byId("runtime-context-reconnect")?.addEventListener("click", () => { void controlRuntimeChannel("reconnect"); });
+  byId("runtime-context-disconnect")?.addEventListener("click", () => { void controlRuntimeChannel("disconnect"); });
   bind("selected-play", "click", () => playYpChannel(currentSelectedDirectoryChannel()));
   bind("selected-record", "click", () => { void enqueueSelectedRecording(); });
   async function addSelectedChannelRule(kind) {
@@ -1920,6 +1988,37 @@
   });
   bind("remove-recording-dialog", "close", () => { state.pendingRecordingRemoval = null; });
   const recordingsRoot = byId("recordings-list");
+  async function recordingFileAction(action) {
+    const targetId = state.recordingContextId;
+    const job = (state.snapshot?.recordings || []).find((entry) => String(entry.id) === String(targetId));
+    closeAllContextMenus();
+    if (!canUseRecordingFile(job, action, state.recordingBusy || state.busy)) return false;
+    state.recordingBusy = true; updateRecordingControls();
+    try {
+      await invoke("recording_file_action", { jobId: String(job.id), action });
+      await refresh();
+      return true;
+    } catch (error) { setNotice(`録画ファイルを操作できませんでした: ${errorText(error)}`, true); return false; }
+    finally { state.recordingBusy = false; updateRecordingControls(); }
+  }
+  function openRecordingContextMenu(event) {
+    if (isEditableContextTarget(event.target)) return;
+    const row = event.target.closest("tr[data-recording-id]");
+    if (row) { state.recordingSelectionId = row.dataset.recordingId; renderRecordings(state.snapshot || { recordings: [] }); }
+    const job = (state.snapshot?.recordings || []).find((entry) => String(entry.id) === String(state.recordingSelectionId));
+    const menu = byId("recording-context-menu");
+    if (!job || !menu) return;
+    event.preventDefault(); closeAllContextMenus();
+    state.recordingContextId = String(job.id);
+    for (const action of ["play", "reveal", "trash"]) byId(`recording-context-${action}`).disabled = !canUseRecordingFile(job, action, state.recordingBusy || state.busy);
+    placeContextMenu(menu, event.clientX, event.clientY);
+    (canUseRecordingFile(job, "play", state.recordingBusy || state.busy) ? byId("recording-context-play") : byId("recording-context-reveal"))?.focus();
+  }
+  recordingsRoot?.addEventListener("contextmenu", openRecordingContextMenu);
+  byId("recording-selection-summary")?.addEventListener("contextmenu", openRecordingContextMenu);
+  byId("recording-context-play")?.addEventListener("click", () => { void recordingFileAction("play"); });
+  byId("recording-context-reveal")?.addEventListener("click", () => { void recordingFileAction("reveal"); });
+  byId("recording-context-trash")?.addEventListener("click", () => { void recordingFileAction("trash"); });
   if (recordingsRoot) {
     recordingsRoot.addEventListener("click", (event) => {
       const row = event.target.closest("tr[data-recording-id]"); if (!row) return;

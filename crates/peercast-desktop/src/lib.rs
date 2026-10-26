@@ -9,6 +9,8 @@ pub mod player;
 pub mod preferences;
 pub mod recording;
 pub mod recording_config;
+pub mod recording_file;
+pub mod recording_flv;
 pub mod recording_path;
 pub mod rules;
 pub mod updater;

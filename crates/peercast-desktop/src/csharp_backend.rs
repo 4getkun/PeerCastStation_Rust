@@ -330,6 +330,8 @@ impl CSharpBackend {
                         available: connections_available,
                         content_type: info["contentType"].as_str().unwrap_or_default().to_owned(),
                         purpose: String::new(),
+                        can_reconnect: false,
+                        can_disconnect: false,
                         metadata,
                         uptime_secs: status["uptime"]
                             .as_u64()

@@ -490,7 +490,8 @@ async fn unready_source_is_closed_when_failed_job_is_removed_and_backend_shuts_d
         .enqueue_recording(ID.into(), "Fixture".into(), false)
         .await
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(15), async {
+    // The backend's source-availability wait is 45 seconds; leave room for it to report failure.
+    tokio::time::timeout(Duration::from_secs(55), async {
         loop {
             let rows = backend.snapshot().await.unwrap().recordings;
             if rows.iter().any(|r| r.id == job && r.status == "failed") {

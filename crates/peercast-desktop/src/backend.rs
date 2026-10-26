@@ -36,6 +36,70 @@ const CHANNEL_ID: &str = "0123456789abcdef0123456789abcdef";
 const PROBE_CHUNKS: usize = 20;
 const PROBE_CHUNK_BYTES: usize = 8192;
 
+#[cfg(test)]
+mod relay_control_tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn relay_actions_reject_stale_sessions_and_keep_disconnected_rows_actionable() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = DesktopBackend::open(dir.path().join("desktop.json"))
+            .await
+            .unwrap();
+        let runtime = {
+            let inner = backend.inner.lock().await;
+            Arc::clone(&inner.running.as_ref().unwrap().runtime)
+        };
+        let id = "55555555555555555555555555555555";
+        runtime
+            .add_relay_channel(ChannelConfig {
+                channel_id: id.into(),
+                name: "relay control fixture".into(),
+                source: ChannelSource::Relay {
+                    endpoint: "127.0.0.1:1".parse().unwrap(),
+                },
+                ..ChannelConfig::default()
+            })
+            .await
+            .unwrap();
+        let snapshot = backend.snapshot().await.unwrap();
+        let channel = snapshot.channels.iter().find(|c| c.id == id).unwrap();
+        assert!(channel.diagnostics.can_reconnect);
+        assert!(channel.diagnostics.can_disconnect);
+        assert!(backend
+            .control_relay_channel(id, "stale-session", "disconnect")
+            .await
+            .is_err());
+        let session = runtime.session_id();
+        let disconnected = backend
+            .control_relay_channel(id, &session, "disconnect")
+            .await
+            .unwrap();
+        let channel = disconnected.channels.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(channel.status, "切断済み");
+        assert!(channel.diagnostics.can_reconnect);
+        assert!(!channel.diagnostics.can_disconnect);
+        let reconnected = backend
+            .control_relay_channel(id, &session, "reconnect")
+            .await
+            .unwrap();
+        assert!(
+            reconnected
+                .channels
+                .iter()
+                .find(|c| c.id == id)
+                .unwrap()
+                .diagnostics
+                .can_disconnect
+        );
+        assert!(backend
+            .control_relay_channel(id, &session, "invalid")
+            .await
+            .is_err());
+        backend.close().await.unwrap();
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct YellowPageEntry {
@@ -177,6 +241,8 @@ pub struct ChannelDiagnostics {
     pub available: bool,
     pub content_type: String,
     pub purpose: String,
+    pub can_reconnect: bool,
+    pub can_disconnect: bool,
     #[serde(flatten)]
     pub metadata: ChannelMetadata,
     pub uptime_secs: u64,
@@ -196,8 +262,10 @@ impl ChannelSnapshot {
             name: config.name.clone(),
             status: if state.available {
                 "受信中"
-            } else if matches!(config.source, ChannelSource::Relay { .. }) {
+            } else if matches!(config.source, ChannelSource::Relay { .. }) && state.relay_active {
                 "接続中"
+            } else if matches!(config.source, ChannelSource::Relay { .. }) {
+                "切断済み"
             } else {
                 "入力待ち"
             }
@@ -224,6 +292,9 @@ impl ChannelSnapshot {
                 available: true,
                 content_type: config.container_type.clone(),
                 purpose: String::new(),
+                can_reconnect: matches!(config.source, ChannelSource::Relay { .. }),
+                can_disconnect: matches!(config.source, ChannelSource::Relay { .. })
+                    && state.relay_active,
                 metadata: config.metadata.clone(),
                 uptime_secs: state.uptime_secs,
                 session_id: Some(runtime.session_id()),
@@ -642,6 +713,12 @@ impl DesktopBackend {
         };
         channels.extend(own_channels);
         channels.extend(recording_channels);
+        for channel in &mut channels {
+            if channel.is_broadcasting || channel.diagnostics.purpose == "recording" {
+                channel.diagnostics.can_reconnect = false;
+                channel.diagnostics.can_disconnect = false;
+            }
+        }
         Ok(Snapshot {
             backend_kind: if self.external.is_some() {
                 "csharp"
@@ -776,6 +853,52 @@ impl DesktopBackend {
     pub async fn control_recording(&self, job_id: &str, action: &str) -> Result<(), String> {
         self.check_open()?;
         self.recordings.control(job_id, action).await
+    }
+
+    pub async fn reserve_recording_file_action(
+        &self,
+        job_id: &str,
+        deleting: bool,
+    ) -> Result<crate::recording::RecordingFileLease, String> {
+        self.check_open()?;
+        self.recordings.reserve_file_action(job_id, deleting).await
+    }
+
+    pub async fn forget_deleted_recording_file(
+        &self,
+        job_id: &str,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        self.recordings.forget_deleted_file(job_id, path).await
+    }
+
+    pub async fn control_relay_channel(
+        &self,
+        channel_id: &str,
+        session_id: &str,
+        action: &str,
+    ) -> Result<Snapshot, String> {
+        self.check_open()?;
+        if self.external.is_some() {
+            return Err("この接続は外部バックエンドで管理されています".into());
+        }
+        {
+            let inner = self.inner.lock().await;
+            let running = inner
+                .running
+                .as_ref()
+                .ok_or("バックエンドが停止しています")?;
+            if running.runtime.session_id() != session_id {
+                return Err("接続一覧が変わりました。更新してから操作してください".into());
+            }
+            match action {
+                "disconnect" => running.runtime.disconnect_relay_channel(channel_id).await,
+                "reconnect" => running.runtime.reconnect_relay_channel(channel_id).await,
+                _ => return Err("接続操作が正しくありません".into()),
+            }
+            .map_err(|error| error.to_string())?;
+        }
+        self.snapshot().await
     }
 
     pub async fn open_recording_source(

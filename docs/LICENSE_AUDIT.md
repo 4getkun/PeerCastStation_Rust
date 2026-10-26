@@ -43,6 +43,8 @@ All Rust crate dependencies utilized in the workspace are verified permissive (M
 | `thiserror` | `2.0` | MIT / Apache-2.0 | https://crates.io/crates/thiserror |
 | `sha2` | `0.10` | MIT / Apache-2.0 | https://crates.io/crates/sha2 |
 | `md-5` | `0.10` | MIT / Apache-2.0 | https://crates.io/crates/md-5 |
+| `tauri-plugin-opener` | `2.7.2` | Apache-2.0 OR MIT | https://crates.io/crates/tauri-plugin-opener |
+| `trash` | `5.2.9` | MIT | https://crates.io/crates/trash |
 
 ---
 

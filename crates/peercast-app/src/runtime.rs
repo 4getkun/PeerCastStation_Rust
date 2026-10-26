@@ -29,7 +29,10 @@ use peercast_pcp::yellow_page::{
 };
 use peercast_rpc::server::{ChannelSummary, RpcState};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::sync::{broadcast, mpsc, watch, Mutex, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::sync::{
+    broadcast, mpsc, oneshot, watch, Mutex, OwnedSemaphorePermit, RwLock, Semaphore,
+};
+use tokio::task::JoinHandle;
 
 use crate::runtime_config::{ChannelConfig, ChannelSource};
 use crate::{AppConfig, BoundedLogBuffer, LogLevel, TaskTracker, APPLICATION_NAME};
@@ -96,6 +99,13 @@ struct ChannelState {
     available: bool,
 }
 
+#[derive(Default)]
+struct RelayControl {
+    endpoint: Option<SocketAddr>,
+    stop_tx: Option<oneshot::Sender<()>>,
+    task: Option<JoinHandle<()>>,
+}
+
 pub struct RuntimeChannel {
     config: ChannelConfig,
     id: ChannelId,
@@ -107,6 +117,7 @@ pub struct RuntimeChannel {
     started: Instant,
     connection_attempts: AtomicUsize,
     relay_active: AtomicBool,
+    relay_control: Mutex<RelayControl>,
     max_header_bytes: usize,
     connections: Arc<ConnectionRegistry>,
 }
@@ -119,6 +130,7 @@ pub struct RuntimeChannelSnapshot {
     pub oldest_pos: Option<i64>,
     pub newest_pos: Option<i64>,
     pub connection_attempts: usize,
+    pub relay_active: bool,
     pub connections: Vec<ConnectionSnapshot>,
     pub uptime_secs: u64,
 }
@@ -134,6 +146,10 @@ struct Subscription {
 impl RuntimeChannel {
     fn new(config: ChannelConfig, app: &AppConfig) -> io::Result<Self> {
         let id = ChannelId::from_hex(&config.channel_id).map_err(io::Error::other)?;
+        let relay_endpoint = match &config.source {
+            ChannelSource::Relay { endpoint } => Some(*endpoint),
+            ChannelSource::HttpPush { .. } => None,
+        };
         let (events, _) = broadcast::channel(app.runtime.streaming.subscriber_queue_packets);
         Ok(Self {
             state: Mutex::new(ChannelState {
@@ -150,6 +166,10 @@ impl RuntimeChannel {
             started: Instant::now(),
             connection_attempts: AtomicUsize::new(0),
             relay_active: AtomicBool::new(false),
+            relay_control: Mutex::new(RelayControl {
+                endpoint: relay_endpoint,
+                ..RelayControl::default()
+            }),
             max_header_bytes: app.runtime.streaming.max_header_bytes,
             connections: Arc::new(ConnectionRegistry::default()),
         })
@@ -208,6 +228,7 @@ impl RuntimeChannel {
             oldest_pos: state.ring.oldest().map(|c| c.pos),
             newest_pos: state.ring.newest().map(|c| c.pos),
             connection_attempts: self.connection_attempts.load(Ordering::Relaxed),
+            relay_active: self.relay_active.load(Ordering::Acquire),
             connections: self.connections.snapshot(),
             uptime_secs: self.started.elapsed().as_secs(),
         }
@@ -332,6 +353,145 @@ impl AppRuntime {
             .or_else(|| self.dynamic_channels.read().ok()?.get(&id).cloned())
     }
 
+    fn ensure_relay_control_open(&self) -> io::Result<()> {
+        if !self.started.load(Ordering::SeqCst) || *self.shutdown_tx.borrow() {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "runtime is not running",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn start_relay_worker_locked(
+        self: &Arc<Self>,
+        channel: Arc<RuntimeChannel>,
+        endpoint: SocketAddr,
+    ) -> io::Result<()> {
+        self.ensure_relay_control_open()?;
+        if !matches!(&channel.config.source, ChannelSource::Relay { .. }) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "channel is not a relay",
+            ));
+        }
+
+        let (stale_stop, stale_task) = {
+            let mut control = channel.relay_control.lock().await;
+            if channel.relay_active.load(Ordering::Acquire)
+                && control
+                    .task
+                    .as_ref()
+                    .is_some_and(|task| !task.is_finished())
+            {
+                control.endpoint = Some(endpoint);
+                return Ok(());
+            }
+            channel.relay_active.store(false, Ordering::Release);
+            (control.stop_tx.take(), control.task.take())
+        };
+        if let Some(stop) = stale_stop {
+            let _ = stop.send(());
+        }
+        let stale_result = match stale_task {
+            Some(task) => task.await.map_err(io::Error::other),
+            None => Ok(()),
+        };
+        self.ensure_relay_control_open()?;
+        channel.offline().await;
+        channel.begin_epoch().await;
+        stale_result?;
+
+        let mut control = channel.relay_control.lock().await;
+        self.ensure_relay_control_open()?;
+        if channel.relay_active.load(Ordering::Acquire) {
+            control.endpoint = Some(endpoint);
+            return Ok(());
+        }
+        let (stop_tx, mut stop_rx) = oneshot::channel();
+        control.endpoint = Some(endpoint);
+        control.stop_tx = Some(stop_tx);
+        channel.relay_active.store(true, Ordering::Release);
+        let runtime = Arc::clone(self);
+        let worker_channel = Arc::clone(&channel);
+        control.task = Some(self.tracker.spawn(async move {
+            tokio::select! {
+                _ = relay::run(Arc::clone(&runtime), Arc::clone(&worker_channel), endpoint) => {}
+                _ = &mut stop_rx => {}
+            }
+            worker_channel.offline().await;
+            worker_channel.relay_active.store(false, Ordering::Release);
+            runtime.channel_changed(&worker_channel).await;
+        }));
+        drop(control);
+        self.channel_changed(&channel).await;
+        Ok(())
+    }
+
+    async fn stop_relay_worker_locked(&self, channel: &Arc<RuntimeChannel>) -> io::Result<()> {
+        let (stop_tx, task) = {
+            let mut control = channel.relay_control.lock().await;
+            (control.stop_tx.take(), control.task.take())
+        };
+        if let Some(stop) = stop_tx {
+            let _ = stop.send(());
+        }
+        let join_result = if let Some(task) = task {
+            task.await.map_err(io::Error::other)
+        } else {
+            Ok(())
+        };
+        channel.relay_active.store(false, Ordering::Release);
+        channel.offline().await;
+        channel.begin_epoch().await;
+        self.channel_changed(channel).await;
+        join_result
+    }
+
+    fn relay_channel(&self, id: &str) -> io::Result<Arc<RuntimeChannel>> {
+        self.channel(id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "relay channel not found"))
+    }
+
+    /// Stops one configured or dynamic relay without changing its settings.
+    pub async fn disconnect_relay_channel(self: &Arc<Self>, id: &str) -> io::Result<()> {
+        let _lifecycle = self.channel_lifecycle.lock().await;
+        self.ensure_relay_control_open()?;
+        let channel = self.relay_channel(id)?;
+        if !matches!(&channel.config.source, ChannelSource::Relay { .. }) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "channel is not a relay",
+            ));
+        }
+        self.stop_relay_worker_locked(&channel).await
+    }
+
+    /// Restarts one configured or dynamic relay using its most recently saved seed.
+    pub async fn reconnect_relay_channel(self: &Arc<Self>, id: &str) -> io::Result<()> {
+        let _lifecycle = self.channel_lifecycle.lock().await;
+        self.ensure_relay_control_open()?;
+        let channel = self.relay_channel(id)?;
+        let configured_endpoint = match &channel.config.source {
+            ChannelSource::Relay { endpoint } => *endpoint,
+            ChannelSource::HttpPush { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "channel is not a relay",
+                ));
+            }
+        };
+        let endpoint = channel
+            .relay_control
+            .lock()
+            .await
+            .endpoint
+            .unwrap_or(configured_endpoint);
+        self.stop_relay_worker_locked(&channel).await?;
+        self.ensure_relay_control_open()?;
+        self.start_relay_worker_locked(channel, endpoint).await
+    }
+
     /// Adds a runtime relay channel without changing the configured channel set.
     pub async fn add_relay_channel(
         self: &Arc<Self>,
@@ -349,44 +509,44 @@ impl AppRuntime {
         let id = ChannelId::from_hex(&config.channel_id).map_err(io::Error::other)?;
 
         let _lifecycle = self.channel_lifecycle.lock().await;
-        if !self.started.load(Ordering::SeqCst) || *self.shutdown_tx.borrow() {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "runtime is not running",
-            ));
-        }
+        self.ensure_relay_control_open()?;
         if let Some(channel) = self.channels.get(&id) {
-            return Ok(Arc::clone(channel));
-        }
-        let mut dynamic = self
-            .dynamic_channels
-            .write()
-            .map_err(|_| io::Error::other("dynamic channel registry is poisoned"))?;
-        let existing = dynamic.get(&id).cloned();
-        if existing.is_none() && dynamic.len() >= 32 {
-            return Err(io::Error::other("dynamic relay channel limit reached"));
-        }
-        let channel = if let Some(existing) = existing {
-            existing
-        } else {
-            let channel = Arc::new(RuntimeChannel::new(config.clone(), &self.config)?);
-            dynamic.insert(id, Arc::clone(&channel));
-            channel
-        };
-        drop(dynamic);
-        if channel.relay_active.swap(true, Ordering::AcqRel) {
+            let endpoint = match &channel.config.source {
+                ChannelSource::Relay { endpoint } => *endpoint,
+                ChannelSource::HttpPush { .. } => {
+                    // An existing local broadcast can still be watched; only
+                    // explicit relay-control operations reject HTTP inputs.
+                    return Ok(Arc::clone(channel));
+                }
+            };
+            let channel = Arc::clone(channel);
+            self.start_relay_worker_locked(Arc::clone(&channel), endpoint)
+                .await?;
             return Ok(channel);
         }
         let endpoint = match config.source {
             ChannelSource::Relay { endpoint } => endpoint,
             ChannelSource::HttpPush { .. } => unreachable!("validated relay source"),
         };
-        let runtime = Arc::clone(self);
-        let worker_channel = Arc::clone(&channel);
-        self.tracker.spawn(async move {
-            relay::run(runtime, Arc::clone(&worker_channel), endpoint).await;
-            worker_channel.relay_active.store(false, Ordering::Release);
-        });
+        let channel = {
+            let mut dynamic = self
+                .dynamic_channels
+                .write()
+                .map_err(|_| io::Error::other("dynamic channel registry is poisoned"))?;
+            let existing = dynamic.get(&id).cloned();
+            if existing.is_none() && dynamic.len() >= 32 {
+                return Err(io::Error::other("dynamic relay channel limit reached"));
+            }
+            if let Some(existing) = existing {
+                existing
+            } else {
+                let channel = Arc::new(RuntimeChannel::new(config.clone(), &self.config)?);
+                dynamic.insert(id, Arc::clone(&channel));
+                channel
+            }
+        };
+        self.start_relay_worker_locked(Arc::clone(&channel), endpoint)
+            .await?;
         Ok(channel)
     }
 
@@ -462,12 +622,9 @@ impl AppRuntime {
         for channel in self.channels.values() {
             match &channel.config.source {
                 ChannelSource::Relay { endpoint } => {
-                    let runtime = Arc::clone(self);
                     let channel = Arc::clone(channel);
-                    let endpoint = *endpoint;
-                    self.tracker.spawn(async move {
-                        relay::run(runtime, channel, endpoint).await;
-                    });
+                    let _lifecycle = self.channel_lifecycle.lock().await;
+                    self.start_relay_worker_locked(channel, *endpoint).await?;
                 }
                 ChannelSource::HttpPush {
                     bind_address,

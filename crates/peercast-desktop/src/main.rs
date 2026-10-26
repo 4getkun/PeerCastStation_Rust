@@ -14,6 +14,7 @@ use tauri::{Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 
 type Backend = Arc<DesktopBackend>;
 type FavoriteNotifications = Arc<Mutex<FavoriteNotificationLedger>>;
@@ -253,6 +254,69 @@ async fn open_recording_folder(
 }
 
 #[tauri::command]
+async fn control_relay_channel(
+    window: tauri::WebviewWindow,
+    backend: State<'_, Backend>,
+    channel_id: String,
+    session_id: String,
+    action: String,
+) -> Result<Snapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    backend
+        .control_relay_channel(&channel_id, &session_id, &action)
+        .await
+}
+
+#[tauri::command]
+async fn recording_file_action(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    backend: State<'_, Backend>,
+    job_id: String,
+    action: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    if !matches!(action.as_str(), "play" | "reveal" | "trash") {
+        return Err("ファイル操作が正しくありません".into());
+    }
+    let lease = backend
+        .reserve_recording_file_action(&job_id, action == "trash")
+        .await?;
+    let requested_path = lease.path.clone();
+    let validated = tauri::async_runtime::spawn_blocking(move || {
+        peercast_desktop::recording_file::validate_recording_file(&requested_path)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    let deleting = action == "trash";
+    tauri::async_runtime::spawn_blocking(move || match action.as_str() {
+        "play" => app
+            .opener()
+            .open_path(validated.to_string_lossy(), None::<&str>)
+            .map_err(|error| error.to_string()),
+        "reveal" => app
+            .opener()
+            .reveal_item_in_dir(validated)
+            .map_err(|error| error.to_string()),
+        "trash" => trash::delete(validated)
+            .map_err(|error| format!("ごみ箱へ移動できませんでした: {error}")),
+        _ => unreachable!("validated file action"),
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    if deleting {
+        backend
+            .forget_deleted_recording_file(&job_id, &lease.path)
+            .await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_yp_channels(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -424,6 +488,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::Builder::new().app_name("Peercast RT").build())
         .setup(|app| {
             let mut path = app.path().app_local_data_dir()?.join("tauri-test.json");
@@ -475,6 +540,8 @@ fn main() {
             enqueue_recording,
             control_recording,
             open_recording_folder,
+            control_relay_channel,
+            recording_file_action,
             run_probe,
             restart_backend,
             stop_backend,
