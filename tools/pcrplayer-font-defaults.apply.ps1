@@ -121,7 +121,9 @@ $layout = "void CMainDlg::SizeHelper()`r`n{`r`n`tCRect rc;`r`n`tGetClientRect(&r
 $newLayout = $layout.Replace("()`r`n{`r`n", "()`r`n{`r`n`tplayer_caption::SetFrameVisible(m_hWnd, gl_.value.window.show.frame);`r`n")
 Replace-Bytes 'MainDlgSub.cpp' $layout ($newLayout + "`r`n`tplayer_caption::AdjustContent(m_hWnd, rc);") $ascii 1
 $captionHeader = Join-Path $PSScriptRoot 'pcrplayer/CaptionFont.h'
-Copy-Item -LiteralPath $captionHeader -Destination (Join-Path $player 'CaptionFont.h')
+# Git checkouts/source archives may use LF; keep the pinned C++ output bytes stable.
+$captionText = [IO.File]::ReadAllText($captionHeader).Replace("`r`n", "`n").Replace("`n", "`r`n")
+[IO.File]::WriteAllText((Join-Path $player 'CaptionFont.h'), $captionText, [Text.UTF8Encoding]::new($false))
 
 $expectedAfter = @{
     'CaptionFont.h'='3349f4202a38957c826e6f9b6fe84cf09b8dd1484f7d2660723848ec7d5eafc3'
