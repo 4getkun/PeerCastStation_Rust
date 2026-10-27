@@ -242,11 +242,12 @@ assert.equal(countableYpChannelCount(countFixtures), 1);
 assert.deepEqual(countFixtures.filter(isCountableYpChannel).map(({ name }) => name), ['有効配信・視聴者数不明']);
 assert.match(appHtml, /class="yp-heading-channel"[\s\S]*id="yp-header-count"/);
 assert.match(appHtml, /id="status-count-divider" class="status-divider"/);
-assert.match(appSource, /renderYpHeaderCount\(filtered\)/);
+assert.match(appSource, /renderYpHeaderCount\(filtered, youtubeLiveCount, twitchLiveCount\)/);
 const ypHeaderCount = { textContent: '' };
 const renderYpHeaderCount = appFunction('renderYpHeaderCount', {
   state: { ypSource: 'all' },
   countableYpChannelCount,
+  ypDirectoryHeaderCount: appFunction('ypDirectoryHeaderCount'),
   text: (_id, value) => { ypHeaderCount.textContent = value; },
 });
 renderYpHeaderCount(countFixtures);
@@ -254,10 +255,18 @@ assert.equal(ypHeaderCount.textContent, '1 件の配信', 'The channel header co
 const youtubeOnlyHeader = appFunction('renderYpHeaderCount', {
   state: { ypSource: 'youtube' },
   countableYpChannelCount,
+  ypDirectoryHeaderCount: appFunction('ypDirectoryHeaderCount'),
   text: (_id, value) => { ypHeaderCount.textContent = value; },
 });
 youtubeOnlyHeader(countFixtures);
 assert.equal(ypHeaderCount.textContent, '0 件の配信', 'The YouTube source must not retain the prior channel count or add a YouTube subcount');
+const twitchOnlyHeader = appFunction('renderYpHeaderCount', {
+  state: { ypSource: 'twitch' }, countableYpChannelCount,
+  ypDirectoryHeaderCount: appFunction('ypDirectoryHeaderCount'),
+  text: (_id, value) => { ypHeaderCount.textContent = value; },
+});
+twitchOnlyHeader(countFixtures, 2, 3);
+assert.equal(ypHeaderCount.textContent, '3 件の配信', 'The Twitch source count includes live Twitch rows and excludes other sources');
 const footerCount = { hidden: false };
 const footerDivider = { hidden: false };
 const visibilityById = (id) => id === 'yp-count' ? footerCount : footerDivider;

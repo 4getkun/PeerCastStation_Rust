@@ -1,0 +1,92 @@
+[
+  {
+    "file": "PCRPlayer/BaseBuilder.cpp",
+    "before": "37b5dd3ce9f93256cb49fe000d3c101a03b79b69503c8e52799e0d86b72aa5c4",
+    "after": "b1ba006b7dcc527e18b2778d2b103919916556880554c6866344a40fb31d4d19"
+  },
+  {
+    "file": "PCRPlayer/BaseBuilder.h",
+    "before": "4af6e5efe18510627c7bb627f5b9107906fc457f920d9c579032986173c01b26",
+    "after": "eaefd5044ec47b22c80c67576632fd39affeca59321aef55c7f08e038ebd1c26"
+  },
+  {
+    "file": "PCRPlayer/BBSOperator.cpp",
+    "before": "88be3c53055832646de1e4b83e6422ca7404d354a10d5eff56ff08ec9290fa61",
+    "after": "7889be091eb9dbd3dada97292b3117e57234ea31cb12b17bc375588551c42af0"
+  },
+  {
+    "file": "PCRPlayer/BBSOperator.h",
+    "before": "c2c3105d62cc142f4e75cd149ee3ad379a96fa2bd3ff9c6df482299d430ef5e4",
+    "after": "962d242561f92da4ddf6b2ab1e7e839adfe4f35e72f86463eed20f2781b658ce"
+  },
+  {
+    "file": "PCRPlayer/MainDlg.cpp",
+    "before": "c5086f6eabbac9178ac8831e2ef3b589529c4cf8eb7d3a91a9cf9225ed487d63",
+    "after": "fa64f853f102dca5e37224dfdb9a8bfd9df645391cbcd050cf589d97a6909ebd"
+  },
+  {
+    "file": "PCRPlayer/MainDlg.h",
+    "before": "fd1547061b257b9b77a2d5fd4de54a199749b7c2e1e2d0933ca92e90d66d9b48",
+    "after": "7fa821d0b7734ee2fa61591a931e85ac3ff3afeb4d34c541af7d732f83ae02e4"
+  },
+  {
+    "file": "PCRPlayer/MainDlgMenu.cpp",
+    "before": "7c39af919e89e6c71c883c90aa297041e1c5fde438352793b360f4c46684efe2",
+    "after": "73f23cf7eabbebd89b318dabd16e79bff98a11c1ca7461133675254ada443768"
+  },
+  {
+    "file": "PCRPlayer/MainDlgSub.cpp",
+    "before": "bab7035be3bc6ebbf3c46c5c154bf51bcb5c0843df1af8d8feb339ea0b33af01",
+    "after": "82187be80027a86583446d883ef338a225665f78b569302c4fe71b51627040bb"
+  },
+  {
+    "file": "PCRPlayer/OnlineBuilder.cpp",
+    "before": "68cc9822a408756f2e6aae9a7d70ed540ce5d48d21e867bc5302b8438b17375d",
+    "after": "6d0c34e413bf5b692bc5aceb2415eb061fccdef29777d06cf47f65e5b0de3ed3"
+  },
+  {
+    "file": "PCRPlayer/OnlineBuilder.h",
+    "before": "30d8fdf6b8cffd412522e04ac5a0dae2022eed68f6140c59ac678df11c393238",
+    "after": "bccff8522fb39c62f252a2c915246aa42aa3152ac455c3a3bc28d1e96abecd1c"
+  },
+  {
+    "file": "PCRPlayer/DSPlayer.cpp",
+    "before": "b78a07e9a5e6693d72481993c222d1a7949ebe1db39ca36865441f0f128682a2",
+    "after": "09f9a44adc91fcf647cbda5bd6f3e952d30b480ec2ee2eb420cbd3cb7a091fb3"
+  },
+  {
+    "file": "PCRPlayer/DSPlayer.h",
+    "before": "f46b61fe5d74ef3eead04db8392fb067640cd1269b8e944708c36051bbc3d842",
+    "after": "0d3c00b34d1bec9a5a20df9abe35f4fa71a4470b0a42df911ffe28c990cbb77c"
+  },
+  {
+    "file": "PCRPlayer/FileSource.cpp",
+    "before": "5da9bd559958943ca82c15089dc501f6478a1da2ffd19477811f3b3d5c9dd1aa",
+    "after": "7e2d2886c966ee647c913e24193399b421d469227511c1cc2593864dd87c9863"
+  },
+  {
+    "file": "PCRPlayer/FileSource.h",
+    "before": "ced2fa0d6909717021f97b5665d69b6c25c7930728f46853a32573253cf5e99f",
+    "after": "9c12c0dfab99cc1009b0aa5721e932590457b4bb9d20f307383cdd5fb3f0dfef"
+  },
+  {
+    "file": "PCRPlayer/LiveBridge.h",
+    "before": null,
+    "after": "006d49098e27e95e1cfb1a7cf299cc63c9bee92fe6261de7accbbb5b57a21bfc"
+  },
+  {
+    "file": "PCRPlayer/LiveBitrate.h",
+    "before": null,
+    "after": "7efd5d5b543acafeb82c7e7b8a8dd93c3d3f3323e841773858cb633a7b18a747"
+  },
+  {
+    "file": "PCRPlayer/Splitter/FLVSplitter.cpp",
+    "before": "2548897e940c3c6738b0f1e1816dc56c3e11b30d7ea1d7d7ef7dd2f13c0dcd46",
+    "after": "725c562aa5eaabbf91f82d6565e96ba14d38de62222aaa9d8e977e832bbd31b7"
+  },
+  {
+    "file": "PCRPlayer/Splitter/BaseSplitter.cpp",
+    "before": "5fc425296c68b736097c98e3a8195b2419befa2efed223e6d294eb59b37293a2",
+    "after": "ce40bcbc35548c26ffd90070766b593e0d01f9ca1965ee393933e4fec96f9e5f"
+  }
+]

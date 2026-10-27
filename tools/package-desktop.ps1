@@ -44,6 +44,24 @@ Copy-Item -LiteralPath $binary -Destination (Join-Path $outputRoot 'Peercast-RT.
 foreach ($name in @('PCRPlayer64.exe', 'LICENSE.txt')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot $name) -Destination (Join-Path $playerRoot $name) -Force
 }
+$playerLiveFiles = @()
+foreach ($name in @('pcr-live-bridge.cjs', 'pcr-live-config.json')) {
+    $inputFile = Join-Path $sourceRoot $name
+    if (Test-Path -LiteralPath $inputFile -PathType Leaf) {
+        Copy-Item -LiteralPath $inputFile -Destination (Join-Path $playerRoot $name) -Force
+        $playerLiveFiles += $name
+    }
+}
+if (Test-Path -LiteralPath (Join-Path $sourceRoot 'Live')) {
+    foreach ($file in Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'Live') -Recurse -File) {
+        if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Live helper symlinks are not supported.' }
+        $relative = [IO.Path]::GetRelativePath($sourceRoot, $file.FullName)
+        $target = Join-Path $playerRoot $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+        $playerLiveFiles += $relative
+    }
+}
 # Keep runtime settings/history out of a fresh package, and preserve existing settings on updates.
 foreach ($file in Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Recurse -File) {
     if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Player skin symlinks are not supported.' }
@@ -85,7 +103,7 @@ Copy-Item -LiteralPath (Join-Path $packageRoot 'docs\LICENSE_AUDIT.md') -Destina
     'Bundled modified PCRPlayer corresponding source and build inputs:'
     "https://peercast-rt-downloads.fourgetkun.com/releases/$releaseVersion/PCRPlayer-PeerCastRT-$releaseVersion-sources.7z"
 ) | Set-Content -LiteralPath (Join-Path $outputRoot 'SOURCE.txt') -Encoding utf8
-$packagedFiles = @('PCRPlayer64.exe', 'LICENSE.txt') + @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($sourceRoot, $_.FullName) }) + $playerLicenseFiles
+$packagedFiles = @('PCRPlayer64.exe', 'LICENSE.txt') + @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($sourceRoot, $_.FullName) }) + $playerLicenseFiles + $playerLiveFiles
 $manifest = foreach ($relative in $packagedFiles) {
     $sourceHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot $relative) -Algorithm SHA256).Hash
     $copyHash = (Get-FileHash -LiteralPath (Join-Path $playerRoot $relative) -Algorithm SHA256).Hash

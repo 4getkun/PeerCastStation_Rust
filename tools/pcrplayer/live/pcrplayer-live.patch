@@ -1,0 +1,969 @@
+--- a/PCRPlayer/BaseBuilder.cpp
++++ b/PCRPlayer/BaseBuilder.cpp
+@@ -120,7 +120,9 @@
+ 			//case EC_ACTIVATE: addLog(L"EC_ACTIVATE\n"); break;
+ 			//case EC_CLOCK_CHANGED: addLog(L"EC_CLOCK_CHANGED\n"); break;
+ 			//case EC_PAUSED: addLog(L"EC_PAUSED\n"); break;
+-			//case EC_VIDEO_SIZE_CHANGED: addLog(L"EC_VIDEO_SIZE_CHANGED\n"); break;
++			case EC_VIDEO_SIZE_CHANGED:
++				::PostMessage(hwnd, msg, GRAPH_NOTIFY_VIDEO_SIZE_CHANGED, 0);
++				break;
+ 
+ 			default:
+ 				//DebugText(L"DS event code: 0x%08X(%d)\n", code, code);
+@@ -137,6 +139,7 @@
+ 
+ 	state_.init();
+ 	graph_.uninit();
++	onUninit();
+ 
+ 	CoUninitialize();
+ 	addLog(L"IBaseBuilder::mainloop (CoUninitialize)");
+@@ -795,7 +798,17 @@
+ 	boost::recursive_mutex::scoped_try_lock lock(mutex_);
+ 	if (lock)
+ 	{
+-		return graph_.setFLVConfig(cfg);
++		FLVConfig effective = cfg;
++		// HLS arrives in segments. Reserve headroom without changing saved preferences.
++		if (hasLiveBridge())
++		{
++			if (liveStartupBufferMs() > 0)
++			{
++				effective.buffer = (std::max)(effective.buffer, 6000);
++				effective.limit = (std::max)(effective.limit, 15000);
++			}
++		}
++		return graph_.setFLVConfig(effective);
+ 	}
+ 	return false;
+ }
+@@ -878,7 +891,7 @@
+ 
+ 			boost::recursive_mutex::scoped_lock lock(state_.mutex);
+ 			state_.current.result = result;
+-			state_.current.value = pos;
++			state_.current.value = hasLiveBridge() ? (std::max<LONGLONG>)(0, pos) : pos;
+ 			return result;
+ 		}
+ 	}
+@@ -898,7 +911,9 @@
+ 	{
+ 		if (!run_.joinable())
+ 		{
+-			return graph_.getCurrentPosition(pos, timestamp);
++			bool result = graph_.getCurrentPosition(pos, timestamp);
++			if (hasLiveBridge()) pos = (std::max<LONGLONG>)(0, pos);
++			return result;
+ 		}
+ 	}
+ 	return false;
+--- a/PCRPlayer/BaseBuilder.h
++++ b/PCRPlayer/BaseBuilder.h
+@@ -15,7 +15,8 @@
+ 	GRAPH_NOTIFY_END, // 再生終了
+ 	GRAPH_NOTIFY_RESTART, // 再再生
+ 	GRAPH_NOTIFY_CONNECT, // チャンネル接続終了
+-	GRAPH_NOTIFY_RETRY_END, // チャンネル接続リトライ終了
++	GRAPH_NOTIFY_RETRY_END,
++	GRAPH_NOTIFY_VIDEO_SIZE_CHANGED,
+ } GRAPH_NOTIFY;
+ 
+ // オーディオ
+@@ -233,6 +234,7 @@
+ public:
+ 	IBaseBuilder(utl::SyncLog& log, utl::SyncOptional<std::wstring>& text);
+ 	virtual ~IBaseBuilder();
++	virtual void onUninit() {}
+ 
+ 	void mainloop(HWND hwnd, UINT msg, const std::wstring& path);
+ 	bool build(HWND hwnd, UINT msg, const std::wstring& path);
+@@ -250,6 +252,11 @@
+ 	bool run();
+ 	virtual bool pause();
+ 	virtual bool togglePause();
++	virtual int liveStartupBufferMs() { return 0; }
++	virtual bool hasLiveBridge() { return false; }
++	virtual std::wstring recordingState() { return L"error"; }
++	virtual bool startRecording(const std::wstring&) { return false; }
++	virtual bool stopRecording() { return false; }
+ 	bool stop();
+ 	bool abort();
+ 
+--- a/PCRPlayer/BBSOperator.cpp
++++ b/PCRPlayer/BBSOperator.cpp
+@@ -55,6 +55,13 @@
+ 	thread_.change.join();
+ 	thread_.post.interrupt();
+ 	thread_.post.join();
++}
++
++void BBSOperator::clearForExternalSource()
++{
++	terminate();
++	initialize();
++	path_ = L"";
+ }
+ 
+ void BBSOperator::initialize()
+--- a/PCRPlayer/BBSOperator.h
++++ b/PCRPlayer/BBSOperator.h
+@@ -199,6 +199,7 @@
+ 	operator bool() { return bbs_; }
+ 
+ 	void terminate();
++	void clearForExternalSource();
+ 
+ public:
+ 	void setConfig(const BoardControl& cfg) { cfg_ = cfg; reset(); }
+--- a/PCRPlayer/MainDlg.cpp
++++ b/PCRPlayer/MainDlg.cpp
+@@ -31,6 +31,7 @@
+ CMainDlg::CMainDlg(CWnd* pParent /*=NULL*/)
+ 	: CDialog(CMainDlg::IDD, pParent)
+ 	, boot_(false)
++	, liveAutoResizePending_(false)
+ 	, nccalcsize_(true)
+ 	, mouseCaptureR_(false)
+ 	, mouseClickWheek_(false)
+@@ -126,6 +127,7 @@
+ 	ON_COMMAND(IDM_THREAD_RELOAD, &CMainDlg::OnThreadReload)
+ 	ON_COMMAND(IDM_THREAD_REFRESH, &CMainDlg::OnThreadRefresh)
+ 	ON_COMMAND(IDM_SNAPSHOT_SAVE, &CMainDlg::OnSnapshotSave)
++	ON_COMMAND(IDM_LIVE_RECORDING, &CMainDlg::OnLiveRecording)
+ 	ON_COMMAND(IDM_SNAPSHOT_FOLDER, &CMainDlg::OnSnapshotFolder)
+ 	ON_COMMAND(IDM_WINDOW_ZOOM_100, &CMainDlg::OnWindowZoom100)
+ 	ON_COMMAND_RANGE(IDM_WINDOW_ZOOM_RANGE_BEGIN, IDM_WINDOW_ZOOM_RANGE_END, &CMainDlg::OnWindowZoomRange)
+@@ -1501,6 +1503,16 @@
+ 
+ 
+ 
++	if (gl_.player.hasLiveBridge())
++	{
++		const std::wstring recordingState = gl_.player.recordingState();
++		const wchar_t* label = (recordingState == L"starting" || recordingState == L"recording")
++			? L"録画を停止" : L"録画を開始…";
++		menu->InsertMenu(0, MF_BYPOSITION | MF_STRING, IDM_LIVE_RECORDING, label);
++		if (recordingState == L"stopping")
++			menu->EnableMenuItem(IDM_LIVE_RECORDING, MF_GRAYED | MF_BYCOMMAND);
++	}
++
+ 	////////////////////////////////////////////////////
+ 	CPoint pt;
+ 	GetCursorPos(&pt);
+--- a/PCRPlayer/MainDlg.h
++++ b/PCRPlayer/MainDlg.h
+@@ -44,6 +44,7 @@
+ // チャンネル情報のリンクの範囲
+ #define IDM_STATUS_LINK_RANGE_BEGIN		50500
+ #define IDM_STATUS_LINK_RANGE_END		50599
++#define IDM_LIVE_RECORDING			50600
+ 
+ 
+ // CMainDlg ダイアログ
+@@ -65,7 +66,8 @@
+ protected:
+ 	HICON m_hIcon;
+ 
+-	bool boot_; // 起動時の再生
++	bool boot_;
++	bool liveAutoResizePending_;
+ 	bool nccalcsize_; // WM_NCCALCSIZE初期化フラグ
+ 
+ 	CLogDlg log_; // ログダイアログ
+@@ -114,6 +116,7 @@
+ 	bool OpenFile(const std::wstring& path, const std::wstring& name = std::wstring(), const std::wstring& contact = std::wstring(), bool commandline = false, bool rebuild = false);
+ 	bool OpenNextFile(bool loop, bool prev);
+ 	void SizeHelper();
++	void AutoResizeLiveWindow();
+ 	void SizingHelper(RECT& rect, bool ratio, bool inscribe, UINT side);
+ 	void MouseMClickHelper(int type);
+ 	void MouseWheelHelper(bool up, int type, bool invert);
+@@ -214,6 +217,7 @@
+ 	afx_msg void OnThreadReload();
+ 	afx_msg void OnThreadRefresh();
+ 	afx_msg void OnSnapshotSave();
++	afx_msg void OnLiveRecording();
+ 	afx_msg void OnSnapshotFolder();
+ 	afx_msg void OnWindowZoom100();
+ 	afx_msg void OnWindowZoomRange(UINT nID);
+--- a/PCRPlayer/MainDlgMenu.cpp
++++ b/PCRPlayer/MainDlgMenu.cpp
+@@ -1,5 +1,6 @@
+ #include "stdafx.h"
+ #include "MainDlg.h"
++#include <afxdlgs.h>
+ 
+ void CMainDlg::OnOption()
+ {
+@@ -514,6 +515,64 @@
+ 
+ 
+ 
++void CMainDlg::OnLiveRecording()
++{
++	if (!gl_.player.hasLiveBridge())
++	{
++		AfxMessageBox(L"ライブ配信の録画を操作できません。", MB_OK | MB_ICONERROR);
++		return;
++	}
++
++	std::wstring state = gl_.player.recordingState();
++	if (state == L"stopping") return;
++	if (state == L"starting" || state == L"recording")
++	{
++		if (!gl_.player.stopRecording())
++			AfxMessageBox(L"録画の停止を要求できませんでした。", MB_OK | MB_ICONERROR);
++		else
++			AfxMessageBox(L"録画の停止を要求しました。ファイルの確定を待っています。", MB_OK | MB_ICONINFORMATION);
++		return;
++	}
++
++	CFileDialog dialog(FALSE, L"mkv", NULL, OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
++		L"Matroska動画 (*.mkv)|*.mkv||", this);
++	if (dialog.DoModal() != IDOK) return;
++	std::wstring selected = dialog.GetPathName().GetString();
++	size_t separator = selected.find_last_of(L"\\/");
++	size_t dot = selected.find_last_of(L'.');
++	std::wstring extension = dot != std::wstring::npos && (separator == std::wstring::npos || dot > separator)
++		? selected.substr(dot) : std::wstring();
++	if (CompareStringOrdinal(extension.c_str(), -1, L".mkv", -1, TRUE) != CSTR_EQUAL)
++	{
++		AfxMessageBox(L"Matroska形式の.mkvファイルを指定してください。", MB_OK | MB_ICONWARNING);
++		return;
++	}
++	DWORD attributes = GetFileAttributesW(selected.c_str());
++	if (attributes != INVALID_FILE_ATTRIBUTES)
++	{
++		AfxMessageBox(L"指定したファイルは既に存在します。別の名前を選んでください。", MB_OK | MB_ICONWARNING);
++		return;
++	}
++	wchar_t absolute[MAX_PATH * 4] = {};
++	DWORD length = GetFullPathNameW(selected.c_str(), ARRAYSIZE(absolute), absolute, NULL);
++	if (!length || length >= ARRAYSIZE(absolute))
++	{
++		AfxMessageBox(L"保存先のパスを確認できません。", MB_OK | MB_ICONERROR);
++		return;
++	}
++	state = gl_.player.recordingState();
++	if (state == L"stopping" || state == L"starting" || state == L"recording")
++	{
++		AfxMessageBox(L"録画状態が変わりました。メニューを開き直してください。", MB_OK | MB_ICONWARNING);
++		return;
++	}
++	if (!gl_.player.startRecording(absolute))
++		AfxMessageBox(L"録画の開始を要求できませんでした。", MB_OK | MB_ICONERROR);
++	else
++		AfxMessageBox(L"録画開始を受け付けました。開始状態を確認しています。", MB_OK | MB_ICONINFORMATION);
++}
++
++
+ void CMainDlg::OnSnapshotSave()
+ {
+ 	namespace fs = std::filesystem;
+--- a/PCRPlayer/MainDlgSub.cpp
++++ b/PCRPlayer/MainDlgSub.cpp
+@@ -1,6 +1,7 @@
+ #include "stdafx.h"
+ #include "CaptionFont.h"
+ #include "MainDlg.h"
++#include "LiveBridge.h"
+ 
+ void CMainDlg::GetVideoRect(CRect& rc)
+ {
+@@ -158,9 +159,15 @@
+ 		return false;
+ 	}
+ 
++	if (!rebuild)
++	{
++		liveAutoResizePending_ = dsp::isLiveProviderPage(path);
++	}
++
+ 	gl_.peca.init(path);
+ 
+-	if (gl_.bbs.init(path))
++	if (dsp::isLiveProviderPage(path)) { gl_.bbs.clearForExternalSource(); }
++	else if (gl_.bbs.init(path))
+ 	{// 既存のpathから変更された
+ 		if (gl_.value.detail.board.contact && gl_.player.online())
+ 		{
+@@ -294,7 +301,8 @@
+ 
+ 	if (bbs)
+ 	{
+-		subpane_.showBBS(gl_.value.window.show.bbs ? gl_.player.online() : false, gl_.value.window.show.edit);
++		const bool liveProvider = dsp::isLiveProviderPage(gl_.latest.path);
++		subpane_.showBBS(!liveProvider && gl_.value.window.show.bbs ? gl_.player.online() : false, !liveProvider && gl_.value.window.show.edit);
+ 	}
+ 
+ 	if (seek)
+@@ -897,6 +905,56 @@
+ 	}
+ }
+ 
++void CMainDlg::AutoResizeLiveWindow()
++{
++	if (!liveAutoResizePending_) return;
++	if (IsZoomed() || gl_.screen.full || gl_.screen.maximize)
++	{
++		liveAutoResizePending_ = false;
++		return;
++	}
++
++	SIZE native = {};
++	if (!gl_.player.getNativeVideoSize(native) || native.cx <= 0 || native.cy <= 0) return;
++	liveAutoResizePending_ = false;
++
++	CRect source(0, 0, native.cx, native.cy), video;
++	SIZE aspect = {};
++	gl_.getAspect(aspect);
++	if (!utl::getAspectRect(aspect, source, video)) video = source;
++	const int videoWidth = video.Width();
++	const int videoHeight = video.Height();
++	if (videoWidth <= 0 || videoHeight <= 0) return;
++
++	CRect outer(0, 0, videoWidth, videoHeight);
++	InflateWindowRect(outer);
++	const int chromeWidth = max(0, outer.Width() - videoWidth);
++	const int chromeHeight = max(0, outer.Height() - videoHeight);
++
++	MONITORINFO monitor = {};
++	if (!utl::getDesktopRectFromWindow(GetSafeHwnd(), monitor)) return;
++	CRect work(monitor.rcWork);
++	const int availableWidth = max(1, work.Width() - chromeWidth);
++	const int availableHeight = max(1, work.Height() - chromeHeight);
++	double scale = min(1.0, min((double)availableWidth / videoWidth, (double)availableHeight / videoHeight));
++	int targetWidth = max(1, (int)(videoWidth * scale));
++	int targetHeight = max(1, (int)(videoHeight * scale));
++	outer.SetRect(0, 0, targetWidth, targetHeight);
++	InflateWindowRect(outer);
++
++	CRect current;
++	GetWindowRect(&current);
++	int left = current.left;
++	int top = current.top;
++	if (outer.Width() <= work.Width()) left = min(max(left, work.left), work.right - outer.Width());
++	else left = work.left;
++	if (outer.Height() <= work.Height()) top = min(max(top, work.top), work.bottom - outer.Height());
++	else top = work.top;
++
++	box_.showWindow(false);
++	SetWindowPos(NULL, left, top, outer.Width(), outer.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
++}
++
+ bool CMainDlg::IsExcludeSubpane()
+ {
+ 	return gl_.screen.full && (subpane_.isPopup() || !subpane_.IsWindowVisible());
+@@ -1072,7 +1130,7 @@
+ 	{
+ 	case dsp::GRAPH_NOTIFY_START:
+ 		{
+-			if (boot_ && gl_.value.window.zoom)
++			if (boot_ && gl_.value.window.zoom && !liveAutoResizePending_)
+ 			{// 起動時
+ 				if (!IsZoomed() && !gl_.screen.full && !gl_.screen.maximize)
+ 				{
+@@ -1080,6 +1138,8 @@
+ 				}
+ 			}
+ 
++			if (liveAutoResizePending_) AutoResizeLiveWindow();
++
+ 			boot_ = false;
+ 
+ 			ApplyWindowRatio(gl_.value.window.ratio.play);
+@@ -1096,6 +1156,7 @@
+ 		}
+ 	case dsp::GRAPH_NOTIFY_END:
+ 		{
++			liveAutoResizePending_ = false;
+ 			boot_ = false;
+ 
+ 			ApplyWindowRatio(gl_.value.window.ratio.play);
+@@ -1106,6 +1167,11 @@
+ 			{
+ 				EndSleepStopTimer();
+ 			}
++			break;
++		}
++	case dsp::GRAPH_NOTIFY_VIDEO_SIZE_CHANGED:
++		{
++			if (liveAutoResizePending_) AutoResizeLiveWindow();
+ 			break;
+ 		}
+ 	case dsp::GRAPH_NOTIFY_RESTART:
+--- a/PCRPlayer/OnlineBuilder.cpp
++++ b/PCRPlayer/OnlineBuilder.cpp
+@@ -34,20 +34,32 @@
+ 	network::URLParser url(path);
+ 	if (url)
+ 	{
++		std::wstring renderPath = path;
++		const bool livePage = isLiveProviderPage(path);
++		std::unique_ptr<LiveBridgeSession> liveSession;
++		if (livePage)
++		{
++			liveSession.reset(new LiveBridgeSession());
++			if (!liveSession->start(path, renderPath)) { text_ = L"Live bridge failed"; return false; }
++		}
+ 		SourcePtr source;
+ 		VideoPtr video;
+ 		AudioPtr audio;
+ 
+ 		// FLV
+-		source.reset(new URLBufferSource(network.reader.userAgent, network.reader.timeout));
++		URLBufferSource* urlSource = new URLBufferSource(network.reader.userAgent, network.reader.timeout);
++		urlSource->setRollingBitrate(livePage);
++		source.reset(urlSource);
+ 		video.reset(new EVRCustom(decoder.dxva2));
+ 		audio.reset(new DSR());
+-		if (graph_.renderEx(hwnd, path, source, video, audio, decoderSet, true))
++		if (graph_.renderEx(hwnd, renderPath, source, video, audio, decoderSet, true))
+ 		{
+ 			text_.clear();
+-			return true;
+-		}
+-
++			if (liveSession) liveBridge_ = std::move(liveSession);
++			return true;
++		}
++
++		if (livePage) { text_ = L"Live stream unavailable"; return false; }
+ 		if (source->isTimeout())
+ 		{
+ 			text_ = L"タイムアウト";
+@@ -198,6 +210,7 @@
+ 		boost::recursive_mutex::scoped_lock lock(mutex_);
+ 		state_.init();
+ 		graph_.uninit();
++		liveBridge_.reset();
+ 	}
+ 
+ 	for (int i = 0; i < wait; ++i)
+--- a/PCRPlayer/OnlineBuilder.h
++++ b/PCRPlayer/OnlineBuilder.h
+@@ -1,6 +1,8 @@
+ #pragma once
+ 
+ #include "BaseBuilder.h"
++#include "LiveBridge.h"
++#include <memory>
+ 
+ namespace dsp {
+ 
+@@ -16,8 +18,34 @@
+ 	virtual bool togglePause() { return false; }
+ 	virtual bool seek(LONGLONG current) { return false; }
+ 	virtual bool getProgress(int& percent);
++	virtual int liveStartupBufferMs()
++	{
++		boost::recursive_mutex::scoped_try_lock lock(mutex_);
++		return lock && liveBridge_.get() != NULL ? liveBridge_->startupBufferMs() : 0;
++	}
++	virtual bool hasLiveBridge()
++	{
++		boost::recursive_mutex::scoped_try_lock lock(mutex_);
++		return lock && liveBridge_.get() != NULL;
++	}
++	virtual std::wstring recordingState()
++	{
++		boost::recursive_mutex::scoped_try_lock lock(mutex_);
++		return lock && liveBridge_.get() != NULL ? liveBridge_->recordingState() : L"error";
++	}
++	virtual bool startRecording(const std::wstring& path)
++	{
++		boost::recursive_mutex::scoped_try_lock lock(mutex_);
++		return lock && liveBridge_.get() != NULL && liveBridge_->startRecording(path);
++	}
++	virtual bool stopRecording()
++	{
++		boost::recursive_mutex::scoped_try_lock lock(mutex_);
++		return lock && liveBridge_.get() != NULL && liveBridge_->stopRecording();
++	}
+ 
+ protected:
++	virtual void onUninit() { liveBridge_.reset(); }
+ 	virtual bool onBuild(HWND hwnd, UINT msg, const std::wstring& path);
+ 	virtual bool onBufferEnter(HWND hwnd, UINT msg, const std::wstring& path, LONG_PTR p1, LONG_PTR p2);
+ 	virtual bool onBufferExit(HWND hwnd, UINT msg, const std::wstring& path, LONG_PTR p1, LONG_PTR p2);
+@@ -30,6 +58,7 @@
+ 	virtual bool onRebuild(HWND hwnd, UINT msg, const std::wstring& path);
+ 
+ protected:
++	std::unique_ptr<LiveBridgeSession> liveBridge_;
+ 	struct Buffer {
+ 		Buffer() : enable(false), count(0) {}
+ 		bool enable;
+--- a/PCRPlayer/DSPlayer.cpp
++++ b/PCRPlayer/DSPlayer.cpp
+@@ -220,6 +220,30 @@
+ 	return false;
+ }
+ 
++bool DSPlayer::hasLiveBridge()
++{
++	boost::recursive_timed_mutex::scoped_try_lock lock(mutex_);
++	return lock && builder_ && builder_->hasLiveBridge();
++}
++
++std::wstring DSPlayer::recordingState()
++{
++	boost::recursive_timed_mutex::scoped_try_lock lock(mutex_);
++	return lock && builder_ ? builder_->recordingState() : L"error";
++}
++
++bool DSPlayer::startRecording(const std::wstring& path)
++{
++	boost::recursive_timed_mutex::scoped_try_lock lock(mutex_);
++	return lock && builder_ && builder_->startRecording(path);
++}
++
++bool DSPlayer::stopRecording()
++{
++	boost::recursive_timed_mutex::scoped_try_lock lock(mutex_);
++	return lock && builder_ && builder_->stopRecording();
++}
++
+ bool DSPlayer::isRunning()
+ {
+ 	boost::recursive_timed_mutex::scoped_try_lock lock(mutex_);
+--- a/PCRPlayer/DSPlayer.h
++++ b/PCRPlayer/DSPlayer.h
+@@ -53,6 +53,10 @@
+ 
+ 	bool getState(long& state);
+ 	bool isRunning();
++	bool hasLiveBridge();
++	std::wstring recordingState();
++	bool startRecording(const std::wstring& path);
++	bool stopRecording();
+ 
+ 	bool run();
+ 	bool pause();
+--- a/PCRPlayer/FileSource.cpp
++++ b/PCRPlayer/FileSource.cpp
+@@ -213,6 +213,7 @@
+ 	, time_(0)
+ 	, length_(0)
+ 	, isTimeout_(false)
++	, rollingBitrateEnabled_(false)
+ 	, userAgent_(userAgent)
+ 	, timeout_(timeout)
+ {}
+@@ -239,6 +240,7 @@
+ 	if (graph == NULL) { return false; }
+ 
+ 	type_ = SOURCE_TYPE_UNKNOWN;
++	rollingBitrate_.reset();
+ 	// ビットレート関連変数初期化
+ 	bitrate_ = 0;
+ 	length_ = 0;
+@@ -309,6 +311,19 @@
+ {
+ 	if (reader_)
+ 	{
++		if (rollingBitrateEnabled_)
++		{
++			LONGLONG total = 0, length = 0;
++			if (FAILED(reader_->Length(&total, &length))) return false;
++			if (length < 0)
++			{
++				rollingBitrate_.reset();
++				bitrate = bitrate_ = 0;
++				return true;
++			}
++			bitrate = bitrate_ = rollingBitrate_.sample(timeGetTime(), static_cast<uint64_t>(length));
++			return true;
++		}
+ 		DWORD time = timeGetTime();
+ 
+ 		if (time - time_ > 1000)
+--- a/PCRPlayer/FileSource.h
++++ b/PCRPlayer/FileSource.h
+@@ -11,6 +11,7 @@
+ #include <Wmsdkidl.h>
+ 
+ #include <string>
++#include "LiveBitrate.h"
+ 
+ 
+ namespace dsp {
+@@ -98,6 +99,8 @@
+ 	DWORD time_;
+ 	LONGLONG length_;
+ 	bool isTimeout_;
++	bool rollingBitrateEnabled_;
++	RollingBitrate rollingBitrate_;
+ 
+ 	std::wstring userAgent_;
+ 	int timeout_;
+@@ -111,6 +114,7 @@
+ 	bool addToGraph(CComPtr<IGraphBuilder>& graph, const std::wstring& filename);
+ 	bool getProgress(int& percent) { return false; }
+ 	bool getCurrentBitrate(int& bitrate);
++	void setRollingBitrate(bool enabled) { rollingBitrateEnabled_ = enabled; rollingBitrate_.reset(); }
+ 	bool abort();
+ 	bool isTimeout() { return isTimeout_; }
+ 	SOURCE_TYPE type(){ return type_; }
+--- /dev/null
++++ b/PCRPlayer/LiveBridge.h
+@@ -0,0 +1,264 @@
++#pragma once
++
++#include <windows.h>
++#include <string>
++#include <vector>
++#include <algorithm>
++#include <cwctype>
++#include <boost/thread.hpp>
++#include "Network.h"
++
++namespace dsp {
++
++inline std::wstring liveLower(std::wstring value)
++{
++    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
++    return value;
++}
++
++inline bool isLiveProviderPage(const std::wstring& value)
++{
++    network::URLParser url(value);
++    if (!url || liveLower(url.scheme()) != L"https" || url.port() != 443) return false;
++    const std::wstring host = liveLower(url.host());
++    return host == L"youtube.com" || host.size() > 12 && host.substr(host.size() - 12) == L".youtube.com" ||
++        host == L"youtu.be" || host == L"twitch.tv" || host.size() > 10 && host.substr(host.size() - 10) == L".twitch.tv";
++}
++
++inline std::wstring quoteLiveArg(const std::wstring& value)
++{
++    std::wstring out = L"\"";
++    size_t slashes = 0;
++    for (wchar_t ch : value)
++    {
++        if (ch == L'\\') { ++slashes; continue; }
++        if (ch == L'\"') { out.append(slashes * 2 + 1, L'\\'); out += ch; slashes = 0; continue; }
++        out.append(slashes, L'\\'); slashes = 0; out += ch;
++    }
++    out.append(slashes * 2, L'\\');
++    out += L'\"';
++    return out;
++}
++
++class LiveBridgeSession {
++    HANDLE job_ = NULL;
++    HANDLE process_ = NULL;
++    HANDLE thread_ = NULL;
++    HANDLE pipe_ = NULL;
++    std::wstring mediaUrl_;
++    int startupBufferMs_ = 0;
++
++    void closeHandles()
++    {
++        stopRecordingBeforeClose();
++        if (pipe_) { CloseHandle(pipe_); pipe_ = NULL; }
++        if (thread_) { CloseHandle(thread_); thread_ = NULL; }
++        if (process_) { CloseHandle(process_); process_ = NULL; }
++        if (job_) { CloseHandle(job_); job_ = NULL; }
++    }
++
++    static bool resolveNode(std::wstring& node)
++    {
++        wchar_t buffer[32768] = {};
++        DWORD count = GetModuleFileNameW(NULL, buffer, ARRAYSIZE(buffer));
++        if (count && count < ARRAYSIZE(buffer))
++        {
++            std::wstring base(buffer, count);
++            size_t slash = base.find_last_of(L"\\/");
++            if (slash != std::wstring::npos)
++            {
++                node = base.substr(0, slash) + L"\\Live\\node.exe";
++                if (GetFileAttributesW(node.c_str()) != INVALID_FILE_ATTRIBUTES) return true;
++            }
++        }
++        count = GetEnvironmentVariableW(L"PCRPLAYER_LIVE_NODE", buffer, ARRAYSIZE(buffer));
++        if (count > 0 && count < ARRAYSIZE(buffer)) { node.assign(buffer, count); return true; }
++        count = SearchPathW(NULL, L"node.exe", NULL, ARRAYSIZE(buffer), buffer, NULL);
++        if (!count || count >= ARRAYSIZE(buffer)) return false;
++        node.assign(buffer, count);
++        return true;
++    }
++
++    static std::wstring helperPath(std::wstring& directory)
++    {
++        wchar_t buffer[32768] = {};
++        DWORD count = GetModuleFileNameW(NULL, buffer, ARRAYSIZE(buffer));
++        if (!count || count >= ARRAYSIZE(buffer)) return L"";
++        directory.assign(buffer, count);
++        size_t slash = directory.find_last_of(L"\\/");
++        if (slash == std::wstring::npos) return L"";
++        directory.resize(slash);
++        return directory + L"\\pcr-live-bridge.cjs";
++    }
++
++    static bool validLoopbackUrl(const std::wstring& value)
++    {
++        const std::wstring prefix = L"http://127.0.0.1:";
++        if (value.compare(0, prefix.size(), prefix) != 0) return false;
++        size_t portBegin = prefix.size(), slash = value.find(L'/', portBegin);
++        if (slash == std::wstring::npos || slash == portBegin) return false;
++        unsigned port = 0;
++        for (size_t i = portBegin; i < slash; ++i)
++        {
++            if (value[i] < L'0' || value[i] > L'9') return false;
++            port = port * 10 + (value[i] - L'0');
++            if (port > 65535) return false;
++        }
++        if (!port || value.find_first_of(L"?#", slash) != std::wstring::npos) return false;
++        const std::wstring suffix = L".flv";
++        return value.size() > slash + suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
++    }
++
++    std::wstring readRecordingState(int timeout)
++    {
++        if (mediaUrl_.empty()) return L"error";
++        network::HttpClient client;
++        if (!client.open(mediaUrl_ + L"/record", L"PCRPlayer", network::Proxy(), timeout)) return L"error";
++        DWORD status = 0;
++        if (!client.queryStatus(status) || status != 200) return L"error";
++        std::vector<char> body;
++        if (client.get(body) != network::HttpClient::STATE_EOF || body.size() > 32) return L"error";
++        while (!body.empty() && (body.back() == '\r' || body.back() == '\n')) body.pop_back();
++        std::string value(body.begin(), body.end());
++        if (value == "idle" || value == "starting" || value == "recording" || value == "stopping" || value == "error")
++            return std::wstring(value.begin(), value.end());
++        return L"error";
++    }
++
++    bool postRecordingCommand(const std::string& body, int timeout)
++    {
++        if (mediaUrl_.empty()) return false;
++        network::HttpClient client;
++        const std::wstring header = L"Content-Type: text/plain;charset=utf-8\r\n";
++        if (!client.post(mediaUrl_ + L"/record", L"PCRPlayer", network::Proxy(), body, header, timeout)) return false;
++        DWORD status = 0;
++        return client.queryStatus(status) && status == 202;
++    }
++
++    void stopRecordingBeforeClose()
++    {
++        if (mediaUrl_.empty()) return;
++        const ULONGLONG deadline = GetTickCount64() + 8000;
++        std::wstring state = readRecordingState(200);
++        if (state == L"starting" || state == L"recording")
++            postRecordingCommand(std::string(), 200);
++        while (GetTickCount64() < deadline)
++        {
++            state = readRecordingState(200);
++            if (state == L"idle" || state == L"error") return;
++            Sleep(50);
++        }
++    }
++
++public:
++    int startupBufferMs() const { return startupBufferMs_; }
++    LiveBridgeSession() = default;
++    LiveBridgeSession(const LiveBridgeSession&) = delete;
++    LiveBridgeSession& operator=(const LiveBridgeSession&) = delete;
++    ~LiveBridgeSession() { closeHandles(); }
++
++    std::wstring recordingState() { return readRecordingState(2000); }
++
++    bool startRecording(const std::wstring& path)
++    {
++        if (path.empty()) return false;
++        const int count = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, NULL, 0, NULL, NULL);
++        if (count <= 1) return false;
++        std::vector<char> bytes(count);
++        if (WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, bytes.data(), count, NULL, NULL) != count) return false;
++        return postRecordingCommand(std::string(bytes.data(), count - 1), 2000);
++    }
++
++    bool stopRecording() { return postRecordingCommand(std::string(), 2000); }
++
++    bool start(const std::wstring& pageUrl, std::wstring& mediaUrl)
++    {
++        network::URLParser provider(pageUrl);
++        const std::wstring host = liveLower(provider.host());
++        startupBufferMs_ = host == L"twitch.tv" || host == L"www.twitch.tv" ? 6000 : 0;
++        std::wstring node, directory;
++        const std::wstring helper = helperPath(directory);
++        if (helper.empty() || !resolveNode(node) || GetFileAttributesW(helper.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
++
++        SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
++        HANDLE pipeWrite = NULL;
++        if (!CreatePipe(&pipe_, &pipeWrite, &sa, 0)) return false;
++        SetHandleInformation(pipe_, HANDLE_FLAG_INHERIT, 0);
++        HANDLE nullHandle = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
++        wchar_t logName[96] = {};
++        swprintf_s(logName, L"\\pcr-live-startup-%lu.log", GetCurrentProcessId());
++        HANDLE errorLog = CreateFileW((directory + logName).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, &sa, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++        if (errorLog == INVALID_HANDLE_VALUE) errorLog = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
++        if (nullHandle == INVALID_HANDLE_VALUE || errorLog == INVALID_HANDLE_VALUE) { if (nullHandle != INVALID_HANDLE_VALUE) CloseHandle(nullHandle); if (errorLog != INVALID_HANDLE_VALUE) CloseHandle(errorLog); CloseHandle(pipeWrite); closeHandles(); return false; }
++
++        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
++        job_ = CreateJobObjectW(NULL, NULL);
++        if (!job_) { CloseHandle(pipeWrite); CloseHandle(nullHandle); CloseHandle(errorLog); closeHandles(); return false; }
++        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
++        if (!SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
++        { CloseHandle(pipeWrite); CloseHandle(nullHandle); CloseHandle(errorLog); closeHandles(); return false; }
++
++        SIZE_T attrSize = 0;
++        InitializeProcThreadAttributeList(NULL, 1, 0, &attrSize);
++        std::vector<unsigned char> attrBuffer(attrSize);
++        LPPROC_THREAD_ATTRIBUTE_LIST attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrBuffer.data());
++        if (!InitializeProcThreadAttributeList(attrs, 1, 0, &attrSize))
++        { CloseHandle(pipeWrite); CloseHandle(nullHandle); CloseHandle(errorLog); closeHandles(); return false; }
++        HANDLE inherited[] = { pipeWrite, nullHandle, errorLog };
++        bool attrOk = UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited, sizeof(inherited), NULL, NULL) != FALSE;
++
++        STARTUPINFOEXW si = {};
++        si.StartupInfo.cb = sizeof(si);
++        si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
++        si.StartupInfo.hStdInput = nullHandle;
++        si.StartupInfo.hStdOutput = pipeWrite;
++        si.StartupInfo.hStdError = errorLog;
++        si.lpAttributeList = attrs;
++        std::wstring command = quoteLiveArg(node) + L" " + quoteLiveArg(helper) + L" " + quoteLiveArg(pageUrl) + L" --stdout";
++        std::vector<wchar_t> mutableCommand(command.begin(), command.end());
++        mutableCommand.push_back(L'\0');
++        PROCESS_INFORMATION pi = {};
++        BOOL created = attrOk && CreateProcessW(node.c_str(), mutableCommand.data(), NULL, NULL, TRUE,
++            EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, directory.c_str(), &si.StartupInfo, &pi);
++        DeleteProcThreadAttributeList(attrs);
++        CloseHandle(pipeWrite); CloseHandle(nullHandle); CloseHandle(errorLog);
++        if (!created) { closeHandles(); return false; }
++        process_ = pi.hProcess; thread_ = pi.hThread;
++        if (!AssignProcessToJobObject(job_, process_) || ResumeThread(thread_) == (DWORD)-1)
++        { TerminateProcess(process_, 1); closeHandles(); return false; }
++
++        const ULONGLONG deadline = GetTickCount64() + 90000;
++        std::string line;
++        while (GetTickCount64() < deadline)
++        {
++            boost::this_thread::interruption_point();
++            DWORD available = 0;
++            if (!PeekNamedPipe(pipe_, NULL, 0, NULL, &available, NULL)) { closeHandles(); return false; }
++            if (available)
++            {
++                char chunk[512]; DWORD read = 0;
++                if (!ReadFile(pipe_, chunk, (std::min<DWORD>)(available, sizeof(chunk)), &read, NULL) || !read) { closeHandles(); return false; }
++                for (DWORD i = 0; i < read; ++i)
++                {
++                    if (chunk[i] == '\n')
++                    {
++                        while (!line.empty() && line.back() == '\r') line.pop_back();
++                        std::wstring candidate(line.begin(), line.end());
++                        if (!validLoopbackUrl(candidate)) { closeHandles(); return false; }
++                        mediaUrl.swap(candidate);
++                        mediaUrl_ = mediaUrl;
++                        return true;
++                    }
++                    if (line.size() >= 4096) { closeHandles(); return false; }
++                    line.push_back(chunk[i]);
++                }
++            }
++            if (WaitForSingleObject(process_, 0) == WAIT_OBJECT_0) { closeHandles(); return false; }
++            Sleep(50);
++        }
++        closeHandles();
++        return false;
++    }
++};
++
++} // namespace dsp
+--- /dev/null
++++ b/PCRPlayer/LiveBitrate.h
+@@ -0,0 +1,50 @@
++#pragma once
++
++#include <cstdint>
++#include <deque>
++
++class RollingBitrate {
++    struct Sample {
++        uint64_t atMs;
++        uint64_t bytes;
++        uint64_t durationMs;
++    };
++    std::deque<Sample> samples_;
++    bool initialized_ = false;
++    uint64_t lastTimeMs_ = 0;
++    uint64_t lastBytes_ = 0;
++    uint64_t valueKbps_ = 0;
++    static const uint64_t sampleIntervalMs_ = 1000;
++    static const uint64_t windowMs_ = 8000;
++
++public:
++    void reset() {
++        samples_.clear();
++        initialized_ = false;
++        lastTimeMs_ = 0;
++        lastBytes_ = 0;
++        valueKbps_ = 0;
++    }
++
++    int sample(uint64_t nowMs, uint64_t receivedBytes) {
++        if (!initialized_ || receivedBytes < lastBytes_ || nowMs < lastTimeMs_) {
++            reset();
++            initialized_ = true;
++            lastTimeMs_ = nowMs;
++            lastBytes_ = receivedBytes;
++            return 0;
++        }
++        const uint64_t elapsed = nowMs - lastTimeMs_;
++        if (elapsed < sampleIntervalMs_) return static_cast<int>(valueKbps_);
++
++        samples_.push_back(Sample{ nowMs, receivedBytes - lastBytes_, elapsed });
++        lastTimeMs_ = nowMs;
++        lastBytes_ = receivedBytes;
++        while (!samples_.empty() && nowMs - samples_.front().atMs >= windowMs_) samples_.pop_front();
++
++        uint64_t bytes = 0, duration = 0;
++        for (const Sample& item : samples_) { bytes += item.bytes; duration += item.durationMs; }
++        valueKbps_ = duration ? (bytes * 8) / duration : 0;
++        return static_cast<int>(valueKbps_);
++    }
++};
+--- a/PCRPlayer/Splitter/FLVSplitter.cpp
++++ b/PCRPlayer/Splitter/FLVSplitter.cpp
+@@ -519,7 +519,11 @@
+ 					}
+ 					break;
+ 				case 3 :	// FLV_CODECID_PCM_LE
+-					// ToDo
++					mt.subtype = FOURCCMap(wfe->wFormatTag = WAVE_FORMAT_PCM);
++					wfe->nBlockAlign = wfe->nChannels * wfe->wBitsPerSample / 8;
++					wfe->nAvgBytesPerSec = wfe->nSamplesPerSec * wfe->nBlockAlign;
++					// Avoid allocator renegotiation on the first decoded PCM packet.
++					mt.SetSampleSize(65536);
+ 					break;
+ 				case 4 :	// unknown
+ 					break;
+@@ -1542,6 +1546,14 @@
+ 				p->rtStop = p->rtStart + 1;
+ 			}
+ 
++			if (t.TagType == 8 && at.SoundFormat == 3)
++			{
++				const LONGLONG rate = 44100 * (1 << at.SoundRate) / 8;
++				const LONGLONG align = (at.SoundType + 1) * (at.SoundSize + 1);
++				if (rate > 0 && align > 0)
++					p->rtStop = p->rtStart + dataSize * 10000000i64 / (rate * align);
++			}
++
+ 			p->bSyncPoint = t.TagType == 9 ? vt.FrameType == 1 : true;
+ 			p->SetCount((size_t)dataSize);
+ 			m_pFile->ByteRead(p->GetData(), p->GetCount());
+--- a/PCRPlayer/Splitter/BaseSplitter.cpp
++++ b/PCRPlayer/Splitter/BaseSplitter.cpp
+@@ -525,6 +525,8 @@
+ 			//DebugText(L"::%s\n", info.achName);
+ 
+ 			CComPtr<IPin> pPinOut = GetFirstPin(filter, PINDIR_OUTPUT);
++			// Connected terminal renderers must receive their first sample to enter Run.
++			if (!pPinOut) return true;
+ 			if (pPinOut)
+ 			{
+ 				CComPtr<IPin> pPinTo;

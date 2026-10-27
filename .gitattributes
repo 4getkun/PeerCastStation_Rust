@@ -1,2 +1,3 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+tools/pcrplayer/live/pcrplayer-live.patch -text

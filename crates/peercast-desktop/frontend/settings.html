@@ -24,7 +24,7 @@
         <button class="nav-item" type="button" role="tab" id="tab-channel-rules" aria-controls="panel-channel-rules" aria-selected="false" tabindex="-1" data-page="channel-rules"><span class="icon icon-eye-off" aria-hidden="true"></span><span>NG・お気に入り</span></button>
         <button class="nav-item" type="button" role="tab" id="tab-recording" aria-controls="panel-recording" aria-selected="false" tabindex="-1" data-page="recording"><span class="icon icon-download" aria-hidden="true"></span><span>録画</span></button>
         <button class="nav-item" type="button" role="tab" id="tab-appearance" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-page="appearance"><span class="icon icon-device-desktop" aria-hidden="true"></span><span>外観</span></button>
-        <button class="nav-item" type="button" role="tab" id="tab-version" aria-controls="panel-version" aria-selected="false" tabindex="-1" data-page="version"><span class="icon icon-info-circle" aria-hidden="true"></span><span>バージョン情報</span></button>
+        <button class="nav-item" type="button" role="tab" id="tab-version" aria-controls="panel-version" aria-selected="false" tabindex="-1" data-page="version"><span class="icon icon-info-circle" aria-hidden="true"></span><span>バージョン</span></button>
       </nav>
       <div class="rail-foot">Peercast RT</div>
     </aside>
@@ -67,7 +67,13 @@
         </div>
       </section>
 
-      <section class="page-content yp-content" id="panel-yellow-pages" role="tabpanel" aria-labelledby="tab-yellow-pages">
+      <section class="page-content yp-settings-shell" id="panel-yellow-pages" role="tabpanel" aria-labelledby="tab-yellow-pages">
+        <div class="yp-subtabs" role="tablist" aria-label="イエローページの表示" aria-orientation="horizontal">
+          <button class="yp-subtab active" type="button" role="tab" id="tab-yp" aria-controls="panel-yp" aria-selected="true" tabindex="0" data-yp-subtab="yp">YP</button>
+          <button class="yp-subtab" type="button" role="tab" id="tab-youtube" aria-controls="panel-youtube" aria-selected="false" tabindex="-1" data-yp-subtab="youtube">YouTube</button>
+          <button class="yp-subtab" type="button" role="tab" id="tab-twitch" aria-controls="panel-twitch" aria-selected="false" tabindex="-1" data-yp-subtab="twitch">Twitch</button>
+        </div>
+        <div class="yp-subpanel yp-content" id="panel-yp" role="tabpanel" aria-labelledby="tab-yp" data-yp-panel="yp">
         <div class="list-pane">
           <div class="section-title list-title"><div><h2>登録済みのイエローページ</h2><p id="yp-count">読み込み中</p></div><button id="add-page" class="add-button" type="button" disabled><span class="icon icon-plus" aria-hidden="true"></span>追加</button></div>
           <div class="yp-list-wrap"><ul id="yp-list" class="yp-list" aria-label="登録済みイエローページ"></ul><div id="yp-empty" class="empty-state" hidden>登録済みのイエローページはありません。</div></div>
@@ -82,6 +88,8 @@
           <p class="muted-note">このURLはチャンネル一覧の取得に使います。SPへの掲載は、配信画面で掲載を選んだ場合に行われます。</p>
           <p class="error-message" id="form-error" role="alert" hidden></p>
         </div>
+        </div>
+        <div class="yp-subpanel youtube-subpanel" id="panel-youtube" role="tabpanel" aria-labelledby="tab-youtube" data-yp-panel="youtube" hidden>
         <section class="youtube-settings-manager" aria-labelledby="youtube-settings-title">
           <div class="section-title"><div><h2 id="youtube-settings-title">YouTubeお気に入り</h2><p>登録チャンネルのライブ配信と予約をチャンネル一覧に表示します。監視はアプリ起動中に5分間隔で行います。</p></div><button id="youtube-refresh" type="button" class="button button-secondary">今すぐ確認</button></div>
           <p class="youtube-settings-save-note">追加・監視切替・解除はすぐに保存されます。「変更を保存」は不要です。</p>
@@ -89,6 +97,16 @@
           <p id="youtube-status" class="youtube-settings-status" role="status" aria-live="polite">読み込み中</p>
           <div id="youtube-subscriptions" class="youtube-settings-subscriptions" aria-label="YouTube登録チャンネル"></div>
         </section>
+        </div>
+        <div class="yp-subpanel youtube-subpanel" id="panel-twitch" role="tabpanel" aria-labelledby="tab-twitch" data-yp-panel="twitch" hidden>
+        <section class="youtube-settings-manager" aria-labelledby="twitch-settings-title">
+          <div class="section-title"><div><h2 id="twitch-settings-title">Twitchお気に入り</h2><p>登録チャンネルの配信中カードをチャンネル一覧に表示します。監視はアプリ起動中に5分間隔で行います。</p></div><button id="twitch-refresh" type="button" class="button button-secondary">今すぐ確認</button></div>
+          <p class="youtube-settings-save-note">PCRPlayerで再生できます。録画はプレイヤーの右クリックから。追加・監視切替・解除はすぐに保存されます。</p>
+          <form id="twitch-add-form" class="youtube-settings-add"><label for="twitch-url">チャンネルURL</label><input id="twitch-url" type="url" required maxlength="2048" placeholder="https://www.twitch.tv/channel"><button id="twitch-add" type="submit" class="button button-secondary">お気に入りに追加</button></form>
+          <p id="twitch-status" class="youtube-settings-status" role="status" aria-live="polite">読み込み中</p>
+          <div id="twitch-subscriptions" class="youtube-settings-subscriptions" aria-label="Twitch登録チャンネル"></div>
+        </section>
+        </div>
       </section>
 
       <section class="page-content player-content" id="panel-player" role="tabpanel" aria-labelledby="tab-player" hidden>

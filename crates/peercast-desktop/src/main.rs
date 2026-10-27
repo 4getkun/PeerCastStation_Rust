@@ -23,8 +23,26 @@ struct YouTubeService {
     monitor: Mutex<Result<peercast_desktop::youtube::YouTubeMonitor, String>>,
 }
 
+struct TwitchService {
+    monitor: Mutex<Result<peercast_desktop::youtube::YouTubeMonitor, String>>,
+}
+
 fn with_youtube<T>(
     service: &YouTubeService,
+    action: impl FnOnce(&mut peercast_desktop::youtube::YouTubeMonitor) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut guard = service
+        .monitor
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match guard.as_mut() {
+        Ok(monitor) => action(monitor),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+fn with_twitch<T>(
+    service: &TwitchService,
     action: impl FnOnce(&mut peercast_desktop::youtube::YouTubeMonitor) -> Result<T, String>,
 ) -> Result<T, String> {
     let mut guard = service
@@ -63,6 +81,70 @@ fn youtube_add(
     }
     let url = peercast_desktop::youtube_process::channel_url(&url)?;
     with_youtube(&service, |monitor| monitor.add(url, current_time_ms()))
+}
+
+#[tauri::command]
+fn twitch_status(
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_twitch(&service, |monitor| Ok(monitor.snapshot()))
+}
+
+#[tauri::command]
+fn twitch_add(
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+    url: String,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    let url = peercast_desktop::twitch_process::channel_url(&url)?;
+    with_twitch(&service, |monitor| monitor.add(url, current_time_ms()))
+}
+
+#[tauri::command]
+fn twitch_remove(
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+    id: String,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_twitch(&service, |monitor| monitor.remove(&id))
+}
+
+#[tauri::command]
+fn twitch_set_enabled(
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+    id: String,
+    enabled: bool,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_twitch(&service, |monitor| {
+        monitor.set_enabled(&id, enabled, current_time_ms())
+    })
+}
+
+#[tauri::command]
+fn twitch_refresh(
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+) -> Result<peercast_desktop::youtube::YouTubeSnapshot, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    with_twitch(&service, |monitor| {
+        monitor.request_refresh(current_time_ms())
+    })
 }
 
 #[tauri::command]
@@ -107,6 +189,32 @@ fn youtube_refresh(
 
 #[tauri::command]
 async fn youtube_open(
+    window: tauri::WebviewWindow,
+    service: State<'_, YouTubeService>,
+    video_id: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    let url = peercast_desktop::youtube_process::video_url(&video_id)?;
+    let stream_url = with_youtube(&service, |monitor| {
+        let channel = monitor.snapshot().channels.into_iter().find(|channel| {
+            channel.enabled
+                && channel.error.is_none()
+                && channel
+                    .streams
+                    .iter()
+                    .any(|stream| stream.id == video_id && stream.status == "live")
+        });
+        channel
+            .map(|_| url.clone())
+            .ok_or_else(|| "登録したチャンネルの現在の配信を選択してください".into())
+    })?;
+    peercast_desktop::live_player::open_live(&stream_url).await
+}
+
+#[tauri::command]
+async fn youtube_open_browser(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     service: State<'_, YouTubeService>,
@@ -117,15 +225,77 @@ async fn youtube_open(
     }
     let url = peercast_desktop::youtube_process::video_url(&video_id)?;
     let known = with_youtube(&service, |monitor| {
-        Ok(monitor
-            .snapshot()
-            .channels
-            .iter()
-            .any(|channel| channel.streams.iter().any(|stream| stream.id == video_id)))
+        Ok(monitor.snapshot().channels.iter().any(|channel| {
+            channel.enabled
+                && channel.error.is_none()
+                && channel
+                    .streams
+                    .iter()
+                    .any(|stream| stream.id == video_id && stream.status == "live")
+        }))
     })?;
     if !known {
-        return Err("登録したチャンネルの配信を選択してください".into());
+        return Err("登録したチャンネルの現在の配信を選択してください".into());
     }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn twitch_open(
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+    stream_id: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    let url = with_twitch(&service, |monitor| {
+        let channel = monitor
+            .snapshot()
+            .channels
+            .into_iter()
+            .find(|channel| {
+                channel.enabled
+                    && channel.error.is_none()
+                    && channel
+                        .streams
+                        .iter()
+                        .any(|stream| stream.id == stream_id && stream.status == "live")
+            })
+            .ok_or_else(|| "登録したチャンネルの現在の配信を選択してください".to_owned())?;
+        peercast_desktop::twitch_process::channel_url(&channel.url)
+    })?;
+    peercast_desktop::live_player::open_live(&url).await
+}
+
+#[tauri::command]
+async fn twitch_open_browser(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    service: State<'_, TwitchService>,
+    stream_id: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    let url = with_twitch(&service, |monitor| {
+        let channel = monitor
+            .snapshot()
+            .channels
+            .into_iter()
+            .find(|channel| {
+                channel.enabled
+                    && channel.error.is_none()
+                    && channel
+                        .streams
+                        .iter()
+                        .any(|stream| stream.id == stream_id && stream.status == "live")
+            })
+            .ok_or_else(|| "登録したチャンネルの現在の配信を選択してください".to_owned())?;
+        peercast_desktop::twitch_process::channel_url(&channel.url)
+    })?;
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|error| error.to_string())
@@ -637,6 +807,8 @@ fn main() {
             app.manage(Arc::new(Mutex::new(ledger)) as FavoriteNotifications);
             let youtube_path = path.with_extension("youtube.json");
             app.manage(YouTubeService { monitor: Mutex::new(peercast_desktop::youtube::YouTubeMonitor::load(youtube_path)) });
+            let twitch_path = path.with_extension("twitch.json");
+            app.manage(TwitchService { monitor: Mutex::new(peercast_desktop::youtube::YouTubeMonitor::load_twitch(twitch_path)) });
             let youtube_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -650,6 +822,24 @@ fn main() {
                         if !rows.is_empty() {
                             let ledger = youtube_app.state::<FavoriteNotifications>();
                             notify_favorite_rows(&youtube_app, &ledger, &mut serde_json::Value::Array(rows));
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            });
+            let twitch_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let requests = with_twitch(&twitch_app.state::<TwitchService>(), |monitor| Ok(monitor.due_requests(current_time_ms()))).unwrap_or_default();
+                    for request in requests {
+                        let result = match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
+                            Ok(executable) => peercast_desktop::twitch_process::probe(&executable, &request.url).await,
+                            Err(error) => Err(error),
+                        };
+                        let rows = with_twitch(&twitch_app.state::<TwitchService>(), |monitor| Ok(monitor.complete(&request.id, result, current_time_ms()))).unwrap_or_default();
+                        if !rows.is_empty() {
+                            let ledger = twitch_app.state::<FavoriteNotifications>();
+                            notify_favorite_rows(&twitch_app, &ledger, &mut serde_json::Value::Array(rows));
                         }
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -683,6 +873,14 @@ fn main() {
             youtube_set_enabled,
             youtube_refresh,
             youtube_open,
+            youtube_open_browser,
+            twitch_status,
+            twitch_add,
+            twitch_remove,
+            twitch_set_enabled,
+            twitch_refresh,
+            twitch_open,
+            twitch_open_browser,
             play_yp_channel,
             apply_limits,
             apply_yellow_pages,

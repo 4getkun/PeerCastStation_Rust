@@ -108,6 +108,7 @@ dialog{width:min(620px,calc(100vw - 40px));max-height:80vh;padding:25px;border:1
 .youtube-stream-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:10px;min-height:112px;padding:18px 20px;border-bottom:1px solid var(--line);background:#fff}
 .youtube-stream-card.is-live{background:#f8f5ff}
 .youtube-badge{padding:4px 7px;border-radius:5px;background:#fff0f0;color:#bb3434;font-size:12px;font-weight:750;white-space:nowrap}
+.twitch-badge{background:#f0eaff;color:#7040b3}
 .youtube-stream-copy{display:grid;gap:3px;min-width:0}
 .youtube-stream-channel{color:#43355e;font-size:23px;font-weight:650}
 .youtube-stream-title{color:#282044;font-size:15px;font-weight:500;overflow-wrap:anywhere}
@@ -116,7 +117,8 @@ dialog{width:min(620px,calc(100vw - 40px));max-height:80vh;padding:25px;border:1
 .youtube-stream-status{padding:5px 9px;border-radius:16px;background:#f3eef7;color:#79688c;font-size:12px;font-weight:700;white-space:nowrap}
 .youtube-stream-status.status-live{background:#eaf7ed;color:#398153}
 .youtube-open{min-height:31px;padding:0 9px;font-size:12px}
-@media(max-width:1250px){.youtube-stream-card{grid-template-columns:auto minmax(0,1fr) auto;gap:7px;padding:10px}.youtube-open{grid-column:2/-1;justify-self:end}}
+.youtube-stream-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+@media(max-width:1250px){.youtube-stream-card{grid-template-columns:auto minmax(0,1fr) auto;gap:7px;padding:10px}.youtube-stream-actions{grid-column:2/-1;justify-self:end}}
 
 /* Keep physical-pixel windows usable on displays with enlarged UI text. */
 @media(max-width:1100px){

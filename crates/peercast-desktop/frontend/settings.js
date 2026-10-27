@@ -113,11 +113,11 @@
   const recordingDefaults = { enabled: false, directory: "recordings", channelSubfolders: true, limitConcurrent: true, maxConcurrent: 5, retryCount: 30, retryIntervalSecs: 10, disconnectEveryRetries: 5, disconnectOnRetryEnd: true, splitMinutes: null, splitSizeMb: null, allDay: true, watchStart: "00:00", watchEnd: "23:59", monitorIntervalSecs: 60, rules: [] };
   function cloneRecording(value) { return { ...value, rules: (value.rules || []).map((rule) => ({ ...rule, fields: [...rule.fields] })) }; }
   const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
-  Object.assign(state, { youtubeSnapshot: null, youtubeLoaded: false, youtubeLoading: false, youtubeBusy: false, youtubeMessage: "読み込み中" });
+  Object.assign(state, { youtubeSnapshot: null, youtubeLoaded: false, youtubeLoading: false, youtubeBusy: false, youtubeMessage: "読み込み中", twitchSnapshot: null, twitchLoaded: false, twitchLoading: false, twitchBusy: false, twitchMessage: "読み込み中" });
   const meta = {
     general: ["全般", "現在のバックエンド状態と設定ファイルを確認します。"],
     connection: ["接続", "接続上限を変更します。保存時に実バックエンドへ反映します。"],
-    "yellow-pages": ["イエローページ", "チャンネル一覧の取得先とYouTubeお気に入りを管理します。\nSPへの掲載は、配信画面で掲載を選んだ場合に行われます。"],
+    "yellow-pages": ["イエローページ", "チャンネル一覧の取得先とYouTube・Twitchのお気に入りを管理します。\nSPへの掲載は、配信画面で掲載を選んだ場合に行われます。"],
     player: ["プレイヤー", "視聴時に起動するプレイヤーと引数を設定します。"],
     "channel-rules": ["NG・お気に入り", "チャンネル情報に一致する条件と表示・通知方法を設定します。"],
     recording: ["録画", "保存先、録画の再試行と自動監視条件を設定します。"],
@@ -216,6 +216,12 @@
     const refreshState = youtubeRefreshState(state.youtubeSnapshot, Date.now());
     $("youtube-refresh").disabled = youtubeDisabled || refreshState.disabled;
     $("youtube-refresh").title = refreshState.remainingSeconds > 0 ? `手動確認はあと${refreshState.remainingSeconds}秒後にできます` : "登録チャンネルを今すぐ確認します";
+    const twitchDisabled = !state.ready || state.loading || state.busy || state.twitchLoading || state.twitchBusy;
+    ["twitch-url", "twitch-add", "twitch-refresh"].forEach((id) => { $(id).disabled = twitchDisabled; });
+    root.querySelectorAll("[data-twitch-action]").forEach((button) => { button.disabled = twitchDisabled; });
+    const twitchRefresh = youtubeRefreshState(state.twitchSnapshot, Date.now());
+    $("twitch-refresh").disabled = twitchDisabled || twitchRefresh.disabled;
+    $("twitch-refresh").title = twitchRefresh.remainingSeconds > 0 ? `手動確認はあと${twitchRefresh.remainingSeconds}秒後にできます` : "登録チャンネルを今すぐ確認します";
     ["window-preset", "window-width", "window-height", "window-logical-size", "window-minimize-to-tray", "window-launch-at-startup", "window-preset-name"].forEach((id) => { $(id).disabled = !editable; });
     $("window-preset-add").disabled = !editable || state.window.presets.length >= 32;
     $("window-preset-remove").disabled = !editable || !state.selectedWindowPreset.startsWith("user:");
@@ -330,6 +336,59 @@
       : 0;
     return { disabled: !Array.isArray(snapshot?.channels) || snapshot.channels.length === 0 || snapshot.refreshing === true || remainingSeconds > 0, remainingSeconds };
   }
+  function renderTwitchSubscriptions() {
+    const rootElement = $("twitch-subscriptions");
+    const channels = Array.isArray(state.twitchSnapshot?.channels) ? state.twitchSnapshot.channels : [];
+    const focused = rootElement.contains(rootElement.ownerDocument.activeElement)
+      ? [rootElement.ownerDocument.activeElement?.dataset?.twitchAction, rootElement.ownerDocument.activeElement?.dataset?.twitchId]
+      : null;
+    rootElement.replaceChildren();
+    if (!channels.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "Twitchチャンネルはまだ登録されていません。";
+      rootElement.append(empty);
+    }
+    for (const channel of channels) {
+      const row = document.createElement("div");
+      row.className = "youtube-settings-subscription";
+      const label = document.createElement("span");
+      label.className = "youtube-settings-subscription-name";
+      const name = document.createElement("strong");
+      name.textContent = String(channel.name || channel.url || "登録チャンネル");
+      label.append(name);
+      const url = document.createElement("span");
+      url.className = "youtube-settings-subscription-url";
+      url.textContent = String(channel.url || "");
+      label.append(url);
+      const channelStatus = twitchSubscriptionStatus(channel);
+      const status = document.createElement("span");
+      status.className = `twitch-subscription-status${channelStatus === "error" ? " has-error" : channelStatus === "live" ? " is-live" : ""}`;
+      status.textContent = ({ error: "確認できず", disabled: "監視無効", live: "配信中", waiting: "確認待ち", offline: "配信なし" })[channelStatus];
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "button button-secondary";
+      toggle.textContent = channel.enabled === true ? "監視を無効にする" : "監視を有効にする";
+      toggle.dataset.twitchAction = "enabled";
+      toggle.dataset.twitchId = String(channel.id || "");
+      toggle.setAttribute("aria-pressed", String(channel.enabled === true));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button-secondary youtube-remove";
+      remove.textContent = "解除";
+      remove.dataset.twitchAction = "remove";
+      remove.dataset.twitchId = String(channel.id || "");
+      row.append(label, status, toggle, remove);
+      rootElement.append(row);
+    }
+    if (focused?.[0]) {
+      const nextFocus = [...rootElement.querySelectorAll("[data-twitch-action]")]
+        .find((button) => button.dataset.twitchAction === focused[0] && button.dataset.twitchId === focused[1]);
+      nextFocus?.focus();
+    }
+    $("twitch-status").textContent = state.twitchMessage;
+    renderControls();
+  }
   function acceptYoutubeSnapshot(snapshot, message) {
     if (!snapshot || !Array.isArray(snapshot.channels)) return false;
     state.youtubeSnapshot = snapshot;
@@ -382,6 +441,65 @@
       return false;
     } finally {
       state.youtubeBusy = false;
+      renderControls();
+    }
+  }
+  async function loadTwitchSettings() {
+    if (state.twitchLoaded || state.twitchLoading) return;
+    state.twitchLoading = true;
+    state.twitchMessage = "Twitch登録を読み込み中です…";
+    renderControls();
+    window.dispatchEvent(new Event("twitch-snapshot-requested"));
+  }
+  function twitchSubscriptionStatus(channel) {
+    if (channel.error) return "error";
+    if (channel.enabled !== true) return "disabled";
+    if (Array.isArray(channel.streams) && channel.streams.some((stream) => stream?.status === "live")) return "live";
+    return channel.lastCheckedMs == null ? "waiting" : "offline";
+  }
+  function twitchSubscriptionFingerprint(channels) {
+    return JSON.stringify(channels.map((channel) => [channel.id, channel.url, channel.name, channel.enabled, twitchSubscriptionStatus(channel)]));
+  }
+  function acceptTwitchPolledSnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.channels)) return;
+    const changed = twitchSubscriptionFingerprint(state.twitchSnapshot?.channels || []) !== twitchSubscriptionFingerprint(snapshot.channels);
+    state.twitchSnapshot = snapshot;
+    const firstLoad = !state.twitchLoaded;
+    state.twitchLoaded = true;
+    state.twitchLoading = false;
+    if (firstLoad) state.twitchMessage = "Twitch登録を読み込みました。";
+    else if (state.twitchMessage.startsWith("Twitchの状態を確認できませんでした:")) state.twitchMessage = "Twitch登録を読み込みました。";
+    $("twitch-status").textContent = state.twitchMessage;
+    if (changed) renderTwitchSubscriptions();
+    else renderControls();
+  }
+  window.addEventListener("twitch-snapshot-polled", (event) => acceptTwitchPolledSnapshot(event.detail));
+  window.addEventListener("twitch-snapshot-error", (event) => {
+    state.twitchLoading = false;
+    state.twitchMessage = `Twitchの状態を確認できませんでした: ${String(event.detail || "")}`;
+    $("twitch-status").textContent = state.twitchMessage;
+    renderControls();
+  });
+  async function twitchSettingsMutation(command, args) {
+    if (state.twitchBusy || !state.ready) return false;
+    state.twitchBusy = true;
+    state.twitchMessage = "Twitch登録を更新しています…";
+    renderTwitchSubscriptions();
+    try {
+      const snapshot = await invoke(command, args);
+      if (!snapshot || !Array.isArray(snapshot.channels)) throw new Error("Twitchの状態を取得できませんでした");
+      state.twitchSnapshot = snapshot;
+      state.twitchLoaded = true;
+      state.twitchMessage = "Twitch登録を更新しました。";
+      renderTwitchSubscriptions();
+      window.dispatchEvent(new CustomEvent("twitch-snapshot-updated", { detail: snapshot }));
+      return true;
+    } catch (error) {
+      state.twitchMessage = `Twitchを更新できませんでした: ${error.message || error}`;
+      renderTwitchSubscriptions();
+      return false;
+    } finally {
+      state.twitchBusy = false;
       renderControls();
     }
   }
@@ -846,8 +964,41 @@
     if (page === "channel-rules" && state.selectedRule !== null) $("saved-rules-disclosure").open = true;
     if (state.updateViewActive) ensureUpdateStatus();
     else stopUpdatePolling();
-    if (page === "yellow-pages" && !state.youtubeLoaded) void loadYoutubeSettings();
+    if (page === "yellow-pages") {
+      if (!state.youtubeLoaded) void loadYoutubeSettings();
+      if (!state.twitchLoaded) void loadTwitchSettings();
+    }
   }
+  function activateYellowPagesSubtab(name, focus = false) {
+    const tabs = [...root.querySelectorAll("[data-yp-subtab]")];
+    const activeTab = tabs.find((tab) => tab.dataset.ypSubtab === name);
+    if (!activeTab) return;
+    tabs.forEach((tab) => {
+      const active = tab === activeTab;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+    root.querySelectorAll("[data-yp-panel]").forEach((panel) => { panel.hidden = panel.dataset.ypPanel !== name; });
+    if (focus) activeTab.focus();
+  }
+  const ypSubtabs = root.querySelector("[role=tablist][aria-label='イエローページの表示']");
+  ypSubtabs?.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-yp-subtab]");
+    if (tab) activateYellowPagesSubtab(tab.dataset.ypSubtab);
+  });
+  ypSubtabs?.addEventListener("keydown", (event) => {
+    const tabs = [...ypSubtabs.querySelectorAll("[data-yp-subtab]")];
+    const index = tabs.indexOf(event.target.closest("[data-yp-subtab]"));
+    if (index < 0) return;
+    const nextIndex = event.key === "Home" ? 0
+      : event.key === "End" ? tabs.length - 1
+        : event.key === "ArrowRight" ? (index + 1) % tabs.length
+          : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    activateYellowPagesSubtab(tabs[nextIndex].dataset.ypSubtab, true);
+  });
   $("saved-rules-disclosure").addEventListener("toggle", handleRuleDisclosureToggle);
   async function save() {
     if (state.loading || state.busy || !state.dirty) return;
@@ -1055,6 +1206,26 @@
     if (channel) void youtubeSettingsMutation("youtube_set_enabled", { id, enabled: channel.enabled !== true });
   });
   $("youtube-refresh").addEventListener("click", () => { void youtubeSettingsMutation("youtube_refresh", {}); });
+  $("twitch-add-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("twitch-url");
+    const url = String(input.value || "").trim();
+    if (!url) return;
+    void twitchSettingsMutation("twitch_add", { url }).then((saved) => { if (saved) input.value = ""; });
+  });
+  $("twitch-subscriptions").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-twitch-action]");
+    if (!button || state.twitchBusy) return;
+    const id = button.dataset.twitchId;
+    if (!id) return;
+    if (button.dataset.twitchAction === "remove") {
+      void twitchSettingsMutation("twitch_remove", { id });
+      return;
+    }
+    const channel = state.twitchSnapshot?.channels?.find((entry) => String(entry.id) === String(id));
+    if (channel) void twitchSettingsMutation("twitch_set_enabled", { id, enabled: channel.enabled !== true });
+  });
+  $("twitch-refresh").addEventListener("click", () => { void twitchSettingsMutation("twitch_refresh", {}); });
   $("page-name").addEventListener("input", () => { commitEditor(); setDirty(); });
   $("page-url").addEventListener("input", () => { commitEditor(); setDirty(); });
   $("add-page").addEventListener("click", () => {
@@ -1212,8 +1383,13 @@
     renderControls();
   });
   void loadYoutubeSettings();
+  void loadTwitchSettings();
   return {
     requestLeave, updateSnapshot, isDirty: () => state.dirty,
+    openYellowPagesSubtab(provider) {
+      activate("yellow-pages");
+      activateYellowPagesSubtab(provider === "twitch" ? "twitch" : "youtube");
+    },
     addChannelRule(channel, kind = "favorite") {
       const rule = newRule(kind === "ng" ? "ng" : "favorite", channel);
       if (state.rules.length >= 128) { activate("channel-rules"); setNotice("条件は128件まで登録できます。", true); return false; }

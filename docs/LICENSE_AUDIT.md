@@ -98,3 +98,13 @@ The packaged PCRPlayer source archive is published with the PeerCast RT 1.1.2 re
 |---|---|
 | Corresponding source archive | [`PCRPlayer-PeerCastRT-1.1.2-sources.7z`](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PCRPlayer-PeerCastRT-1.1.2-sources.7z) |
 | Packaged license records | `PCRPlayer/LICENSE.txt` and any files under `PCRPlayer/licenses/` are included in the release asset license folder when present. |
+
+## 8. Live playback runtime in PeerCast RT 1.2.0
+
+| Component | License and release material |
+|---|---|
+| Modified PCRPlayer | GPL; corresponding C++ source and build inputs are in `PCRPlayer-PeerCastRT-1.2.0-sources.7z`. The patch against the 1.1.2 source is `tools/pcrplayer/live/pcrplayer-live.patch`. |
+| FFmpeg 9.0.2 | Minimal Windows x64 build, LGPL-2.1-or-later; GPL, nonfree, and external libraries are disabled. Its exact source archive, build recipe, and LGPL text are included in the PCRPlayer source archive. Installed notices: `PCRPlayer/licenses/FFmpeg-LGPL-2.1.txt` and `FFmpeg-build-config.txt`. |
+| Node.js 24.22.1 | Unmodified official x64 executable. MIT and third-party notices are retained in `PCRPlayer/licenses/Node-LICENSE.txt`. Upstream binary and FFmpeg source hashes are pinned in `tools/pcrplayer/live/runtime-lock.json`. |
+
+The live bridge keeps video and recording audio as stream copies. Only playback audio is decoded to PCM for the existing DirectShow audio renderer. No user settings, recordings, or resolved media URLs are included in the package.

@@ -53,6 +53,8 @@
     logFingerprint: "",
     clearingLogs: false,
     logClearGeneration: 0,
+    clearedConnectionKeys: new Set(),
+    connectionClearGeneration: 0,
     settingsView: null,
     settingsMountPromise: null,
     viewTransition: false,
@@ -64,9 +66,13 @@
     recordingBusy: false,
     pendingRecordingRemoval: null,
     ypContextChannel: null,
+    providerContextStream: null,
     youtubeSnapshot: null,
+    twitchSnapshot: null,
     youtubeQueryBusy: false,
+    twitchQueryBusy: false,
     youtubeRevision: 0,
+    twitchRevision: 0,
     youtubeSource: "all",
   };
 
@@ -367,13 +373,17 @@
     youtube.value = "youtube";
     youtube.textContent = "YouTube";
     select.append(youtube);
+    const twitch = document.createElement("option");
+    twitch.value = "twitch";
+    twitch.textContent = "Twitch";
+    select.append(twitch);
     pages.forEach((page) => {
       const option = document.createElement("option");
       option.value = page.name || page.channelsUrl || "";
       option.textContent = page.name || page.channelsUrl || "名称未設定";
       select.append(option);
     });
-    const values = new Set(["all", "youtube", ...pages.map((page) => page.name || page.channelsUrl || "")]);
+    const values = new Set(["all", "youtube", "twitch", ...pages.map((page) => page.name || page.channelsUrl || "")]);
     state.ypSource = values.has(previous) ? previous : "all";
     select.value = state.ypSource;
     return true;
@@ -394,6 +404,7 @@
 
   function youtubeSourceMatches(source, yellowPage) {
     if (source === "youtube") return false;
+    if (source === "twitch") return false;
     return source === "all" || String(yellowPage || "") === source;
   }
 
@@ -428,6 +439,10 @@
     return Array.isArray(state.youtubeSnapshot?.channels) ? state.youtubeSnapshot.channels : [];
   }
 
+  function twitchChannels() {
+    return Array.isArray(state.twitchSnapshot?.channels) ? state.twitchSnapshot.channels : [];
+  }
+
   function youtubeSnapshotsEqual(left, right) {
     if (left === right) return true;
     if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
@@ -459,6 +474,8 @@
     entries.forEach(({ channel, stream }) => {
       const card = document.createElement("article");
       card.className = `youtube-stream-card${stream?.status === "live" ? " is-live" : ""}`;
+      card.dataset.provider = "youtube";
+      card.dataset.streamId = String(stream?.videoId || stream?.streamId || stream?.id || "");
       const badge = appendText(card, "span", "youtube-badge", "YouTube");
       badge.setAttribute("aria-label", "YouTube配信");
       const body = document.createElement("div");
@@ -478,11 +495,62 @@
       const stateLabel = youtubeStateLabel(channel, stream);
       appendText(card, "span", `youtube-stream-status${stream?.status === "live" ? " status-live" : ""}`, stateLabel);
       if (stream?.status === "live" && stream.id) {
-        const open = appendText(card, "button", "button button-outline youtube-open", "ブラウザで視聴");
-        open.type = "button";
-        open.dataset.youtubeVideo = String(stream.id);
-        open.setAttribute("aria-label", `${stream.title || "配信"}をブラウザで視聴`);
+        const actions = document.createElement("div");
+        actions.className = "youtube-stream-actions";
+        const play = appendText(actions, "button", "button button-outline youtube-open", "PCRPlayerで再生");
+        play.type = "button";
+        play.dataset.youtubePlay = String(stream.id);
+        play.setAttribute("aria-label", `${stream.title || "配信"}をPCRPlayerで再生`);
+        const browser = appendText(actions, "button", "button button-outline youtube-open", "ブラウザで開く");
+        browser.type = "button";
+        browser.dataset.youtubeBrowser = String(stream.id);
+        browser.setAttribute("aria-label", `${stream.title || "配信"}をブラウザで開く`);
+        card.append(actions);
       }
+      root.append(card);
+    });
+    return entries.length;
+  }
+
+  function twitchStreamRows() {
+    const query = state.ypQuery.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
+    return twitchChannels().flatMap((channel) => {
+      if (channel.enabled !== true || channel.error || !Array.isArray(channel.streams)) return [];
+      return channel.streams.filter((stream) => stream && stream.status === "live" && (stream.streamId || stream.id))
+        .filter((stream) => !query || [channel.name, stream.title].some((value) =>
+          String(value || "").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query)))
+        .map((stream) => ({ channel, stream }));
+    });
+  }
+
+  function appendTwitchRows(root) {
+    if (state.ypSource !== "all" && state.ypSource !== "twitch") return 0;
+    const entries = twitchStreamRows();
+    entries.forEach(({ channel, stream }) => {
+      const streamId = String(stream.streamId || stream.id);
+      const card = document.createElement("article");
+      card.className = "youtube-stream-card twitch-stream-card is-live";
+      card.dataset.provider = "twitch";
+      card.dataset.streamId = streamId;
+      const badge = appendText(card, "span", "youtube-badge twitch-badge", "Twitch");
+      badge.setAttribute("aria-label", "Twitch配信");
+      const body = document.createElement("div");
+      body.className = "youtube-stream-copy";
+      appendText(body, "strong", "youtube-stream-channel", channel.name || channel.url || "登録チャンネル");
+      appendText(body, "span", "youtube-stream-title", stream.title || "タイトル未設定");
+      card.append(body);
+      appendText(card, "span", "youtube-stream-status status-live", "配信中");
+      const actions = document.createElement("div");
+      actions.className = "youtube-stream-actions";
+      const play = appendText(actions, "button", "button button-outline youtube-open", "PCRPlayerで再生");
+      play.type = "button";
+      play.dataset.twitchPlay = streamId;
+      play.setAttribute("aria-label", `${stream.title || channel.name || "配信"}をPCRPlayerで再生`);
+      const browser = appendText(actions, "button", "button button-outline youtube-open", "ブラウザで開く");
+      browser.type = "button";
+      browser.dataset.twitchBrowser = streamId;
+      browser.setAttribute("aria-label", `${stream.title || channel.name || "配信"}をブラウザで開く`);
+      card.append(actions);
       root.append(card);
     });
     return entries.length;
@@ -509,6 +577,27 @@
     }
   }
 
+  async function fetchTwitchStatus() {
+    if (state.twitchQueryBusy || document.visibilityState === "hidden") return;
+    state.twitchQueryBusy = true;
+    const revision = state.twitchRevision;
+    try {
+      const snapshot = await invoke("twitch_status", {});
+      if (revision !== state.twitchRevision) return;
+      if (snapshot && Array.isArray(snapshot.channels)) {
+        const changed = !youtubeSnapshotsEqual(state.twitchSnapshot, snapshot);
+        state.twitchSnapshot = snapshot;
+        window.dispatchEvent(new CustomEvent("twitch-snapshot-polled", { detail: snapshot }));
+        if (changed && currentView() === "yp") renderYpDirectory();
+      }
+    } catch (error) {
+      console.warn("Twitchの状態を確認できませんでした:", errorText(error));
+      window.dispatchEvent(new CustomEvent("twitch-snapshot-error", { detail: errorText(error) }));
+    } finally {
+      state.twitchQueryBusy = false;
+    }
+  }
+
   function renderYpDirectory() {
     const root = byId("yp-results");
     if (!root) return;
@@ -516,12 +605,17 @@
     ensureVisibleYpSelection(filtered);
     root.replaceChildren();
     const youtubeCount = appendYoutubeRows(root);
-    renderYpHeaderCount(filtered);
+    const twitchCount = appendTwitchRows(root);
+    const youtubeLiveCount = youtubeStreamRows().filter(({ stream }) => stream?.status === "live").length;
+    const twitchLiveCount = twitchStreamRows().length;
+    renderYpHeaderCount(filtered, youtubeLiveCount, twitchLiveCount);
     const empty = byId("yp-empty");
     if (empty) {
-      empty.hidden = filtered.length > 0 || youtubeCount > 0;
-      empty.textContent = state.ypSource === "youtube" && !youtubeChannels().length
-        ? "設定のイエローページでYouTubeチャンネルを登録すると、配信中や予約がここに表示されます。"
+      empty.hidden = filtered.length > 0 || youtubeCount > 0 || twitchCount > 0;
+      empty.textContent = state.ypSource === "twitch" && !twitchChannels().length
+        ? "設定のイエローページでTwitchチャンネルを登録すると、配信中のカードがここに表示されます。"
+        : state.ypSource === "youtube" && !youtubeChannels().length
+          ? "設定のイエローページでYouTubeチャンネルを登録すると、配信中や予約がここに表示されます。"
         : state.ypError
           ? "一覧を取得できませんでした。更新して再試行してください。"
           : state.ypLoaded && !state.ypChannels.length && !sourcePages().length
@@ -600,13 +694,21 @@
       row.append(format);
       root.append(row);
     });
-    text("yp-status", state.ypBusy ? "チャンネル一覧を取得しています…" : state.ypError ? state.ypError : state.ypLoaded ? `${countableYpChannelCount(filtered)}件を表示中` : "一覧をまだ取得していません。");
+    const displayedCount = countableYpChannelCount(filtered) + youtubeCount + twitchCount;
+    const externalOnly = state.ypSource === "youtube" || state.ypSource === "twitch";
+    text("yp-status", externalOnly ? `${displayedCount}件を表示中` : state.ypBusy ? "チャンネル一覧を取得しています…" : state.ypError ? state.ypError : state.ypLoaded ? `${displayedCount}件を表示中` : "一覧をまだ取得していません。");
     renderYpSelectionStyles();
     renderSelectedDetail();
     updateYpControls();
   }
-  function renderYpHeaderCount(filtered) {
-    const channelCount = state.ypSource === "youtube" ? 0 : countableYpChannelCount(filtered);
+  function ypDirectoryHeaderCount(source, ypCount, youtubeLiveCount, twitchLiveCount) {
+    const visibleYpCount = source === "youtube" || source === "twitch" ? 0 : ypCount;
+    const visibleYoutubeCount = source === "all" || source === "youtube" ? youtubeLiveCount : 0;
+    const visibleTwitchCount = source === "all" || source === "twitch" ? twitchLiveCount : 0;
+    return visibleYpCount + visibleYoutubeCount + visibleTwitchCount;
+  }
+  function renderYpHeaderCount(filtered, youtubeLiveCount = 0, twitchLiveCount = 0) {
+    const channelCount = ypDirectoryHeaderCount(state.ypSource, countableYpChannelCount(filtered), youtubeLiveCount, twitchLiveCount);
     text("yp-header-count", `${channelCount} 件の配信`);
   }
   function safeRuleColor(value) { return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : ""; }
@@ -1080,6 +1182,50 @@
 
   function connectionChannelKey(channel) {
     return `${channel.id}:${channel.sessionId || ""}`;
+  }
+
+  function hasValidConnectionClearKey(channel) {
+    return Boolean(String(channel?.id || "").trim() && String(channel?.sessionId || "").trim());
+  }
+
+  function isClearableDisconnectedConnection(channel) {
+    return hasValidConnectionClearKey(channel)
+      && channel.canReconnect === true
+      && channel.canDisconnect === false
+      && channel.isBroadcasting !== true;
+  }
+
+  function filterClearedConnectionSnapshot(snapshot, existingKeys, preserveKeys = false) {
+    const channels = Array.isArray(snapshot?.channels) ? snapshot.channels : [];
+    const clearedConnectionKeys = new Set();
+    if (preserveKeys) {
+      existingKeys.forEach((key) => clearedConnectionKeys.add(key));
+    } else {
+      const channelsByKey = new Map(channels
+        .filter(hasValidConnectionClearKey)
+        .map((channel) => [connectionChannelKey(channel), channel]));
+      existingKeys.forEach((key) => {
+        const channel = channelsByKey.get(key);
+        if (channel && isClearableDisconnectedConnection(channel)) clearedConnectionKeys.add(key);
+      });
+    }
+    const visibleChannels = channels.filter((channel) => !clearedConnectionKeys.has(connectionChannelKey(channel)));
+    return {
+      snapshot: { ...snapshot, channels: visibleChannels },
+      clearedConnectionKeys,
+    };
+  }
+
+  function clearDisconnectedConnections(snapshot, existingKeys) {
+    const channels = Array.isArray(snapshot?.channels) ? snapshot.channels : [];
+    const clearedConnectionKeys = new Set(existingKeys);
+    channels.forEach((channel) => {
+      if (isClearableDisconnectedConnection(channel)) clearedConnectionKeys.add(connectionChannelKey(channel));
+    });
+    return {
+      snapshot: { ...snapshot, channels: channels.filter((channel) => !clearedConnectionKeys.has(connectionChannelKey(channel))) },
+      clearedConnectionKeys,
+    };
   }
 
   function recordingIsActive(job) {
@@ -1684,6 +1830,10 @@
 
   function renderSnapshot(snapshot, { initial = false } = {}) {
     if (!snapshot || typeof snapshot !== "object") throw new Error("snapshotの形式が正しくありません。");
+    const preserveClearedKeys = snapshot.channels === state.snapshot?.channels;
+    const cleared = filterClearedConnectionSnapshot(snapshot, state.clearedConnectionKeys, preserveClearedKeys);
+    snapshot = cleared.snapshot;
+    state.clearedConnectionKeys = cleared.clearedConnectionKeys;
     state.snapshot = snapshot;
     restoreLastBroadcastOnce(snapshot);
     state.settingsView?.updateSnapshot(snapshot);
@@ -1773,8 +1923,12 @@
     updateRefreshControls();
     try {
       const logGeneration = state.logClearGeneration;
-      const snapshot = await invoke("snapshot");
+      const connectionGeneration = state.connectionClearGeneration;
+      let snapshot = await invoke("snapshot");
       if (logGeneration !== state.logClearGeneration) snapshot.logs = state.snapshot?.logs || [];
+      if (connectionGeneration !== state.connectionClearGeneration) {
+        snapshot = { ...snapshot, channels: state.snapshot?.channels || [] };
+      }
       renderSnapshot(snapshot, { initial: !state.snapshot });
       if (state.manualRefreshing) setNotice("状態を更新しました。");
     } catch (error) {
@@ -1956,8 +2110,18 @@
     state.youtubeSnapshot = snapshot;
     if (currentView() === "yp") renderYpDirectory();
   });
+  window.addEventListener("twitch-snapshot-updated", (event) => {
+    const snapshot = event.detail;
+    if (!snapshot || !Array.isArray(snapshot.channels)) return;
+    state.twitchRevision += 1;
+    state.twitchSnapshot = snapshot;
+    if (currentView() === "yp") renderYpDirectory();
+  });
   window.addEventListener("youtube-snapshot-requested", () => {
     if (state.youtubeSnapshot) window.dispatchEvent(new CustomEvent("youtube-snapshot-polled", { detail: state.youtubeSnapshot }));
+  });
+  window.addEventListener("twitch-snapshot-requested", () => {
+    if (state.twitchSnapshot) window.dispatchEvent(new CustomEvent("twitch-snapshot-polled", { detail: state.twitchSnapshot }));
   });
   bind("yp-scope", "change", () => { state.ypScope = byId("yp-scope").value || "normal"; renderYpDirectory(); });
   bind("yp-refresh", "click", () => fetchYpChannels(true, true));
@@ -1966,9 +2130,30 @@
   bind("yp-refresh-interval", "input", () => { state.ypDirectoryDirty = true; });
 
   function handleYpResultsClick(event) {
-    const youtubeVideo = event.target.closest("[data-youtube-video]");
-    if (youtubeVideo) {
-      void invoke("youtube_open", { videoId: youtubeVideo.dataset.youtubeVideo }).catch((error) => {
+    const youtubePlay = event.target.closest("[data-youtube-play]");
+    if (youtubePlay) {
+      void invoke("youtube_open", { videoId: youtubePlay.dataset.youtubePlay }).catch((error) => {
+        text("yp-status", `PCRPlayerで再生できませんでした: ${errorText(error)}`);
+      });
+      return;
+    }
+    const youtubeBrowser = event.target.closest("[data-youtube-browser]");
+    if (youtubeBrowser) {
+      void invoke("youtube_open_browser", { videoId: youtubeBrowser.dataset.youtubeBrowser }).catch((error) => {
+        text("yp-status", `ブラウザで開けませんでした: ${errorText(error)}`);
+      });
+      return;
+    }
+    const twitchPlay = event.target.closest("[data-twitch-play]");
+    if (twitchPlay) {
+      void invoke("twitch_open", { streamId: twitchPlay.dataset.twitchPlay }).catch((error) => {
+        text("yp-status", `PCRPlayerで再生できませんでした: ${errorText(error)}`);
+      });
+      return;
+    }
+    const twitchBrowser = event.target.closest("[data-twitch-browser]");
+    if (twitchBrowser) {
+      void invoke("twitch_open_browser", { streamId: twitchBrowser.dataset.twitchBrowser }).catch((error) => {
         text("yp-status", `ブラウザで開けませんでした: ${errorText(error)}`);
       });
       return;
@@ -1987,6 +2172,20 @@
 
   function handleYpResultsContextMenu(event) {
     if (isEditableContextTarget(event.target)) return;
+    const providerCard = event.target.closest(".youtube-stream-card[data-provider]");
+    if (providerCard) {
+      const provider = providerCard.dataset.provider;
+      const streamId = providerCard.dataset.streamId;
+      const menu = byId("provider-context-menu");
+      if (!menu || !streamId || (provider !== "youtube" && provider !== "twitch")) return;
+      event.preventDefault();
+      closeAllContextMenus();
+      state.providerContextStream = { provider, streamId };
+      byId("provider-context-play").disabled = !state.snapshot?.running || state.busy;
+      placeContextMenu(menu, event.clientX, event.clientY);
+      byId("provider-context-play")?.focus();
+      return;
+    }
     const row = event.target.closest(".yp-row");
     if (!row) return;
     const channel = state.ypChannels[Number(row.dataset.ypIndex)];
@@ -2014,8 +2213,9 @@
     state.ypContextChannel = null;
   }
   function closeAllContextMenus() {
-    ["yp-context-menu", "runtime-context-menu", "recording-context-menu"].forEach((id) => { const menu = byId(id); if (menu) menu.hidden = true; });
+    ["yp-context-menu", "provider-context-menu", "runtime-context-menu", "recording-context-menu"].forEach((id) => { const menu = byId(id); if (menu) menu.hidden = true; });
     state.ypContextChannel = null;
+    state.providerContextStream = null;
     state.runtimeContextKey = null;
     state.recordingContextId = null;
   }
@@ -2029,6 +2229,25 @@
     menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
   }
   if (ypRoot) ypRoot.addEventListener("contextmenu", handleYpResultsContextMenu);
+  async function runProviderContextAction(action) {
+    const target = state.providerContextStream;
+    closeAllContextMenus();
+    if (!target) return;
+    if (action === "manage") {
+      const moved = await requestView("settings");
+      if (moved || currentView() === "settings") state.settingsView?.openYellowPagesSubtab(target.provider);
+      return;
+    }
+    const command = target.provider === "twitch"
+      ? action === "browser" ? "twitch_open_browser" : "twitch_open"
+      : action === "browser" ? "youtube_open_browser" : "youtube_open";
+    const args = target.provider === "twitch" ? { streamId: target.streamId } : { videoId: target.streamId };
+    try { await invoke(command, args); }
+    catch (error) { setNotice(`${action === "browser" ? "ブラウザで開けませんでした" : "PCRPlayerで再生できませんでした"}: ${errorText(error)}`, true); }
+  }
+  bind("provider-context-play", "click", () => { void runProviderContextAction("play"); });
+  bind("provider-context-browser", "click", () => { void runProviderContextAction("browser"); });
+  bind("provider-context-manage", "click", () => { void runProviderContextAction("manage"); });
   async function setContextChannelPreference(kind) {
     const channel = state.ypContextChannel;
     closeYpContextMenu();
@@ -2105,7 +2324,7 @@
     const channel = allRuntimeChannels(state.snapshot).find((entry) => connectionChannelKey(entry) === String(targetKey));
     const allowed = action === "reconnect" ? channel?.canReconnect === true : channel?.canDisconnect === true;
     closeAllContextMenus();
-    if (!channel || !allowed || state.recordingBusy || state.busy) return false;
+    if (!channel || !allowed || state.recordingBusy || state.busy || state.clearingLogs) return false;
     state.recordingBusy = true;
     updateRecordingControls();
     try {
@@ -2125,22 +2344,30 @@
     event.preventDefault(); closeAllContextMenus();
     state.runtimeContextKey = channel ? connectionChannelKey(channel) : null;
     renderConnections(state.snapshot || { channels: [] });
-    byId("runtime-context-reconnect").disabled = channel?.canReconnect !== true || state.recordingBusy || state.busy;
-    byId("runtime-context-disconnect").disabled = channel?.canDisconnect !== true || state.recordingBusy || state.busy;
-    byId("runtime-context-clear").disabled = Boolean(state.clearingLogs);
+    byId("runtime-context-reconnect").disabled = channel?.canReconnect !== true || state.recordingBusy || state.busy || state.clearingLogs;
+    byId("runtime-context-disconnect").disabled = channel?.canDisconnect !== true || state.recordingBusy || state.busy || state.clearingLogs;
+    byId("runtime-context-clear").disabled = Boolean(state.clearingLogs || state.busy || state.recordingBusy);
     placeContextMenu(connectionMenu, event.clientX, event.clientY);
     const firstAction = ["runtime-context-reconnect", "runtime-context-disconnect", "runtime-context-clear"].map(byId).find((button) => !button.disabled);
     firstAction?.focus();
   }
   async function clearMessagesAndLogs() {
     closeAllContextMenus();
-    if (state.clearingLogs) return false;
+    if (state.clearingLogs || state.busy || state.recordingBusy) return false;
     state.clearingLogs = true;
     byId("runtime-context-clear").disabled = true;
     try {
       await invoke("clear_logs");
       state.logClearGeneration++;
+      state.connectionClearGeneration++;
       if (state.snapshot) state.snapshot.logs = [];
+      if (state.snapshot) {
+        const cleared = clearDisconnectedConnections(state.snapshot, state.clearedConnectionKeys);
+        state.snapshot = cleared.snapshot;
+        state.clearedConnectionKeys = cleared.clearedConnectionKeys;
+        renderConnections(state.snapshot);
+        if (currentView() === "connections") text("yp-count", `${allRuntimeChannels(state.snapshot).length} 件の接続チャンネル`);
+      }
       state.logFingerprint = "";
       setNotice("");
       renderLogs();
@@ -2150,7 +2377,7 @@
       return false;
     } finally {
       state.clearingLogs = false;
-      byId("runtime-context-clear").disabled = false;
+      byId("runtime-context-clear").disabled = Boolean(state.busy || state.recordingBusy);
     }
   }
   byId("view-connections")?.addEventListener("contextmenu", openRuntimeContextMenu);
@@ -2251,5 +2478,11 @@
   scheduleApplicationUpdateChecks();
   window.setInterval(() => refresh(false), 1000);
   void fetchYoutubeStatus();
-  window.setInterval(() => { if (document.visibilityState !== "hidden") void fetchYoutubeStatus(); }, YOUTUBE_STATUS_POLL_MS);
+  void fetchTwitchStatus();
+  window.setInterval(() => {
+    if (document.visibilityState !== "hidden") {
+      void fetchYoutubeStatus();
+      void fetchTwitchStatus();
+    }
+  }, YOUTUBE_STATUS_POLL_MS);
 })();

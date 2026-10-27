@@ -97,7 +97,7 @@ impl FavoriteNotificationLedger {
 
     pub fn mark_sent(&mut self, keys: &[String], now_ms: u64) {
         for key in keys {
-            let normalized = if key.starts_with("youtube:") {
+            let normalized = if key.starts_with("youtube:") || key.starts_with("twitch:") {
                 key.clone()
             } else {
                 normalize_key(key)
@@ -166,8 +166,12 @@ fn normalize_key(name: &str) -> String {
 
 fn notification_key(row: &Value) -> Option<String> {
     let key = row["notificationKey"].as_str()?;
-    let id = key.strip_prefix("youtube:")?;
-    crate::youtube_process::valid_channel_id(id).then(|| key.to_owned())
+    if let Some(id) = key.strip_prefix("youtube:") {
+        return crate::youtube_process::valid_channel_id(id).then(|| key.to_owned());
+    }
+    let id = key.strip_prefix("twitch:")?;
+    (crate::twitch_process::valid_login(id) && id == id.to_ascii_lowercase())
+        .then(|| key.to_owned())
 }
 
 /// A custom rule sound takes precedence over the bundled chime for this batch.

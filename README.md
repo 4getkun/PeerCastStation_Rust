@@ -48,23 +48,29 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 download is one 7z archive containing the installer, checksums, and a `licenses/` folder:
 
-- [PeerCast RT 1.1.2 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PeerCastRT-1.1.2-windows-x64-installer.7z)
-- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PeerCastRT-1.1.2-windows-x64-installer.7z.sha256) (`0131566f92448d51e3be8b448ed3fe09ec89ad8919811cdbf536694fd72891b8`)
-- [Bundled PCRPlayer corresponding source archive for PeerCast RT 1.1.2](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PCRPlayer-PeerCastRT-1.1.2-sources.7z)
-- [yt-dlp 2026.08.19 corresponding source archive](https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/yt-dlp-2026.08.19-sources.7z)
+- [PeerCast RT 1.2.0 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/PeerCastRT-1.2.0-windows-x64-installer.7z)
+- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/PeerCastRT-1.2.0-windows-x64-installer.7z.sha256) (`26a0e863133aad4604c3f0d8b1ac4a284f702f18807a745ab2a9c79b7a5fe8e5`)
+- [Bundled PCRPlayer corresponding source archive for PeerCast RT 1.2.0](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/PCRPlayer-PeerCastRT-1.2.0-sources.7z)
+- [yt-dlp 2026.08.19 corresponding source archive](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/yt-dlp-2026.08.19-sources.7z)
 - [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
 
 The window size uses physical pixels by default; enable the logical-size checkbox in Appearance to follow Windows display scaling. The Connections context menu can clear transient messages and the in-memory log without changing active connections or channel rules.
 
-Extract the archive and run `PeercastRT_1.1.2_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
+Extract the archive and run `PeercastRT_1.2.0_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
 
-Version 1.1.2 adds named window-size presets (up to 32 custom sizes), moves YouTube registration into Settings > Yellow Pages, and adds Play/Record actions to the channel-list context menu. The duplicate detail-pane play button is removed. Small Windows icons and the bundled PCRPlayer's default fonts, caption, and initial posting-pane visibility are updated. Existing PCRPlayer font settings are retained.
+Version 1.2.0 adds Twitch favorites alongside YouTube and plays current live streams in the bundled PCRPlayer. Settings > Yellow Pages has separate YP, YouTube, and Twitch tabs. The Connections context menu now removes disconnected entries when cleared, while preserving active connections. Named window-size presets, existing player settings, and recordings are retained.
 
-## YouTube favorites
+## YouTube and Twitch favorites
 
-YouTube favorites monitoring accepts up to 20 public channel URLs in `@handle` or `UC...` form. While the app is running, it checks every five minutes; manual checks have a 30-second cooldown. The list distinguishes live streams, upcoming streams, and check errors. Windows notifications and sounds are identified by `channelId` and limited to one notification per channel every 12 hours. Viewing opens in a browser, and YouTube streams are not recording targets. Continuous monitoring and notification delivery have not been operationally guaranteed.
+Register up to 20 public channels per service in Settings > Yellow Pages > YouTube or Twitch. YouTube accepts `@handle` and `UC...` channel URLs; Twitch accepts `https://www.twitch.tv/<login>`. While the app is running, it checks every five minutes; manual checks have a 30-second cooldown. The list distinguishes current live streams, YouTube upcoming streams, and check errors. Windows notifications and sounds are limited to once per channel every 12 hours, with history retained across restarts.
 
-Before building a Windows installer, run `pwsh -File tools/prepare-youtube-helper.ps1 -ReleaseVersion 1.1.2`. This prepares the hash-pinned helper, license notices, and corresponding-source archive used by the existing packaging and publishing scripts. `tools/yt-dlp/lock.json` records all upstream source URLs and SHA-256 hashes; update it together with the helper version and embedded digest when changing yt-dlp.
+Play opens the current live stream in the bundled PCRPlayer; the context menu also offers opening it in a browser. Archives and member-only/login-required streams are not supported. Playback selects an available H.264 rendition up to 1920×1080, automatically sizes the window once to fit the source and monitor, and averages bitrate over eight seconds. Twitch starts with a six-second buffer. Existing PeerCast playback and posting-pane settings are preserved.
+
+PCRPlayer's context menu can start and stop a separate MKV recording of a YouTube or Twitch live stream. Video and audio are copied without re-encoding; recording adds a second network connection. These recordings are managed by the player rather than the PeerCast RT recording queue. Public YouTube and Twitch streams were tested with audio and video; recording finalization and disconnect cleanup were also checked. Service changes can still affect extraction or availability.
+
+Before building a Windows installer, run `pwsh -File tools/prepare-youtube-helper.ps1 -ReleaseVersion 1.2.0`. This prepares the hash-pinned helper, license notices, and corresponding-source archive used by the existing packaging and publishing scripts. `tools/yt-dlp/lock.json` records all upstream source URLs and SHA-256 hashes; update it together with the helper version and embedded digest when changing yt-dlp.
+
+The modified PCRPlayer source and build inputs are in the matching corresponding-source archive above. The byte-preserving patch and portable live-runtime recipes are in `tools/pcrplayer/live/`. Build the minimal LGPL FFmpeg with `build-ffmpeg.ps1`, then run `tools/prepare-live-player.ps1 -PlayerSource <player-folder> -FfmpegBundle <runtime-bundle>` before packaging the player. It includes hash-pinned Node.js and FFmpeg binaries with their notices; the matching source release includes the FFmpeg source tarball and build configuration.
 
 Version 1.0.4 improves relay startup, adds a copy button for filtered logs and a direct-favorite removal action, and notifies Windows when a favorite broadcaster appears on a channel-list update. Notifications play one short original chime per batch, with custom rule sounds taking priority. They are limited to once per broadcaster every 12 hours, with history retained across restarts; hidden or muted channels are excluded.
 

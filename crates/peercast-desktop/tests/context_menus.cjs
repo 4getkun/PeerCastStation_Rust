@@ -20,6 +20,10 @@ assert.equal(displayRecordingPath(null), '');
 const canUseRecordingFile = appFunction('canUseRecordingFile', { recordingIsActive });
 const allRuntimeChannels = appFunction('allRuntimeChannels');
 const connectionChannelKey = appFunction('connectionChannelKey');
+const hasValidConnectionClearKey = appFunction('hasValidConnectionClearKey');
+const isClearableDisconnectedConnection = appFunction('isClearableDisconnectedConnection', { hasValidConnectionClearKey });
+const filterClearedConnectionSnapshot = appFunction('filterClearedConnectionSnapshot', { connectionChannelKey, hasValidConnectionClearKey, isClearableDisconnectedConnection });
+const clearDisconnectedConnections = appFunction('clearDisconnectedConnections', { connectionChannelKey, isClearableDisconnectedConnection });
 const isEditableContextTarget = appFunction('isEditableContextTarget');
 const suppressNativeContextMenu = appFunction('suppressNativeContextMenu', { isEditableContextTarget });
 const ypContextChannelFor = appFunction('ypContextChannelFor');
@@ -139,6 +143,9 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   h = runtimeHarness([a], 'a:s1', { }); h.liveState.recordingBusy = true;
   assert.equal(await h.action('disconnect'), false);
   assert.equal(h.calls.length, 0, 'Busy state prevents duplicate actions');
+  h = runtimeHarness([a], 'a:s1', { }); h.liveState.clearingLogs = true;
+  assert.equal(await h.action('disconnect'), false, 'Runtime control is blocked while clearing connection rows');
+  assert.equal(h.calls.length, 0);
 
   const menu = { hidden: true };
   const controls = new Map(['runtime-context-reconnect', 'runtime-context-disconnect', 'runtime-context-clear'].map((id) => [id, { disabled: false, focus() {} }]));
@@ -160,6 +167,18 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   assert.equal(controls.get('runtime-context-reconnect').disabled, true);
   assert.equal(controls.get('runtime-context-disconnect').disabled, true);
   assert.equal(controls.get('runtime-context-clear').disabled, false);
+  menuState.busy = true;
+  menu.hidden = true;
+  open({ target: rowTarget, preventDefault() {} });
+  assert.equal(controls.get('runtime-context-clear').disabled, true, 'Clear is disabled while a runtime operation is busy');
+  menuState.busy = false;
+  menuState.clearingLogs = true;
+  menu.hidden = true;
+  open({ target: rowTarget, preventDefault() {} });
+  assert.equal(controls.get('runtime-context-reconnect').disabled, true, 'Reconnect is blocked while clearing');
+  assert.equal(controls.get('runtime-context-disconnect').disabled, true, 'Disconnect is blocked while clearing');
+  assert.equal(controls.get('runtime-context-clear').disabled, true, 'Repeated clear is blocked while clearing');
+  menuState.clearingLogs = false;
   menuState.snapshot = { channels: [] }; menu.hidden = true;
   open({ target: background, preventDefault() {} });
   assert.equal(menu.hidden, false, 'An empty Connections view must still offer Clear');
@@ -168,13 +187,48 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   open({ target: editable, preventDefault() { throw new Error('editable context must not be intercepted'); } });
   assert.equal(menuState.runtimeContextKey, beforeEditable);
 
-  const clearState = { clearingLogs: false, logClearGeneration: 0, snapshot: { channels: [a], desktop: { channelRules: ['keep'] }, logs: [{ message: 'old' }] } };
+  const stoppedRelay = { id: 'stopped', sessionId: 'relay-session', canReconnect: true, canDisconnect: false, isBroadcasting: false };
+  assert.equal(isClearableDisconnectedConnection(stoppedRelay), true);
+  assert.equal(isClearableDisconnectedConnection({ ...stoppedRelay, sessionId: '' }), false, 'A missing session ID cannot be hidden safely');
+  assert.equal(isClearableDisconnectedConnection({ ...stoppedRelay, canDisconnect: true }), false, 'An active relay cannot be hidden');
+  assert.equal(isClearableDisconnectedConnection({ ...stoppedRelay, isBroadcasting: true }), false, 'A broadcasting channel cannot be hidden');
+  const renderSnapshotHarness = (snapshotState, rendered) => appFunction('renderSnapshot', {
+    state: snapshotState, filterClearedConnectionSnapshot, restoreLastBroadcastOnce() {},
+    updateYpSources: () => false, renderChannels() {},
+    renderConnections: (snapshot) => rendered.push(snapshot.channels),
+    currentView: () => 'connections', allRuntimeChannels, broadcastingChannels: () => [],
+    renderLogs() {}, renderProbe() {}, updateBroadcastBackendFields() {}, renderRecordings() {},
+    applyDirectoryPreferences() {}, currentSelectedDirectoryChannel: () => null,
+    updateConnectionSummary() {}, updateDetailActions() {}, updateYpControls() {},
+    renderYpSourcesAndMaybeRefresh() {}, text() {}, byId: () => null,
+    document: { querySelectorAll: () => [] },
+  });
+  const renderState = { snapshot: null, clearedConnectionKeys: new Set(['stopped:relay-session']), ypLastUpdatedAt: null, settingsView: null, detailKind: null, ypStarted: true };
+  const renderedChannels = [];
+  const renderSnapshot = renderSnapshotHarness(renderState, renderedChannels);
+  const sourceSnapshot = { channels: [a, stoppedRelay], desktop: { channelRules: ['keep'] } };
+  renderSnapshot(sourceSnapshot);
+  assert.deepEqual(sourceSnapshot.channels, [a, stoppedRelay], 'Snapshot source arrays are never mutated');
+  assert.deepEqual(renderState.snapshot.channels, [a]);
+  assert(renderState.clearedConnectionKeys.has('stopped:relay-session'));
+  assert.deepEqual(renderedChannels.at(-1), [a], 'renderSnapshot applies filtering before connection rows/details render');
+  renderSnapshot({ channels: [a, stoppedRelay], desktop: { channelRules: ['keep'] } });
+  assert.deepEqual(renderState.snapshot.channels, [a], 'A subsequent stopped snapshot keeps the cleared row hidden');
+  const activeAfterReconnect = { ...stoppedRelay, canDisconnect: true };
+  renderSnapshot({ channels: [a, activeAfterReconnect] });
+  assert.deepEqual(renderState.clearedConnectionKeys, new Set(), 'Reconnect clears the hidden key');
+  assert.deepEqual(renderState.snapshot.channels, [a, activeAfterReconnect], 'The active channel reappears');
+
+  const clearState = { clearingLogs: false, logClearGeneration: 0, connectionClearGeneration: 0, clearedConnectionKeys: new Set(), snapshot: { channels: [a, stoppedRelay], desktop: { channelRules: ['keep'] }, recordings: [{ id: 'keep' }], logs: [{ message: 'old' }] } };
+  const sourceChannels = clearState.snapshot.channels;
   const clearCalls = [], clearNotices = [];
-  let finishClear, logRenders = 0;
+  let finishClear, logRenders = 0, connectionRenders = 0, countText = '';
   const clear = appFunction('clearMessagesAndLogs', {
     state: clearState, closeAllContextMenus() {}, byId: (id) => controls.get(id),
     invoke: (...args) => { clearCalls.push(args); return new Promise((resolve) => { finishClear = resolve; }); },
     renderLogs: () => logRenders++, setNotice: (...args) => clearNotices.push(args), errorText: String,
+    clearDisconnectedConnections, renderConnections: () => connectionRenders++, currentView: () => 'connections',
+    allRuntimeChannels, text: (_id, value) => { countText = value; },
   });
   const clearing = clear();
   assert.equal(await clear(), false, 'Repeated clear requests must coalesce');
@@ -182,24 +236,36 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   assert.equal(await clearing, true);
   assert.deepEqual(clearCalls, [['clear_logs']], 'Clear must not invoke channel or settings operations');
   assert.deepEqual(clearState.snapshot.logs, []);
-  assert.deepEqual(clearState.snapshot.channels, [a]);
+  assert.deepEqual(clearState.snapshot.channels, [a], 'Clearing removes only stopped relay rows and preserves active channels');
+  assert.deepEqual(sourceChannels, [a, stoppedRelay], 'Clear leaves the original channel array unchanged');
+  assert.notStrictEqual(clearState.snapshot.channels, sourceChannels, 'Clear installs a filtered copy of the channel array');
+  assert.deepEqual([...clearState.clearedConnectionKeys], ['stopped:relay-session']);
   assert.deepEqual(clearState.snapshot.desktop.channelRules, ['keep']);
+  assert.deepEqual(clearState.snapshot.recordings, [{ id: 'keep' }], 'Clear does not alter recordings');
+  assert.equal(clearState.connectionClearGeneration, 1);
+  assert.equal(connectionRenders, 1, 'The filtered connection list and details are rendered after clear');
+  assert.equal(countText, '1 件の接続チャンネル');
   assert.deepEqual(clearNotices.at(-1), [''], 'A success notice must not replace the notice just cleared');
   assert.equal(logRenders, 1);
   assert.equal(clearState.logClearGeneration, 1);
-  clearState.snapshot.logs = [{ message: 'keep on error' }];
+  const failedClearState = { ...clearState, snapshot: { ...clearState.snapshot, channels: [a, stoppedRelay], logs: [{ message: 'keep on error' }] }, clearedConnectionKeys: new Set(['already:clear']) };
   const failClear = appFunction('clearMessagesAndLogs', {
-    state: clearState, closeAllContextMenus() {}, byId: (id) => controls.get(id),
-    invoke: async () => { throw new Error('failed'); }, renderLogs() {},
+    state: failedClearState, closeAllContextMenus() {}, byId: (id) => controls.get(id),
+    invoke: async () => { throw new Error('failed'); }, renderLogs() {}, renderConnections() {}, clearDisconnectedConnections,
+    currentView: () => 'connections', allRuntimeChannels, text() {},
     setNotice: (...args) => clearNotices.push(args), errorText: String,
   });
   assert.equal(await failClear(), false);
-  assert.equal(clearState.snapshot.logs[0].message, 'keep on error');
+  assert.equal(failedClearState.snapshot.logs[0].message, 'keep on error');
+  assert.deepEqual(failedClearState.clearedConnectionKeys, new Set(['already:clear']));
+  assert.deepEqual(failedClearState.snapshot.channels, [a, stoppedRelay], 'A failed clear leaves connection rows untouched');
+  assert.deepEqual([...failedClearState.clearedConnectionKeys], ['already:clear'], 'A failed clear leaves hidden-row keys untouched');
   assert.equal(clearNotices.at(-1)[1], true);
-  assert.equal(clearState.clearingLogs, false);
+  assert.equal(failedClearState.clearingLogs, false);
 
   let finishSnapshot;
-  const refreshState = { snapshot: { logs: [] }, logClearGeneration: 0 };
+  const currentAfterClear = [a];
+  const refreshState = { snapshot: { logs: [], channels: currentAfterClear }, logClearGeneration: 0, connectionClearGeneration: 0, clearedConnectionKeys: new Set() };
   const refresh = appFunction('refresh', {
     state: refreshState, performance: { now: () => 0 }, updateRefreshControls() {},
     invoke: () => new Promise((resolve) => { finishSnapshot = resolve; }),
@@ -208,16 +274,57 @@ const b = { id: 'b', sessionId: 's2', canReconnect: true, canDisconnect: true };
   });
   const oldRefresh = refresh();
   refreshState.logClearGeneration++;
-  finishSnapshot({ logs: [{ message: 'stale before clear' }] });
+  refreshState.connectionClearGeneration++;
+  refreshState.clearedConnectionKeys.add('stopped:relay-session');
+  finishSnapshot({ logs: [{ message: 'stale before clear' }], channels: [a, { ...stoppedRelay, canDisconnect: true, status: 'connected' }] });
   await oldRefresh;
   assert.deepEqual(refreshState.snapshot.logs, [], 'A refresh already in flight must not resurrect cleared logs');
+  assert.deepEqual(refreshState.snapshot.channels, [a], 'A pre-clear refresh must keep the current filtered channels array');
+  assert.strictEqual(refreshState.snapshot.channels, currentAfterClear, 'The current filtered array is reused instead of an old response array');
+  assert(refreshState.clearedConnectionKeys.has('stopped:relay-session'), 'A stale active response must not remove the cleared key');
   const newRefresh = refresh();
   finishSnapshot({ logs: [{ message: 'new after clear' }] });
   await newRefresh;
   assert.equal(refreshState.snapshot.logs[0].message, 'new after clear', 'New logs must still appear after clearing');
 
-  assert.match(html, /id="runtime-context-clear"[^>]*>クリア/);
+  const noSnapshotState = { snapshot: null, clearingLogs: false, busy: false, recordingBusy: false, logClearGeneration: 0, connectionClearGeneration: 0, clearedConnectionKeys: new Set() };
+  let finishEmptyViewRefresh;
+  const emptyViewRefresh = appFunction('refresh', {
+    state: noSnapshotState, performance: { now: () => 0 }, updateRefreshControls() {},
+    invoke: () => new Promise((resolve) => { finishEmptyViewRefresh = resolve; }),
+    renderSnapshot: (snapshot) => { noSnapshotState.snapshot = snapshot; },
+    setNotice() {}, errorText: String, finishRefreshFeedback: async () => {},
+  });
+  const staleEmptyViewRefresh = emptyViewRefresh();
+  const clearEmptyView = appFunction('clearMessagesAndLogs', {
+    state: noSnapshotState, closeAllContextMenus() {}, byId: (id) => controls.get(id),
+    invoke: async () => {}, renderLogs() {}, renderConnections() {}, clearDisconnectedConnections,
+    currentView: () => 'connections', allRuntimeChannels, text() {}, setNotice() {}, errorText: String,
+  });
+  assert.equal(await clearEmptyView(), true);
+  finishEmptyViewRefresh({ logs: [{ message: 'stale' }], channels: [stoppedRelay] });
+  await staleEmptyViewRefresh;
+  assert.deepEqual(noSnapshotState.snapshot.channels, [], 'A pre-clear poll cannot repopulate channels when Clear began before the first snapshot');
+
+  assert.match(html, /id="runtime-context-clear"[^>]*title="[^"]*表示メッセージ[^"]*"[^>]*>クリア（切断済み・ログ）/);
   assert.match(app, /byId\("view-connections"\)\?\.addEventListener\("contextmenu", openRuntimeContextMenu\)/, 'The whole Connections view offers Clear');
+
+  const reconnected = { ...stoppedRelay, canDisconnect: true, status: 'connected' };
+  const newSession = { ...stoppedRelay, sessionId: 'new-session', status: 'connected' };
+  const sameSessionActive = filterClearedConnectionSnapshot({ channels: [reconnected] }, new Set(['stopped:relay-session']));
+  assert.deepEqual(sameSessionActive.clearedConnectionKeys, new Set(), 'An active same-session channel is no longer hidden');
+  assert.deepEqual(sameSessionActive.snapshot.channels, [reconnected]);
+  const replacementSession = filterClearedConnectionSnapshot({ channels: [newSession] }, new Set(['stopped:relay-session']));
+  assert.deepEqual(replacementSession.clearedConnectionKeys, new Set(), 'A replacement session prunes the previous key');
+  assert.deepEqual(replacementSession.snapshot.channels, [newSession]);
+  const absent = filterClearedConnectionSnapshot({ channels: [a] }, new Set(['stopped:relay-session']));
+  assert.deepEqual(absent.clearedConnectionKeys, new Set(), 'Keys absent from a fresh snapshot are pruned');
+  const preserved = filterClearedConnectionSnapshot({ channels: [a] }, new Set(['stopped:relay-session']), true);
+  assert.deepEqual(preserved.clearedConnectionKeys, new Set(['stopped:relay-session']), 'A snapshot carrying the current filtered array preserves its keys');
+  const originalChannels = [a, stoppedRelay];
+  const clearedSnapshot = clearDisconnectedConnections({ channels: originalChannels }, new Set());
+  assert.deepEqual(clearedSnapshot.snapshot.channels, [a]);
+  assert.deepEqual(originalChannels, [a, stoppedRelay], 'Clear filtering does not mutate the source channel array');
 
   const recordingHarness = (jobs, contextId, busy = false) => {
     const live = { recordingContextId: contextId, recordingSelectionId: 'B', snapshot: { recordings: jobs }, recordingBusy: busy, busy: false };

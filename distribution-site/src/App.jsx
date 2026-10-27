@@ -119,7 +119,7 @@ export function App() {
               <h2 id="watch-title">チャンネルを選んで見る。</h2>
               <p>公開中の配信を一覧から選び、設定したプレイヤーで再生します。</p>
               <p>
-                YouTubeのお気に入りチャンネルも登録できます。アプリを起動している間は5分ごとに確認し、配信が見つかると音と通知でお知らせします。視聴するときはブラウザでYouTubeを開きます。
+                YouTubeやTwitchのお気に入りチャンネルも登録できます。アプリの起動中は5分ごとに確認し、生配信が見つかると音と通知でお知らせします。同梱のPCRPlayerで視聴でき、ブラウザで開くこともできます。
               </p>
             </div>
             <div className="step-list">
@@ -134,7 +134,7 @@ export function App() {
                 <span className="step-icon"><IconPlayerPlay size={23} stroke={1.7} aria-hidden="true" /></span>
                 <div>
                   <h3>プレイヤーで再生する</h3>
-                  <p>視聴ボタンから、アプリに設定したプレイヤーを開きます。</p>
+                  <p>一覧の再生ボタンや右クリックメニューからプレイヤーを開きます。YouTubeとTwitchは現在の生配信に対応しています。</p>
                 </div>
               </article>
             </div>
@@ -188,9 +188,11 @@ export function App() {
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/PCRPlayer-LICENSE.txt">PCRPlayer</a>
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/NotoSansJP-OFL.txt">Noto Sans JP — OFL</a>
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/Tabler-Icons-MIT.txt">Tabler Icons — MIT</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PCRPlayer-PeerCastRT-1.1.2-sources.7z">同梱PCRPlayer 対応ソース</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/licenses/PCRPlayer/Node-LICENSE.txt">Node.jsと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/licenses/PCRPlayer/FFmpeg-LGPL-2.1.txt">FFmpeg — LGPL-2.1-or-later</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/PCRPlayer-PeerCastRT-1.2.0-sources.7z">同梱PCRPlayer 対応ソース</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
               </div>
               <div className="third-party-license">
                 <strong>このページのアイコン</strong>
@@ -221,17 +223,17 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.1.2 <span>/</span> 7z形式</p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.2.0 <span>/</span> 7z形式</p>
                 <p className="download-note">インストーラーとライセンス文書をひとつにまとめています。展開して、フォルダー内のセットアップを実行してください。</p>
-                <p className="download-checksum">SHA-256: <code>0131566f92448d51e3be8b448ed3fe09ec89ad8919811cdbf536694fd72891b8</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PeerCastRT-1.1.2-windows-x64-installer.7z.sha256">チェックサム</a></p>
+                <p className="download-checksum">SHA-256: <code>26a0e863133aad4604c3f0d8b1ac4a284f702f18807a745ab2a9c79b7a5fe8e5</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/PeerCastRT-1.2.0-windows-x64-installer.7z.sha256">チェックサム</a></p>
                 <p className="download-note">セットアップにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/PeerCastRT-1.1.2-windows-x64-installer.7z">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/PeerCastRT-1.2.0-windows-x64-installer.7z">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
                 Windows版をダウンロード
               </a>
-              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.1.2/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
+              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.0/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
               </div>
             </div>
           </div>

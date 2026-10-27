@@ -13,6 +13,35 @@ const REFRESH_INTERVAL_MS: u64 = 5 * 60 * 1000;
 const REQUEST_COOLDOWN_MS: u64 = 30 * 1000;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    YouTube,
+    Twitch,
+}
+
+impl Provider {
+    fn brand(self) -> &'static str {
+        match self {
+            Self::YouTube => "YouTube",
+            Self::Twitch => "Twitch",
+        }
+    }
+
+    fn is_valid_channel_id(self, id: &str) -> bool {
+        match self {
+            Self::YouTube => is_channel_id(id),
+            Self::Twitch => crate::twitch_process::valid_login(id),
+        }
+    }
+
+    fn channel_url(self, id: &str) -> String {
+        match self {
+            Self::YouTube => format!("https://www.youtube.com/channel/{id}/streams"),
+            Self::Twitch => format!("https://www.twitch.tv/{id}"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YouTubeStream {
@@ -72,28 +101,46 @@ struct MonitorState {
 
 pub struct YouTubeMonitor {
     path: PathBuf,
+    provider: Provider,
     state: Mutex<MonitorState>,
 }
 
 impl YouTubeMonitor {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self::from_snapshot(path.into(), empty_snapshot())
+        Self::from_snapshot(path.into(), empty_snapshot(), Provider::YouTube)
+    }
+
+    pub fn new_twitch(path: impl Into<PathBuf>) -> Self {
+        Self::from_snapshot(path.into(), empty_snapshot(), Provider::Twitch)
     }
 
     pub fn load(path: impl Into<PathBuf>) -> Result<Self, String> {
-        let path = path.into();
+        Self::load_for(path.into(), Provider::YouTube)
+    }
+
+    pub fn load_twitch(path: impl Into<PathBuf>) -> Result<Self, String> {
+        Self::load_for(path.into(), Provider::Twitch)
+    }
+
+    fn load_for(path: PathBuf, provider: Provider) -> Result<Self, String> {
         let bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(Self::new(path));
+                return Ok(Self::from_snapshot(path, empty_snapshot(), provider));
             }
-            Err(error) => return Err(format!("YouTube設定を読めませんでした: {error}")),
+            Err(error) => {
+                return Err(format!(
+                    "{}設定を読めませんでした: {error}",
+                    provider.brand()
+                ))
+            }
         };
         let mut snapshot: YouTubeSnapshot = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("YouTube設定のJSONが壊れています: {error}"))?;
+            .map_err(|error| format!("{}設定のJSONが壊れています: {error}", provider.brand()))?;
         if snapshot.channels.len() > MAX_CHANNELS {
             return Err(format!(
-                "YouTubeチャンネル数が上限{MAX_CHANNELS}件を超えています"
+                "{}チャンネル数が上限{MAX_CHANNELS}件を超えています",
+                provider.brand()
             ));
         }
         if snapshot.interval_minutes != 5 {
@@ -101,12 +148,13 @@ impl YouTubeMonitor {
         }
         // A process restart abandons outstanding work; the cached streams remain useful.
         snapshot.refreshing = false;
-        Ok(Self::from_snapshot(path, snapshot))
+        Ok(Self::from_snapshot(path, snapshot, provider))
     }
 
-    fn from_snapshot(path: PathBuf, snapshot: YouTubeSnapshot) -> Self {
+    fn from_snapshot(path: PathBuf, snapshot: YouTubeSnapshot, provider: Provider) -> Self {
         Self {
             path,
+            provider,
             state: Mutex::new(MonitorState {
                 snapshot,
                 pending: HashSet::new(),
@@ -122,11 +170,14 @@ impl YouTubeMonitor {
     pub fn add(&self, url: impl AsRef<str>, now_ms: u64) -> Result<YouTubeSnapshot, String> {
         let url = url.as_ref().trim();
         if url.is_empty() {
-            return Err("YouTube URLが空です".into());
+            return Err(format!("{} URLが空です", self.provider.brand()));
         }
         let mut state = self.lock();
         if state.snapshot.channels.len() >= MAX_CHANNELS {
-            return Err(format!("YouTubeチャンネルは最大{MAX_CHANNELS}件です"));
+            return Err(format!(
+                "{}チャンネルは最大{MAX_CHANNELS}件です",
+                self.provider.brand()
+            ));
         }
         if state
             .snapshot
@@ -134,7 +185,10 @@ impl YouTubeMonitor {
             .iter()
             .any(|channel| channel.url.eq_ignore_ascii_case(url))
         {
-            return Err("このYouTubeチャンネルは登録済みです".into());
+            return Err(format!(
+                "この{}チャンネルは登録済みです",
+                self.provider.brand()
+            ));
         }
         let mut candidate = state.snapshot.clone();
         candidate.channels.push(YouTubeChannel {
@@ -162,7 +216,10 @@ impl YouTubeMonitor {
         let old_len = candidate.channels.len();
         candidate.channels.retain(|channel| channel.id != id);
         if candidate.channels.len() == old_len {
-            return Err("YouTubeチャンネルが見つかりません".into());
+            return Err(format!(
+                "{}チャンネルが見つかりません",
+                self.provider.brand()
+            ));
         }
         self.commit(&mut state, candidate)?;
         state.pending.remove(id);
@@ -182,7 +239,7 @@ impl YouTubeMonitor {
             .channels
             .iter_mut()
             .find(|channel| channel.id == id)
-            .ok_or("YouTubeチャンネルが見つかりません")?;
+            .ok_or_else(|| format!("{}チャンネルが見つかりません", self.provider.brand()))?;
         channel.enabled = enabled;
         if enabled && channel.last_checked_ms.is_none() {
             candidate.next_refresh_ms = if candidate.next_refresh_ms == 0 {
@@ -202,7 +259,7 @@ impl YouTubeMonitor {
     pub fn request_refresh(&self, now_ms: u64) -> Result<YouTubeSnapshot, String> {
         let mut state = self.lock();
         if state.snapshot.refreshing || state.force_requested {
-            return Err("YouTube一覧を更新中です".into());
+            return Err(format!("{}一覧を更新中です", self.provider.brand()));
         }
         if !state
             .snapshot
@@ -210,13 +267,19 @@ impl YouTubeMonitor {
             .iter()
             .any(|channel| channel.enabled)
         {
-            return Err("有効なYouTubeチャンネルがありません".into());
+            return Err(format!(
+                "有効な{}チャンネルがありません",
+                self.provider.brand()
+            ));
         }
         if state.snapshot.last_refresh_ms.is_some_and(|last| {
             now_ms.saturating_sub(last) < REQUEST_COOLDOWN_MS
                 || (now_ms < last && last - now_ms < REQUEST_COOLDOWN_MS)
         }) {
-            return Err("YouTube一覧は30秒以内に更新済みです".into());
+            return Err(format!(
+                "{}一覧は30秒以内に更新済みです",
+                self.provider.brand()
+            ));
         }
         let mut candidate = state.snapshot.clone();
         candidate.last_refresh_ms = Some(now_ms);
@@ -314,18 +377,24 @@ impl YouTubeMonitor {
             Err(error) => channel.error = Some(error),
             Ok(data) => {
                 if let Some(channel_id) = &data.channel_id {
-                    if !is_channel_id(channel_id) {
-                        channel.error = Some("YouTubeチャンネルIDの形式が正しくありません".into());
+                    if !self.provider.is_valid_channel_id(channel_id) {
+                        channel.error = Some(format!(
+                            "{}チャンネルIDの形式が正しくありません",
+                            self.provider.brand()
+                        ));
                     } else if identity_mismatch {
-                        channel.error =
-                            Some("監視中のYouTubeチャンネルIDと取得結果が一致しません".into());
+                        channel.error = Some(format!(
+                            "監視中の{}チャンネルIDと取得結果が一致しません",
+                            self.provider.brand()
+                        ));
                     } else if duplicate_channel_id {
-                        channel.error =
-                            Some("このYouTubeチャンネルIDは別のURLで登録済みです".into());
+                        channel.error = Some(format!(
+                            "この{}チャンネルIDは別のURLで登録済みです",
+                            self.provider.brand()
+                        ));
                     } else {
                         channel.channel_id = Some(channel_id.clone());
-                        channel.url =
-                            format!("https://www.youtube.com/channel/{channel_id}/streams");
+                        channel.url = self.provider.channel_url(channel_id);
                         channel.error = None;
                         if let Some(name) = data
                             .name
@@ -343,15 +412,19 @@ impl YouTubeMonitor {
                                 rows.push(json!({
                                     "name": channel.name,
                                     "isFavorite": true,
-                                    "contentType": "YouTube",
-                                    "notificationKey": format!("youtube:{channel_id}"),
+                                    "contentType": self.provider.brand(),
+                                    "notificationKey": format!("{}:{channel_id}", match self.provider { Provider::YouTube => "youtube", Provider::Twitch => "twitch" }),
                                     "videoId": stream.id,
+                                    "streamId": stream.id,
                                 }));
                             }
                         }
                     }
                 } else {
-                    channel.error = Some("YouTubeチャンネルIDを確認できませんでした".into());
+                    channel.error = Some(format!(
+                        "{}チャンネルIDを確認できませんでした",
+                        self.provider.brand()
+                    ));
                 }
             }
         }
@@ -360,8 +433,10 @@ impl YouTubeMonitor {
             // Keep the prior cache and release the request so a later tick can retry.
             state.snapshot.refreshing = !state.pending.is_empty();
             state.snapshot.channels[index].last_checked_ms = Some(now_ms);
-            state.snapshot.channels[index].error =
-                Some(format!("YouTube結果を保存できませんでした: {error}"));
+            state.snapshot.channels[index].error = Some(format!(
+                "{}結果を保存できませんでした: {error}",
+                self.provider.brand()
+            ));
             return Vec::new();
         }
         state.snapshot = candidate;
@@ -378,7 +453,7 @@ impl YouTubeMonitor {
     }
 
     fn save(&self, snapshot: &YouTubeSnapshot) -> Result<(), String> {
-        save_snapshot(&self.path, snapshot)
+        save_snapshot(&self.path, snapshot, self.provider.brand())
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, MonitorState> {
@@ -526,15 +601,15 @@ fn empty_snapshot() -> YouTubeSnapshot {
     }
 }
 
-fn save_snapshot(path: &Path, snapshot: &YouTubeSnapshot) -> Result<(), String> {
+fn save_snapshot(path: &Path, snapshot: &YouTubeSnapshot, brand: &str) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(snapshot)
-        .map_err(|error| format!("YouTube設定をJSON化できませんでした: {error}"))?;
+        .map_err(|error| format!("{brand}設定をJSON化できませんでした: {error}"))?;
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
         fs::create_dir_all(parent)
-            .map_err(|error| format!("YouTube設定の保存先を作れませんでした: {error}"))?;
+            .map_err(|error| format!("{brand}設定の保存先を作れませんでした: {error}"))?;
     }
     let parent = path
         .parent()
@@ -563,7 +638,7 @@ fn save_snapshot(path: &Path, snapshot: &YouTubeSnapshot) -> Result<(), String> 
     })();
     if let Err(error) = result {
         let _ = fs::remove_file(&temp);
-        return Err(format!("YouTube設定を保存できませんでした: {error}"));
+        return Err(format!("{brand}設定を保存できませんでした: {error}"));
     }
     if let Ok(directory) = File::open(parent) {
         let _ = directory.sync_all();
@@ -1013,6 +1088,73 @@ mod tests {
         assert_eq!(rows[0]["videoId"], LIVE_A);
         assert_eq!(rows[1]["videoId"], LIVE_B);
         assert_eq!(rows[0]["contentType"], "YouTube");
+    }
+
+    #[test]
+    fn twitch_monitor_persists_live_login_and_uses_separate_notification_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("twitch.json");
+        let monitor = YouTubeMonitor::load_twitch(&path).unwrap();
+        let id = monitor
+            .add("https://www.twitch.tv/streamer", 10)
+            .unwrap()
+            .channels[0]
+            .id
+            .clone();
+        let request = monitor.due_requests(10).pop().unwrap();
+        let rows = monitor.complete(
+            &id,
+            Ok(ProbeData {
+                name: Some("Streamer".into()),
+                channel_id: Some("streamer".into()),
+                streams: vec![YouTubeStream {
+                    id: "123456".into(),
+                    title: "Live now".into(),
+                    url: "https://www.twitch.tv/streamer".into(),
+                    status: "live".into(),
+                    scheduled_at_ms: None,
+                }],
+            }),
+            11,
+        );
+        assert_eq!(request.url, "https://www.twitch.tv/streamer");
+        assert_eq!(rows[0]["notificationKey"], "twitch:streamer");
+        assert_eq!(rows[0]["contentType"], "Twitch");
+        let restored = YouTubeMonitor::load_twitch(&path).unwrap();
+        assert_eq!(
+            restored.snapshot().channels[0].channel_id.as_deref(),
+            Some("streamer")
+        );
+        assert_eq!(restored.snapshot().channels[0].streams[0].status, "live");
+    }
+
+    #[test]
+    fn twitch_notifications_share_generic_ledger_without_cross_provider_cooldown() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut ledger = crate::favorite_notifications::FavoriteNotificationLedger::new(
+            temp.path().join("notifications.json"),
+        );
+        let twitch = json!({"name":"Streamer","isFavorite":true,"contentType":"Twitch","notificationKey":"twitch:streamer"});
+        let youtube = json!({"name":"Streamer","isFavorite":true,"contentType":"YouTube","notificationKey":"youtube:UCabcdefghijklmnopqrstuv"});
+        let rows = [twitch.clone(), youtube.clone()];
+        let due = ledger.due(&rows, 1000);
+        assert_eq!(due.len(), 2);
+        assert_eq!(due[0].key, "twitch:streamer");
+        assert_eq!(due[1].key, "youtube:UCabcdefghijklmnopqrstuv");
+        ledger.mark_sent(
+            &due.iter()
+                .map(|entry| entry.key.clone())
+                .collect::<Vec<_>>(),
+            1000,
+        );
+        let path = temp.path().join("notifications.json");
+        ledger.save().unwrap();
+        let restored =
+            crate::favorite_notifications::FavoriteNotificationLedger::load(path).unwrap();
+        assert!(restored
+            .due(&rows, 1000 + 12 * 60 * 60 * 1000 - 1)
+            .is_empty());
+        assert_eq!(restored.due(&rows, 1000 + 12 * 60 * 60 * 1000).len(), 2);
     }
 
     #[test]
