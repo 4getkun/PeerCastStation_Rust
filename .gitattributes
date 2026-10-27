@@ -1,3 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 tools/pcrplayer/live/pcrplayer-live.patch -text
+tools/pcrplayer/live/build-ffmpeg.sh text eol=lf
