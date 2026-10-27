@@ -112,7 +112,7 @@
   const ruleFields = ["name", "details", "comment", "contactUrl", "yellowPage", "streamUrl", "contentType", "listeners", "bitrate"];
   const recordingDefaults = { enabled: false, directory: "recordings", channelSubfolders: true, limitConcurrent: true, maxConcurrent: 5, retryCount: 30, retryIntervalSecs: 10, disconnectEveryRetries: 5, disconnectOnRetryEnd: true, splitMinutes: null, splitSizeMb: null, allDay: true, watchStart: "00:00", watchEnd: "23:59", monitorIntervalSecs: 60, rules: [] };
   function cloneRecording(value) { return { ...value, rules: (value.rules || []).map((rule) => ({ ...rule, fields: [...rule.fields] })) }; }
-  const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
+  const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), directory: { youtubeAtBottom: false, twitchAtBottom: false }, window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
   Object.assign(state, { youtubeSnapshot: null, youtubeLoaded: false, youtubeLoading: false, youtubeBusy: false, youtubeMessage: "読み込み中", twitchSnapshot: null, twitchLoaded: false, twitchLoading: false, twitchBusy: false, twitchMessage: "読み込み中" });
   const meta = {
     general: ["全般", "現在のバックエンド状態と設定ファイルを確認します。"],
@@ -210,6 +210,8 @@
     $("delete-page").disabled = !editable || state.selected === null;
     $("save-button").disabled = !editable || !state.dirty;
     $("cancel-button").disabled = state.busy;
+    $("youtube-at-bottom").disabled = !editable;
+    $("twitch-at-bottom").disabled = !editable;
     const youtubeDisabled = !state.ready || state.loading || state.busy || state.youtubeLoading || state.youtubeBusy;
     ["youtube-url", "youtube-add", "youtube-refresh"].forEach((id) => { $(id).disabled = youtubeDisabled; });
     root.querySelectorAll("[data-youtube-action]").forEach((button) => { button.disabled = youtubeDisabled; });
@@ -778,6 +780,7 @@
     const snapshotRules = Array.isArray(desktop.channelRules) ? desktop.channelRules.map((rule) => normalizedRule(rule)) : [];
     const snapshotRecording = normalizeRecordingSettings(desktop.recording || {});
     const snapshotWindow = normalizeWindowPreferences(desktop.window || {});
+    const snapshotDirectory = { youtubeAtBottom: desktop.directory?.youtubeAtBottom === true, twitchAtBottom: desktop.directory?.twitchAtBottom === true };
     const fingerprint = JSON.stringify({
       maxDirects: Number(snapshotLimits.maxDirects) || 1,
       maxRelays: Number(snapshotLimits.maxRelays) || 1,
@@ -786,6 +789,7 @@
       player: snapshotPlayer,
       channelRules: snapshotRules,
       recording: snapshotRecording,
+      directory: snapshotDirectory,
       window: snapshotWindow,
     });
     if (allowEdits && !state.dirty && fingerprint !== state.preferenceFingerprint) {
@@ -808,6 +812,9 @@
       state.selectedRule = null;
       state.recording = { ...snapshotRecording, rules: snapshotRecording.rules.map((rule) => ({ ...rule, fields: [...rule.fields] })) };
       state.savedRecording = cloneRecording(state.recording);
+      state.directory = snapshotDirectory;
+      $("youtube-at-bottom").checked = state.directory.youtubeAtBottom;
+      $("twitch-at-bottom").checked = state.directory.twitchAtBottom;
       state.window = { ...snapshotWindow };
       state.selectedWindowPreset = windowPresetKeyForSize(state.window);
       $("window-width").value = String(state.window.width);
@@ -1063,7 +1070,8 @@
     setStatus("保存しています…");
     try {
       const desktop = state.snapshot?.desktop || {};
-      const snapshot = await invoke("apply_preferences", { limits, yellowPages: state.pages, desktop: { ...desktop, directory: desktop.directory || { autoRefresh: false, refreshIntervalSecs: 300 }, window: { ...state.window }, player: state.player, channelRules: state.rules.map((rule) => normalizedRule(rule)), recording: normalizeRecordingSettings(state.recording) } });
+      const directory = { ...(desktop.directory || { autoRefresh: false, refreshIntervalSecs: 300 }), ...state.directory };
+      const snapshot = await invoke("apply_preferences", { limits, yellowPages: state.pages, desktop: { ...desktop, directory, window: { ...state.window }, player: state.player, channelRules: state.rules.map((rule) => normalizedRule(rule)), recording: normalizeRecordingSettings(state.recording) } });
       state.dirty = false;
       state.preferenceFingerprint = null;
       state.savedPlayer = { ...state.player };
@@ -1352,6 +1360,8 @@
     if (typeof onBack === "function") onBack();
     else void requestLeave();
   });
+  $("youtube-at-bottom").addEventListener("change", () => { state.directory.youtubeAtBottom = $("youtube-at-bottom").checked; setDirty(); });
+  $("twitch-at-bottom").addEventListener("change", () => { state.directory.twitchAtBottom = $("twitch-at-bottom").checked; setDirty(); });
   $("discard-dialog").addEventListener("close", () => {
     const discard = $("discard-dialog").returnValue === "discard";
     $("discard-dialog").returnValue = "";

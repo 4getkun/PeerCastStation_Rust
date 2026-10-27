@@ -1,4 +1,4 @@
-use peercast_app::ConfigManager;
+use peercast_app::{runtime_config::YellowPageSettings, ConfigManager};
 use peercast_desktop::backend::{DesktopBackend, Limits, YellowPageEntry};
 use peercast_desktop::player::PlayerSettings;
 use peercast_desktop::preferences::{DesktopPreferences, WindowSettings, WindowSizePreset};
@@ -162,6 +162,122 @@ async fn old_config_without_desktop_preferences_opens_with_defaults() {
     assert_eq!(
         serde_json::from_value::<DesktopPreferences>(persisted.desktop).unwrap(),
         DesktopPreferences::default()
+    );
+    close(&reopened).await;
+}
+
+fn config_with_yellow_pages(
+    pages: &[(&str, &str)],
+    desktop: serde_json::Value,
+) -> peercast_app::AppConfig {
+    let mut config = peercast_app::AppConfig::default();
+    config.desktop = desktop;
+    config.runtime.yellow_pages = pages
+        .iter()
+        .map(|(name, url)| YellowPageSettings {
+            name: (*name).into(),
+            channels_uri: Some((*url).into()),
+            ..YellowPageSettings::default()
+        })
+        .collect();
+    config
+}
+
+const SP_DEFAULT: &str = "http://bayonet.ddo.jp/sp/index.txt";
+const P_AT_DEFAULT: &str = "https://p-at.net/index.txt";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn legacy_default_yellow_pages_migrate_once_and_custom_lists_are_preserved() {
+    let expected = vec![
+        yp("SP", SP_DEFAULT),
+        yp("p@YP", P_AT_DEFAULT),
+        yp("0yp", "https://yayaue.me/yp/index.txt"),
+        yp("YPv6", "http://ypv6.pecastation.org/index.txt"),
+        yp("平成YP", "http://yp.pcgw.pgw.jp/index.txt"),
+    ];
+    for old_pages in [
+        vec![("SP", SP_DEFAULT)],
+        vec![("SP", SP_DEFAULT), ("P@", P_AT_DEFAULT)],
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.json");
+        let config = config_with_yellow_pages(&old_pages, serde_json::Value::Null);
+        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let backend = DesktopBackend::open(path.clone()).await.unwrap();
+        assert_eq!(backend.snapshot().await.unwrap().yellow_pages, expected);
+        close(&backend).await;
+        let persisted = ConfigManager::new(&path).load().unwrap();
+        let marker = persisted
+            .desktop
+            .pointer("/directory/ypDefaultsVersion")
+            .unwrap();
+        assert_eq!(marker.as_u64(), Some(1));
+        let backend = DesktopBackend::open(path).await.unwrap();
+        assert_eq!(backend.snapshot().await.unwrap().yellow_pages, expected);
+        close(&backend).await;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("desktop.json");
+    let mut old_desktop = serde_json::to_value(DesktopPreferences::default()).unwrap();
+    old_desktop["directory"]["ypDefaultsVersion"] = 1.into();
+    let config = config_with_yellow_pages(&[("SP", SP_DEFAULT), ("P@", P_AT_DEFAULT)], old_desktop);
+    fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+    let backend = DesktopBackend::open(path).await.unwrap();
+    assert_eq!(
+        backend.snapshot().await.unwrap().yellow_pages,
+        vec![yp("SP", SP_DEFAULT), yp("P@", P_AT_DEFAULT)]
+    );
+    close(&backend).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fresh_and_custom_or_empty_yellow_pages_have_expected_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fresh.json");
+    let backend = DesktopBackend::open(path).await.unwrap();
+    assert_eq!(backend.snapshot().await.unwrap().yellow_pages.len(), 5);
+    close(&backend).await;
+
+    for pages in [vec![("Custom", "https://example.com/index.txt")], vec![]] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.json");
+        let config = config_with_yellow_pages(&pages, serde_json::Value::Null);
+        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let backend = DesktopBackend::open(path).await.unwrap();
+        assert_eq!(
+            backend.snapshot().await.unwrap().yellow_pages.len(),
+            pages.len()
+        );
+        close(&backend).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn directory_stream_positions_round_trip_and_default_false_for_legacy_settings() {
+    let legacy: DesktopPreferences = serde_json::from_value(serde_json::json!({
+        "directory": { "autoRefresh": true, "refreshIntervalSecs": 300 }
+    }))
+    .unwrap();
+    assert!(!legacy.directory.youtube_at_bottom);
+    assert!(!legacy.directory.twitch_at_bottom);
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("desktop.json");
+    let backend = DesktopBackend::open(path.clone()).await.unwrap();
+    let initial = backend.snapshot().await.unwrap();
+    let mut desktop = initial.desktop;
+    desktop.directory.youtube_at_bottom = true;
+    desktop.directory.twitch_at_bottom = true;
+    backend
+        .apply_desktop_preferences(initial.limits, initial.yellow_pages, desktop.clone())
+        .await
+        .unwrap();
+    close(&backend).await;
+    let reopened = DesktopBackend::open(path).await.unwrap();
+    assert_eq!(
+        reopened.snapshot().await.unwrap().desktop.directory,
+        desktop.directory
     );
     close(&reopened).await;
 }

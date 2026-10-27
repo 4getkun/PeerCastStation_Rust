@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$PlayerArchive,
-    [string]$Version = '1.2.0',
+    [string]$Version = '1.2.1',
     [string]$CliVersion = '2.12.4',
     [string]$WorkDirectory = '',
     [switch]$SkipPackageBuild

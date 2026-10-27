@@ -1,4 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-tools/pcrplayer/live/pcrplayer-live.patch -text
+# Byte-preserving patches contain diff context prefixes and original CRLF bytes.
+tools/pcrplayer/live/pcrplayer-live.patch -text -whitespace
 tools/pcrplayer/live/build-ffmpeg.sh text eol=lf

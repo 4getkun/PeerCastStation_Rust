@@ -345,7 +345,7 @@ assert.deepEqual(orderYpChannels(orderedFixtures).map(({ id }) => id), [
   'favorite-high', 'favorite-zero', 'favorite-unknown', 'favorite-negative',
   'nonfavorite-high', 'nonfavorite-low', 'nonfavorite-unplayable',
 ], 'Favorites sort first by listeners, with unknown/negative last; nonfavorites retain legacy order');
-const newcomerRenderBody = appSource.match(/  function renderYpDirectory\(\) \{([\s\S]*?)\n  \}/)?.[1];
+const newcomerRenderBody = appSource.match(/  function appendYpChannelRows\(root, channels\) \{([\s\S]*?)\n  \}/)?.[1];
 assert.match(newcomerRenderBody || '', /ypNewcomerIndicator\(key, state\.ypGeneration\)/);
 assert.match(newcomerRenderBody || '', /indicator\.setAttribute\("aria-label", newcomer\.label\)/);
 const appCss = fs.readFileSync(path.join(__dirname, '../frontend/style.css'), 'utf8');

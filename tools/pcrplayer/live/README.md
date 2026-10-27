@@ -9,7 +9,7 @@ git -c core.autocrlf=false apply --check path/to/pcrplayer-live.patch
 git -c core.autocrlf=false apply path/to/pcrplayer-live.patch
 ```
 
-`pcrplayer-live.sha256.json` records the exact before/after files. The 1.2.0 source
+`pcrplayer-live.sha256.json` records the exact before/after files. The 1.2.1 source
 archive already contains the resulting C++ source, dependency archives, runtime
 files, and build instructions. Do not apply this patch to that already patched
 archive.

@@ -20,6 +20,9 @@ pub struct DesktopPreferences {
 pub struct DirectorySettings {
     pub auto_refresh: bool,
     pub refresh_interval_secs: u64,
+    pub youtube_at_bottom: bool,
+    pub twitch_at_bottom: bool,
+    pub yp_defaults_version: u32,
 }
 
 impl Default for DirectorySettings {
@@ -27,6 +30,9 @@ impl Default for DirectorySettings {
         Self {
             auto_refresh: false,
             refresh_interval_secs: 300,
+            youtube_at_bottom: false,
+            twitch_at_bottom: false,
+            yp_defaults_version: 1,
         }
     }
 }

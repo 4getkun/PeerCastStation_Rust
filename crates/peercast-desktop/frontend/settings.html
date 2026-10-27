@@ -92,7 +92,8 @@
         <div class="yp-subpanel youtube-subpanel" id="panel-youtube" role="tabpanel" aria-labelledby="tab-youtube" data-yp-panel="youtube" hidden>
         <section class="youtube-settings-manager" aria-labelledby="youtube-settings-title">
           <div class="section-title"><div><h2 id="youtube-settings-title">YouTubeお気に入り</h2><p>登録チャンネルのライブ配信と予約をチャンネル一覧に表示します。監視はアプリ起動中に5分間隔で行います。</p></div><button id="youtube-refresh" type="button" class="button button-secondary">今すぐ確認</button></div>
-          <p class="youtube-settings-save-note">追加・監視切替・解除はすぐに保存されます。「変更を保存」は不要です。</p>
+          <label class="youtube-directory-order"><input id="youtube-at-bottom" type="checkbox"> 「すべてのチャンネル」で末尾に表示する</label>
+          <p class="youtube-settings-save-note">表示順は「変更を保存」で反映されます。追加・監視切替・解除はすぐに保存されます。</p>
           <form id="youtube-add-form" class="youtube-settings-add"><label for="youtube-url">チャンネルURL</label><input id="youtube-url" type="url" required maxlength="2048" placeholder="https://www.youtube.com/@channel"><button id="youtube-add" type="submit" class="button button-secondary">お気に入りに追加</button></form>
           <p id="youtube-status" class="youtube-settings-status" role="status" aria-live="polite">読み込み中</p>
           <div id="youtube-subscriptions" class="youtube-settings-subscriptions" aria-label="YouTube登録チャンネル"></div>
@@ -101,7 +102,8 @@
         <div class="yp-subpanel youtube-subpanel" id="panel-twitch" role="tabpanel" aria-labelledby="tab-twitch" data-yp-panel="twitch" hidden>
         <section class="youtube-settings-manager" aria-labelledby="twitch-settings-title">
           <div class="section-title"><div><h2 id="twitch-settings-title">Twitchお気に入り</h2><p>登録チャンネルの配信中カードをチャンネル一覧に表示します。監視はアプリ起動中に5分間隔で行います。</p></div><button id="twitch-refresh" type="button" class="button button-secondary">今すぐ確認</button></div>
-          <p class="youtube-settings-save-note">PCRPlayerで再生できます。録画はプレイヤーの右クリックから。追加・監視切替・解除はすぐに保存されます。</p>
+          <label class="youtube-directory-order"><input id="twitch-at-bottom" type="checkbox"> 「すべてのチャンネル」で末尾に表示する</label>
+          <p class="youtube-settings-save-note">PCRPlayerで再生できます。録画はプレイヤーの右クリックから。表示順は「変更を保存」で反映されます。追加・監視切替・解除はすぐに保存されます。</p>
           <form id="twitch-add-form" class="youtube-settings-add"><label for="twitch-url">チャンネルURL</label><input id="twitch-url" type="url" required maxlength="2048" placeholder="https://www.twitch.tv/channel"><button id="twitch-add" type="submit" class="button button-secondary">お気に入りに追加</button></form>
           <p id="twitch-status" class="youtube-settings-status" role="status" aria-live="polite">読み込み中</p>
           <div id="twitch-subscriptions" class="youtube-settings-subscriptions" aria-label="Twitch登録チャンネル"></div>

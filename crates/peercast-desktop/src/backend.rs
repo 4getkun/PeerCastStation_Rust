@@ -114,17 +114,33 @@ fn default_yellow_pages() -> Vec<YellowPageEntry> {
             channels_url: "http://bayonet.ddo.jp/sp/index.txt".into(),
         },
         YellowPageEntry {
-            name: "P@".into(),
+            name: "p@YP".into(),
             channels_url: "https://p-at.net/index.txt".into(),
+        },
+        YellowPageEntry {
+            name: "0yp".into(),
+            channels_url: "https://yayaue.me/yp/index.txt".into(),
+        },
+        YellowPageEntry {
+            name: "YPv6".into(),
+            channels_url: "http://ypv6.pecastation.org/index.txt".into(),
+        },
+        YellowPageEntry {
+            name: "平成YP".into(),
+            channels_url: "http://yp.pcgw.pgw.jp/index.txt".into(),
         },
     ]
 }
 
-fn is_legacy_sp_default(config: &AppConfig) -> bool {
-    config.runtime.yellow_pages.len() == 1
-        && config.runtime.yellow_pages[0].name == "SP"
-        && config.runtime.yellow_pages[0].channels_uri.as_deref()
-            == Some("http://bayonet.ddo.jp/sp/index.txt")
+fn is_legacy_default_yellow_pages(config: &AppConfig) -> bool {
+    let pages = &config.runtime.yellow_pages;
+    let sp = pages.first().is_some_and(|yp| {
+        yp.name == "SP" && yp.channels_uri.as_deref() == Some("http://bayonet.ddo.jp/sp/index.txt")
+    });
+    let p_at = pages.get(1).is_some_and(|yp| {
+        yp.name == "P@" && yp.channels_uri.as_deref() == Some("https://p-at.net/index.txt")
+    });
+    sp && (pages.len() == 1 || (pages.len() == 2 && p_at))
 }
 
 fn normalize_yellow_pages(entries: Vec<YellowPageEntry>) -> Result<Vec<YellowPageEntry>, String> {
@@ -434,9 +450,14 @@ impl DesktopBackend {
     ) -> Result<Arc<Self>, String> {
         let (limits, yellow_pages, desktop) = match ConfigManager::new(&config_path).load() {
             Ok(config) => {
-                let migrate_default = is_legacy_sp_default(&config);
+                let desktop_had_yp_defaults_version = config
+                    .desktop
+                    .pointer("/directory/ypDefaultsVersion")
+                    .is_some();
+                let migrate_default =
+                    !desktop_had_yp_defaults_version && is_legacy_default_yellow_pages(&config);
                 let limits = Limits::from_config(&config);
-                let desktop = if config.desktop.is_null() {
+                let mut desktop = if config.desktop.is_null() {
                     DesktopPreferences::default()
                 } else {
                     serde_json::from_value(config.desktop).map_err(|error| error.to_string())?
@@ -454,6 +475,10 @@ impl DesktopBackend {
                     .collect();
                 if migrate_default {
                     yellow_pages = default_yellow_pages();
+                }
+                // Startup's existing restart/save persists this marker together with any YP migration.
+                if !desktop_had_yp_defaults_version {
+                    desktop.directory.yp_defaults_version = 1;
                 }
                 (limits, yellow_pages, desktop)
             }

@@ -967,3 +967,53 @@
  			if (pPinOut)
  			{
  				CComPtr<IPin> pPinTo;
+--- a/PCRPlayer/AudioRenderer.cpp
++++ b/PCRPlayer/AudioRenderer.cpp
+@@ -272,27 +272,26 @@
+ 		createDeviceRenderer(preferredDeviceName_, render_);
+ 	}
+ 
+-	// 2. 最新のWindows (Windows 10/11) および USBオーディオインターフェース (HD-AMP1等) に最適化された
+-	//    DirectShow既定オーディオレンダラー (CLSID_AudioRender / Core Audio WASAPI 共有モード経由) を優先
+-	if (!render_)
+-	{
+-		hr = render_.CoCreateInstance(CLSID_AudioRender, 0, CLSCTX_INPROC_SERVER);
+-		if (render_)
+-		{
+-			utl::debugLogFmt(L"DefaultAudioRenderer: using CLSID_AudioRender (WASAPI Shared)");
+-		}
+-	}
+-
+-	// 3. 環境によりCLSID_AudioRenderが利用できない場合のフォールバック (DirectSound Renderer)
+-	if (!render_)
+-	{
+-		hr = render_.CoCreateInstance(CLSID_DSoundRender, 0, CLSCTX_INPROC_SERVER);
+-		if (render_)
+-		{
+-			utl::debugLogFmt(L"DefaultAudioRenderer: fallback to CLSID_DSoundRender");
+-		}
+-	}
+-
++	// DirectSound mixes concurrent players; WaveOut disables audio mixing.
++	if (!render_)
++	{
++		hr = render_.CoCreateInstance(CLSID_DSoundRender, 0, CLSCTX_INPROC_SERVER);
++		if (render_)
++		{
++			utl::debugLogFmt(L"DefaultAudioRenderer: using CLSID_DSoundRender (mixed playback)");
++		}
++	}
++
++	// Retain WaveOut only as a compatibility fallback.
++	if (!render_)
++	{
++		hr = render_.CoCreateInstance(CLSID_AudioRender, 0, CLSCTX_INPROC_SERVER);
++		if (render_)
++		{
++			utl::debugLogFmt(L"DefaultAudioRenderer: fallback to CLSID_AudioRender (WaveOut)");
++		}
++	}
++
+ 	if (!render_) { return false; }
+ 
+ 	hr = graph->AddFilter(render_, L"Default Audio Renderer");

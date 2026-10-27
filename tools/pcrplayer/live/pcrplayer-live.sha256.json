@@ -88,5 +88,10 @@
     "file": "PCRPlayer/Splitter/BaseSplitter.cpp",
     "before": "5fc425296c68b736097c98e3a8195b2419befa2efed223e6d294eb59b37293a2",
     "after": "ce40bcbc35548c26ffd90070766b593e0d01f9ca1965ee393933e4fec96f9e5f"
+  },
+  {
+    "file": "PCRPlayer/AudioRenderer.cpp",
+    "before": "05c93d4121129b0e7e2986806f3a98f4ee910289138e7a19334f178c7800c5ea",
+    "after": "11c459b6678f18d8e02f5522e1285bfc1f22eb39c08131dc5fd8d0110ae81567"
   }
 ]

@@ -214,7 +214,10 @@ async fn yellow_pages_default_crud_empty_and_limits_survive_reopen() {
         backend.snapshot().await.unwrap().yellow_pages,
         vec![
             yp("SP", "http://bayonet.ddo.jp/sp/index.txt"),
-            yp("P@", "https://p-at.net/index.txt"),
+            yp("p@YP", "https://p-at.net/index.txt"),
+            yp("0yp", "https://yayaue.me/yp/index.txt"),
+            yp("YPv6", "http://ypv6.pecastation.org/index.txt"),
+            yp("平成YP", "http://yp.pcgw.pgw.jp/index.txt"),
         ]
     );
     let entries = vec![
@@ -280,7 +283,7 @@ async fn yellow_pages_default_crud_empty_and_limits_survive_reopen() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn old_single_sp_default_migrates_to_sp_and_p_at() {
+async fn old_single_sp_default_migrates_to_five_current_defaults() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("desktop.json");
     let mut config = AppConfig::default();
@@ -295,7 +298,10 @@ async fn old_single_sp_default_migrates_to_sp_and_p_at() {
     let backend = DesktopBackend::open(path.clone()).await.unwrap();
     let expected = vec![
         yp("SP", "http://bayonet.ddo.jp/sp/index.txt"),
-        yp("P@", "https://p-at.net/index.txt"),
+        yp("p@YP", "https://p-at.net/index.txt"),
+        yp("0yp", "https://yayaue.me/yp/index.txt"),
+        yp("YPv6", "http://ypv6.pecastation.org/index.txt"),
+        yp("平成YP", "http://yp.pcgw.pgw.jp/index.txt"),
     ];
     assert_eq!(backend.snapshot().await.unwrap().yellow_pages, expected);
     let saved = ConfigManager::new(&path).load().unwrap();
@@ -313,7 +319,10 @@ async fn old_single_sp_default_migrates_to_sp_and_p_at() {
         saved_pages,
         vec![
             ("SP", "http://bayonet.ddo.jp/sp/index.txt"),
-            ("P@", "https://p-at.net/index.txt"),
+            ("p@YP", "https://p-at.net/index.txt"),
+            ("0yp", "https://yayaue.me/yp/index.txt"),
+            ("YPv6", "http://ypv6.pecastation.org/index.txt"),
+            ("平成YP", "http://yp.pcgw.pgw.jp/index.txt"),
         ]
     );
     close_backend(&backend).await;

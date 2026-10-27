@@ -37,9 +37,10 @@
     ypError: "",
     ypStarted: false,
     ypQuery: "",
-    ypSource: "all",
+    ypSource: "peercast",
     ypScope: "normal",
     ypSourceSignature: "",
+    ypDirectoryFlagsFingerprint: "",
     ypSelectionKey: null,
     channelSelectionId: null,
     channelFingerprint: "",
@@ -365,26 +366,14 @@
     const previous = select.value || state.ypSource;
     state.ypSourceSignature = signature;
     select.replaceChildren();
-    const all = document.createElement("option");
-    all.value = "all";
-    all.textContent = "すべてのチャンネル";
-    select.append(all);
-    const youtube = document.createElement("option");
-    youtube.value = "youtube";
-    youtube.textContent = "YouTube";
-    select.append(youtube);
-    const twitch = document.createElement("option");
-    twitch.value = "twitch";
-    twitch.textContent = "Twitch";
-    select.append(twitch);
-    pages.forEach((page) => {
+    for (const [value, label] of [["peercast", "Peercast"], ["all", "すべてのチャンネル"], ["youtube", "YouTube"], ["twitch", "Twitch"]]) {
       const option = document.createElement("option");
-      option.value = page.name || page.channelsUrl || "";
-      option.textContent = page.name || page.channelsUrl || "名称未設定";
+      option.value = value;
+      option.textContent = label;
       select.append(option);
-    });
-    const values = new Set(["all", "youtube", "twitch", ...pages.map((page) => page.name || page.channelsUrl || "")]);
-    state.ypSource = values.has(previous) ? previous : "all";
+    }
+    const values = new Set(["peercast", "all", "youtube", "twitch"]);
+    state.ypSource = values.has(previous) ? previous : "peercast";
     select.value = state.ypSource;
     return true;
   }
@@ -395,17 +384,26 @@
       const annotation = channelAnnotation(channel);
       if (state.ypScope === "normal" && annotation.isHidden) return false;
       if (state.ypScope === "favorite" && (!annotation.isFavorite || annotation.isHidden)) return false;
-      if (!youtubeSourceMatches(state.ypSource, channel.yellowPage)) return false;
+      if (state.ypSource === "youtube" || state.ypSource === "twitch") return false;
       if (!query) return true;
       return ["name", "genre", "description", "comment"].some((field) =>
         String(channel[field] ?? "").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query));
     });
   }
 
-  function youtubeSourceMatches(source, yellowPage) {
-    if (source === "youtube") return false;
-    if (source === "twitch") return false;
-    return source === "all" || String(yellowPage || "") === source;
+  function directoryProviderAtBottom(provider) {
+    return state.snapshot?.desktop?.directory?.[`${provider}AtBottom`] === true;
+  }
+
+  function allSourcesDisplayOrder(youtubeAtBottom, twitchAtBottom) {
+    return [
+      ...(!youtubeAtBottom ? ["youtube"] : []),
+      ...(!twitchAtBottom ? ["twitch"] : []),
+      "yp-playable",
+      ...(youtubeAtBottom ? ["youtube"] : []),
+      ...(twitchAtBottom ? ["twitch"] : []),
+      "yp-notice",
+    ];
   }
 
   function youtubeStateLabel(channel, stream) {
@@ -604,11 +602,30 @@
     const filtered = visibleYpChannels();
     ensureVisibleYpSelection(filtered);
     root.replaceChildren();
-    const youtubeCount = appendYoutubeRows(root);
-    const twitchCount = appendTwitchRows(root);
+    const peercastOnly = state.ypSource === "peercast";
+    const allSources = state.ypSource === "all";
+    const youtubeAtBottom = directoryProviderAtBottom("youtube");
+    const twitchAtBottom = directoryProviderAtBottom("twitch");
+    let youtubeCount = 0;
+    let twitchCount = 0;
+    if (state.ypSource === "youtube") youtubeCount = appendYoutubeRows(root);
+    else if (state.ypSource === "twitch") twitchCount = appendTwitchRows(root);
     const youtubeLiveCount = youtubeStreamRows().filter(({ stream }) => stream?.status === "live").length;
     const twitchLiveCount = twitchStreamRows().length;
     renderYpHeaderCount(filtered, youtubeLiveCount, twitchLiveCount);
+    const playableChannels = filtered.filter(isPlayableYpChannel);
+    const noticeChannels = filtered.filter((channel) => !isPlayableYpChannel(channel));
+    if (peercastOnly) {
+      appendYpChannelRows(root, filtered);
+    } else if (allSources) {
+      const displayOrder = allSourcesDisplayOrder(youtubeAtBottom, twitchAtBottom);
+      for (const entry of displayOrder) {
+        if (entry === "youtube") youtubeCount += appendYoutubeRows(root);
+        else if (entry === "twitch") twitchCount += appendTwitchRows(root);
+        else if (entry === "yp-playable") appendYpChannelRows(root, playableChannels);
+        else if (entry === "yp-notice") appendYpChannelRows(root, noticeChannels);
+      }
+    }
     const empty = byId("yp-empty");
     if (empty) {
       empty.hidden = filtered.length > 0 || youtubeCount > 0 || twitchCount > 0;
@@ -624,7 +641,16 @@
             ? "条件に一致する掲載情報はありません。"
             : "一覧を取得しています…";
     }
-    filtered.forEach((channel) => {
+    const displayedCount = countableYpChannelCount(filtered) + youtubeCount + twitchCount;
+    const externalOnly = state.ypSource === "youtube" || state.ypSource === "twitch";
+    text("yp-status", externalOnly ? `${displayedCount}件を表示中` : state.ypBusy ? "チャンネル一覧を取得しています…" : state.ypError ? state.ypError : state.ypLoaded ? `${displayedCount}件を表示中` : "一覧をまだ取得していません。");
+    renderYpSelectionStyles();
+    renderSelectedDetail();
+    updateYpControls();
+  }
+
+  function appendYpChannelRows(root, channels) {
+    channels.forEach((channel) => {
       const index = state.ypChannels.indexOf(channel);
       const key = ypChannelKey(channel);
       const row = document.createElement("article");
@@ -694,12 +720,6 @@
       row.append(format);
       root.append(row);
     });
-    const displayedCount = countableYpChannelCount(filtered) + youtubeCount + twitchCount;
-    const externalOnly = state.ypSource === "youtube" || state.ypSource === "twitch";
-    text("yp-status", externalOnly ? `${displayedCount}件を表示中` : state.ypBusy ? "チャンネル一覧を取得しています…" : state.ypError ? state.ypError : state.ypLoaded ? `${displayedCount}件を表示中` : "一覧をまだ取得していません。");
-    renderYpSelectionStyles();
-    renderSelectedDetail();
-    updateYpControls();
   }
   function ypDirectoryHeaderCount(source, ypCount, youtubeLiveCount, twitchLiveCount) {
     const visibleYpCount = source === "youtube" || source === "twitch" ? 0 : ypCount;
@@ -821,6 +841,9 @@
     const interval = Number(directory.refreshIntervalSecs);
     const nextInterval = Number.isFinite(interval) ? Math.min(3600, Math.max(60, Math.ceil(interval / 60) * 60)) : 300;
     const changed = state.ypRefreshMode !== nextMode || state.ypRefreshIntervalSecs !== nextInterval;
+    const flagsFingerprint = JSON.stringify([directory.youtubeAtBottom === true, directory.twitchAtBottom === true]);
+    const flagsChanged = flagsFingerprint !== state.ypDirectoryFlagsFingerprint;
+    state.ypDirectoryFlagsFingerprint = flagsFingerprint;
     state.ypRefreshMode = nextMode;
     state.ypRefreshIntervalSecs = nextInterval;
     if (syncForm) state.ypDirectoryDirty = false;
@@ -831,6 +854,7 @@
       if (field) field.value = String(state.ypRefreshIntervalSecs / 60);
     }
     if (changed) scheduleYpAutoRefresh();
+    return flagsChanged;
   }
 
   async function saveDirectoryPreferences() {
@@ -839,7 +863,7 @@
     const interval = Math.min(60, Math.max(1, Math.trunc(Number(field?.value) || 5))) * 60;
     const current = state.snapshot || {};
     const desktop = current.desktop || {};
-    const directory = { autoRefresh: mode, refreshIntervalSecs: interval };
+    const directory = { ...(desktop.directory || {}), autoRefresh: mode, refreshIntervalSecs: interval };
     try {
       const snapshot = await invoke("apply_preferences", { limits: current.limits || {}, yellowPages: current.yellowPages || [], desktop: { ...desktop, directory, window: desktop.window || { width: 1600, height: 900, minimizeToTray: false, launchAtStartup: false }, player: desktop.player || { executable: null, arguments: '\"<stream/>\" \"<channelname/>\" \"<contact/>\"' }, channelRules: desktop.channelRules || [], recording: desktop.recording || {} } });
       state.snapshot = snapshot;
@@ -1871,13 +1895,13 @@
         : "";
     }
     renderRecordings(snapshot);
-    applyDirectoryPreferences(snapshot.desktop?.directory || {});
+    const directoryFlagsChanged = applyDirectoryPreferences(snapshot.desktop?.directory || {});
     if (currentView() === "recordings") text("yp-count", `${Array.isArray(snapshot.recordings) ? snapshot.recordings.length : 0} 件の録画`);
     if (state.detailKind === "channel") renderSelectedDetail();
     else updateConnectionSummary(state.detailKind === "yp" ? runtimeChannelFor(currentYpChannel()?.channelId) : null);
     updateDetailActions(currentSelectedDirectoryChannel());
     updateYpControls();
-    renderYpSourcesAndMaybeRefresh(sourcesChanged);
+    renderYpSourcesAndMaybeRefresh(sourcesChanged || directoryFlagsChanged);
     if (initial && !state.ypStarted) {
       state.ypStarted = true;
       const activeView = document.querySelector("[data-view].active")?.dataset.view || "yp";
@@ -2100,7 +2124,7 @@
     renderYpDirectory();
   });
   bind("yp-source", "change", () => {
-    state.ypSource = byId("yp-source").value || "all";
+    state.ypSource = byId("yp-source").value || "peercast";
     renderYpDirectory();
   });
   window.addEventListener("youtube-snapshot-updated", (event) => {

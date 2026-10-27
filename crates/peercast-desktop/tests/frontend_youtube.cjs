@@ -22,17 +22,18 @@ function settingsFunction(name, bindings = {}) {
   return new Function(...Object.keys(bindings), `return (${match[0].trim()})`)(...Object.values(bindings));
 }
 
-const sourceMatches = appFunction('youtubeSourceMatches');
-assert.equal(sourceMatches('all', 'SP'), true);
-assert.equal(sourceMatches('SP', 'SP'), true);
-assert.equal(sourceMatches('SP', 'P@'), false);
-assert.equal(sourceMatches('youtube', 'SP'), false, 'YouTube selection excludes Yellow Page rows');
-assert.equal(sourceMatches('twitch', 'SP'), false, 'Twitch selection excludes Yellow Page rows');
 const headerCount = appFunction('ypDirectoryHeaderCount');
 assert.equal(headerCount('all', 4, 2, 3), 9, 'All-source count includes YP and provider live rows');
 assert.equal(headerCount('youtube', 4, 2, 3), 2, 'YouTube source count excludes YP and Twitch rows');
 assert.equal(headerCount('twitch', 4, 2, 3), 3, 'Twitch source count excludes YP and YouTube rows');
-assert.equal(headerCount('SP', 4, 2, 3), 4, 'A Yellow Page source count excludes provider rows');
+assert.equal(headerCount('peercast', 4, 2, 3), 4, 'Peercast source count excludes provider rows');
+const allSourcesDisplayOrder = appFunction('allSourcesDisplayOrder');
+for (const [youtubeAtBottom, twitchAtBottom, expected] of [
+  [false, false, ['youtube', 'twitch', 'yp-playable', 'yp-notice']],
+  [false, true, ['youtube', 'yp-playable', 'twitch', 'yp-notice']],
+  [true, false, ['twitch', 'yp-playable', 'youtube', 'yp-notice']],
+  [true, true, ['yp-playable', 'youtube', 'twitch', 'yp-notice']],
+]) assert.deepEqual(allSourcesDisplayOrder(youtubeAtBottom, twitchAtBottom), expected, `Provider order for bottom flags ${youtubeAtBottom}/${twitchAtBottom}`);
 
 const stateLabel = appFunction('youtubeStateLabel');
 assert.equal(stateLabel({ enabled: true, lastCheckedMs: 100 }, { status: 'live' }), '配信中');
@@ -91,7 +92,12 @@ assert.match(settingsHtml, /id="panel-youtube"[^>]*role="tabpanel"[^>]*aria-labe
 assert.match(settingsHtml, /id="panel-twitch"[^>]*role="tabpanel"[^>]*aria-labelledby="tab-twitch"[^>]*hidden/, 'Twitch panel starts hidden and is labelled by its tab');
 for (const id of ['twitch-add-form', 'twitch-subscriptions', 'twitch-refresh']) assert(settingsHtml.includes(`id="${id}"`), `The settings Twitch manager must include #${id}`);
 assert(settingsHtml.includes('PCRPlayerで再生できます。録画はプレイヤーの右クリックから。'), 'Twitch settings explain PCRPlayer playback and player-side recording');
-for (const source of ['value = "all"', 'value = "youtube"', 'value = "twitch"']) assert(app.includes(source), `The channel source selector must include ${source}`);
+for (const source of ['["peercast", "Peercast"]', '["all", "すべてのチャンネル"]', '["youtube", "YouTube"]', '["twitch", "Twitch"]']) assert(app.includes(source), `The channel source selector must include ${source}`);
+assert.match(app, /state\.ypSource = values\.has\(previous\) \? previous : "peercast"/, 'Unknown legacy single-YP selections fall back to Peercast');
+assert.match(html, /id="yp-source"[^>]*><option value="peercast">Peercast<\/option>/, 'Peercast is the initial source selection');
+for (const id of ['youtube-at-bottom', 'twitch-at-bottom']) assert(settingsHtml.includes(`id="${id}"`), `The provider settings must include #${id}`);
+assert.match(settings, /state\.directory\.youtubeAtBottom = \$\("youtube-at-bottom"\)\.checked; setDirty\(\)/, 'YouTube order preference joins the save/cancel flow');
+assert.match(settings, /state\.directory\.twitchAtBottom = \$\("twitch-at-bottom"\)\.checked; setDirty\(\)/, 'Twitch order preference joins the save/cancel flow');
 assert.match(settings, /function twitchSubscriptionStatus\(channel\)/, 'Twitch settings derive status from the rendered channel state');
 assert.match(app, /state\.ypSource === "twitch" && !twitchChannels\(\)\.length[\s\S]*?Twitchチャンネルを登録/, 'Unregistered Twitch filter shows a Twitch-specific prompt');
 assert.match(settingsHtml, /id="tab-version"[^>]*><span class="icon icon-info-circle"[^>]*><\/span><span>バージョン<\/span>/, 'The navigation label is shortened while the version panel remains separate');
