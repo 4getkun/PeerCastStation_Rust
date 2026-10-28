@@ -114,6 +114,7 @@
   function cloneRecording(value) { return { ...value, rules: (value.rules || []).map((rule) => ({ ...rule, fields: [...rule.fields] })) }; }
   const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), directory: { youtubeAtBottom: false, twitchAtBottom: false }, window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
   Object.assign(state, { youtubeSnapshot: null, youtubeLoaded: false, youtubeLoading: false, youtubeBusy: false, youtubeMessage: "読み込み中", twitchSnapshot: null, twitchLoaded: false, twitchLoading: false, twitchBusy: false, twitchMessage: "読み込み中" });
+  Object.assign(state, { noticeTimer: null, noticeGeneration: 0, statusTimer: null, statusGeneration: 0, providerMessages: new Map(), providerMessageToken: 0 });
   const meta = {
     general: ["全般", "現在のバックエンド状態と設定ファイルを確認します。"],
     connection: ["接続", "接続上限を変更します。保存時に実バックエンドへ反映します。"],
@@ -125,13 +126,56 @@
     version: ["バージョン情報", "アプリと使用しているライセンスを確認します。"],
   };
 
-  function setNotice(message, error = false) {
+  function setNotice(message, error = false, { persistent = false } = {}) {
     const notice = $("notice");
-    notice.textContent = message || "";
+    const next = String(message || "");
+    if (next && notice.textContent === next && state.noticeError === error && state.noticePersistent === persistent) return;
+    window.clearTimeout(state.noticeTimer);
+    state.noticeTimer = null;
+    const generation = ++state.noticeGeneration;
+    state.noticeError = error;
+    state.noticePersistent = persistent;
+    notice.textContent = next;
     notice.classList.toggle("error", error);
-    notice.hidden = !message;
+    notice.hidden = !next;
+    if (next && !persistent) state.noticeTimer = window.setTimeout(() => {
+      if (generation !== state.noticeGeneration) return;
+      notice.textContent = "";
+      notice.hidden = true;
+      state.noticeTimer = null;
+    }, error ? 12000 : 5000);
   }
-  function setStatus(message) { $("save-status").textContent = message; }
+  function setStatus(message, { persistent = false } = {}) {
+    const element = $("save-status");
+    const next = String(message || "");
+    if (next && element.textContent === next && state.statusPersistent === persistent) return;
+    window.clearTimeout(state.statusTimer);
+    state.statusTimer = null;
+    const generation = ++state.statusGeneration;
+    state.statusPersistent = persistent;
+    element.textContent = next;
+    if (next && !persistent) state.statusTimer = window.setTimeout(() => {
+      if (generation !== state.statusGeneration) return;
+      element.textContent = state.dirty ? "未保存の変更があります" : "";
+      state.statusTimer = null;
+    }, 5000);
+  }
+  function setProviderMessage(provider, message, { persistent = false, error = false } = {}) {
+    const previous = state.providerMessages.get(provider);
+    if (message && previous?.message === message && previous.persistent === persistent && previous.error === error) return;
+    if (previous) window.clearTimeout(previous.timer);
+    const token = ++state.providerMessageToken;
+    const entry = { message, persistent, error, token, timer: null };
+    state.providerMessages.set(provider, entry);
+    state[`${provider}Message`] = message;
+    $(`${provider}-status`).textContent = message;
+    if (message && !persistent) entry.timer = window.setTimeout(() => {
+      if (state.providerMessages.get(provider)?.token !== token) return;
+      state[`${provider}Message`] = "";
+      $(`${provider}-status`).textContent = "";
+      entry.timer = null;
+    }, error ? 12000 : 5000);
+  }
   function safeColor(value) { return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null; }
   function normalizedRule(rule = {}) {
     return {
@@ -265,7 +309,7 @@
   }
   function setDirty() {
     state.dirty = true;
-    setStatus("未保存の変更があります");
+    setStatus("未保存の変更があります", { persistent: true });
     renderControls();
   }
   function renderWindowPresetOptions(selectedKey = state.selectedWindowPreset) {
@@ -395,7 +439,7 @@
     if (!snapshot || !Array.isArray(snapshot.channels)) return false;
     state.youtubeSnapshot = snapshot;
     state.youtubeLoaded = true;
-    state.youtubeMessage = message;
+    setProviderMessage("youtube", message);
     renderYoutubeSubscriptions();
     window.dispatchEvent(new CustomEvent("youtube-snapshot-updated", { detail: snapshot }));
     return true;
@@ -403,7 +447,7 @@
   async function loadYoutubeSettings() {
     if (state.youtubeLoaded || state.youtubeLoading) return;
     state.youtubeLoading = true;
-    state.youtubeMessage = "YouTube登録を読み込み中です…";
+    setProviderMessage("youtube", "YouTube登録を読み込み中です…", { persistent: true });
     renderControls();
     window.dispatchEvent(new Event("youtube-snapshot-requested"));
   }
@@ -416,29 +460,29 @@
     const firstLoad = !state.youtubeLoaded;
     state.youtubeLoaded = true;
     state.youtubeLoading = false;
-    if (firstLoad) state.youtubeMessage = "YouTube登録を読み込みました。";
-    else if (state.youtubeMessage.startsWith("YouTubeの状態を確認できませんでした:")) state.youtubeMessage = "YouTube登録を読み込みました。";
+    if (firstLoad) setProviderMessage("youtube", "YouTube登録を読み込みました。");
+    else if (state.youtubeMessage.startsWith("YouTubeの状態を確認できませんでした:")) setProviderMessage("youtube", "YouTube登録を読み込みました。");
     $("youtube-status").textContent = state.youtubeMessage;
     if (changed) renderYoutubeSubscriptions();
     else renderControls();
   });
   window.addEventListener("youtube-snapshot-error", (event) => {
     state.youtubeLoading = false;
-    state.youtubeMessage = `YouTubeの状態を確認できませんでした: ${String(event.detail || "")}`;
+    setProviderMessage("youtube", `YouTubeの状態を確認できませんでした: ${String(event.detail || "")}`, { error: true });
     $("youtube-status").textContent = state.youtubeMessage;
     renderControls();
   });
   async function youtubeSettingsMutation(command, args) {
     if (state.youtubeBusy || !state.ready) return false;
     state.youtubeBusy = true;
-    state.youtubeMessage = "YouTube登録を更新しています…";
+    setProviderMessage("youtube", "YouTube登録を更新しています…", { persistent: true });
     renderYoutubeSubscriptions();
     try {
       const snapshot = await invoke(command, args);
       acceptYoutubeSnapshot(snapshot, "YouTube登録を更新しました。");
       return true;
     } catch (error) {
-      state.youtubeMessage = `YouTubeを更新できませんでした: ${error.message || error}`;
+      setProviderMessage("youtube", `YouTubeを更新できませんでした: ${error.message || error}`, { error: true });
       renderYoutubeSubscriptions();
       return false;
     } finally {
@@ -449,7 +493,7 @@
   async function loadTwitchSettings() {
     if (state.twitchLoaded || state.twitchLoading) return;
     state.twitchLoading = true;
-    state.twitchMessage = "Twitch登録を読み込み中です…";
+    setProviderMessage("twitch", "Twitch登録を読み込み中です…", { persistent: true });
     renderControls();
     window.dispatchEvent(new Event("twitch-snapshot-requested"));
   }
@@ -469,8 +513,8 @@
     const firstLoad = !state.twitchLoaded;
     state.twitchLoaded = true;
     state.twitchLoading = false;
-    if (firstLoad) state.twitchMessage = "Twitch登録を読み込みました。";
-    else if (state.twitchMessage.startsWith("Twitchの状態を確認できませんでした:")) state.twitchMessage = "Twitch登録を読み込みました。";
+    if (firstLoad) setProviderMessage("twitch", "Twitch登録を読み込みました。");
+    else if (state.twitchMessage.startsWith("Twitchの状態を確認できませんでした:")) setProviderMessage("twitch", "Twitch登録を読み込みました。");
     $("twitch-status").textContent = state.twitchMessage;
     if (changed) renderTwitchSubscriptions();
     else renderControls();
@@ -478,26 +522,26 @@
   window.addEventListener("twitch-snapshot-polled", (event) => acceptTwitchPolledSnapshot(event.detail));
   window.addEventListener("twitch-snapshot-error", (event) => {
     state.twitchLoading = false;
-    state.twitchMessage = `Twitchの状態を確認できませんでした: ${String(event.detail || "")}`;
+    setProviderMessage("twitch", `Twitchの状態を確認できませんでした: ${String(event.detail || "")}`, { error: true });
     $("twitch-status").textContent = state.twitchMessage;
     renderControls();
   });
   async function twitchSettingsMutation(command, args) {
     if (state.twitchBusy || !state.ready) return false;
     state.twitchBusy = true;
-    state.twitchMessage = "Twitch登録を更新しています…";
+    setProviderMessage("twitch", "Twitch登録を更新しています…", { persistent: true });
     renderTwitchSubscriptions();
     try {
       const snapshot = await invoke(command, args);
       if (!snapshot || !Array.isArray(snapshot.channels)) throw new Error("Twitchの状態を取得できませんでした");
       state.twitchSnapshot = snapshot;
       state.twitchLoaded = true;
-      state.twitchMessage = "Twitch登録を更新しました。";
+      setProviderMessage("twitch", "Twitch登録を更新しました。");
       renderTwitchSubscriptions();
       window.dispatchEvent(new CustomEvent("twitch-snapshot-updated", { detail: snapshot }));
       return true;
     } catch (error) {
-      state.twitchMessage = `Twitchを更新できませんでした: ${error.message || error}`;
+      setProviderMessage("twitch", `Twitchを更新できませんでした: ${error.message || error}`, { error: true });
       renderTwitchSubscriptions();
       return false;
     } finally {
@@ -954,6 +998,10 @@
   }
   function activate(page) {
     if (!meta[page]) return;
+    if (root.querySelector(".nav-item.active")?.dataset.page !== page) {
+      setNotice("");
+      if (!state.busy && !state.loading) setStatus(state.dirty ? "未保存の変更があります" : "", { persistent: true });
+    }
     if (page !== "channel-rules") {
       clearRuleSelection();
       $("saved-rules-disclosure").open = false;
@@ -1067,10 +1115,10 @@
     }
     setBusy(true);
     setNotice("");
-    setStatus("保存しています…");
+    setStatus("保存しています…", { persistent: true });
     try {
       const desktop = state.snapshot?.desktop || {};
-      const directory = { ...(desktop.directory || { autoRefresh: false, refreshIntervalSecs: 300 }), ...state.directory };
+      const directory = { ...(desktop.directory || { autoRefresh: true, refreshIntervalSecs: 300 }), ...state.directory };
       const snapshot = await invoke("apply_preferences", { limits, yellowPages: state.pages, desktop: { ...desktop, directory, window: { ...state.window }, player: state.player, channelRules: state.rules.map((rule) => normalizedRule(rule)), recording: normalizeRecordingSettings(state.recording) } });
       state.dirty = false;
       state.preferenceFingerprint = null;
@@ -1095,7 +1143,13 @@
       setNotice("保存処理中です。完了後にもう一度移動してください。", true);
       return false;
     }
-    if (!state.dirty) return true;
+    if (!state.dirty) {
+      setNotice("");
+      setStatus("");
+      setProviderMessage("youtube", "");
+      setProviderMessage("twitch", "");
+      return true;
+    }
     if (state.leavePromise) return state.leavePromise;
     const pending = state.leavePromise = new Promise((resolve) => { state.resolveLeave = resolve; });
     try {
@@ -1388,7 +1442,7 @@
   }).catch((error) => {
     state.loading = false;
     state.ready = false;
-    setStatus("バックエンドに接続できません");
+    setStatus("バックエンドに接続できません", { persistent: true });
     setNotice(`設定を読み込めませんでした: ${error.message || error}`, true);
     renderControls();
   });

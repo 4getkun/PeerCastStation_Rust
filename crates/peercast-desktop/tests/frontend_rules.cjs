@@ -45,7 +45,7 @@ function settingsFunction(name, bindings = {}) {
   assert.equal(ruleState.dirty, false, 'Disclosure close must not mark settings dirty when no other action did so');
 
   const controls = { 'saved-rules-disclosure': { open: true }, 'page-title': {}, 'page-description': {} };
-  const root = { querySelectorAll: () => [] };
+  const root = { querySelectorAll: () => [], querySelector: () => null };
   const activate = settingsFunction('activate', {
     meta: { appearance: ['外観', '説明'] },
     state: { selectedRule: null, updateViewActive: false },
@@ -54,6 +54,8 @@ function settingsFunction(name, bindings = {}) {
     root,
     ensureUpdateStatus: () => {},
     stopUpdatePolling: () => {},
+    setNotice: () => {},
+    setStatus: () => {},
   });
   activate('appearance');
   assert.equal(controls['saved-rules-disclosure'].open, false,
@@ -374,6 +376,9 @@ const applyDirectoryPreferences = appFunction('applyDirectoryPreferences', {
   byId: () => intervalInput,
   scheduleYpAutoRefresh,
 });
+applyDirectoryPreferences({});
+assert.equal(refreshState.ypRefreshMode, 'auto', 'Missing directory preferences default to automatic refresh');
+assert.equal(radio.auto.checked, true, 'The default automatic mode is reflected in the UI');
 applyDirectoryPreferences({ autoRefresh: true });
 assert.equal(refreshState.ypRefreshIntervalSecs, 300, 'The default refresh interval must be five minutes');
 assert.equal(intervalInput.value, '5', 'The interval field must display minutes');

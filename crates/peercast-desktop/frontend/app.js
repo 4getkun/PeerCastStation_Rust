@@ -15,6 +15,11 @@
   const UPDATE_LAST_CHECK_KEY = "peercast-rt.update.last-successful-check";
   const state = {
     snapshot: null,
+    noticeTimer: null,
+    noticeToken: 0,
+    noticeMessage: "",
+    noticeIsError: false,
+    noticePersistent: false,
     busy: false,
     broadcastBusy: false,
     stoppingBroadcasts: new Set(),
@@ -29,7 +34,7 @@
     ypRefreshTimer: null,
     ypRefreshCooldownUntil: 0,
     ypLastUpdatedAt: null,
-    ypRefreshMode: "manual",
+    ypRefreshMode: "auto",
     ypRefreshIntervalSecs: 300,
     ypDirectoryDirty: false,
     ypRefreshPending: false,
@@ -86,12 +91,32 @@
     if (element) element.textContent = value == null ? "" : String(value);
   }
 
-  function setNotice(message, isError = false) {
+  function setNotice(message, isError = false, { persistent = false } = {}) {
     const element = byId("notice");
     if (!element) return;
-    element.textContent = message;
-    element.hidden = !message;
+    const nextMessage = message == null ? "" : String(message);
+    if (nextMessage && nextMessage === state.noticeMessage && isError === state.noticeIsError && persistent === state.noticePersistent) return;
+    if (state.noticeTimer !== null) window.clearTimeout(state.noticeTimer);
+    state.noticeTimer = null;
+    const token = ++state.noticeToken;
+    state.noticeMessage = nextMessage;
+    state.noticeIsError = Boolean(isError);
+    state.noticePersistent = Boolean(persistent);
+    element.textContent = nextMessage;
+    element.hidden = !nextMessage;
     element.classList.toggle("notice-error", isError);
+    if (nextMessage && !persistent) {
+      state.noticeTimer = window.setTimeout(() => {
+        if (state.noticeToken !== token) return;
+        state.noticeTimer = null;
+        state.noticeMessage = "";
+        state.noticeIsError = false;
+        state.noticePersistent = false;
+        element.textContent = "";
+        element.hidden = true;
+        element.classList.toggle("notice-error", false);
+      }, isError ? 12000 : 5000);
+    }
   }
 
   function errorText(error) {
@@ -458,8 +483,7 @@
     const query = state.ypQuery.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
     return youtubeChannels().flatMap((channel) => {
       const streams = channel.enabled === true && !channel.error && Array.isArray(channel.streams) ? channel.streams : [];
-      const supported = streams.filter((stream) => stream && (stream.status === "live" || stream.status === "upcoming"));
-      const entries = supported.length ? supported.map((stream) => ({ channel, stream })) : [{ channel, stream: null }];
+      const entries = streams.filter((stream) => stream && stream.status === "live").map((stream) => ({ channel, stream }));
       return entries.filter(({ channel: owner, stream }) => !query || [owner.name, stream?.title].some((value) =>
         String(value || "").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query)));
     });
@@ -632,13 +656,15 @@
       empty.textContent = state.ypSource === "twitch" && !twitchChannels().length
         ? "設定のイエローページでTwitchチャンネルを登録すると、配信中のカードがここに表示されます。"
         : state.ypSource === "youtube" && !youtubeChannels().length
-          ? "設定のイエローページでYouTubeチャンネルを登録すると、配信中や予約がここに表示されます。"
+          ? "設定のイエローページでYouTubeチャンネルを登録すると、配信中のカードがここに表示されます。"
         : state.ypError
           ? "一覧を取得できませんでした。更新して再試行してください。"
           : state.ypLoaded && !state.ypChannels.length && !sourcePages().length
           ? "設定画面でチャンネル一覧を取得するYellow Pageを登録してください。"
           : state.ypLoaded
-            ? "条件に一致する掲載情報はありません。"
+            ? state.ypSource === "youtube"
+              ? "現在ライブ中の配信はありません。"
+              : "条件に一致する掲載情報はありません。"
             : "一覧を取得しています…";
     }
     const displayedCount = countableYpChannelCount(filtered) + youtubeCount + twitchCount;
@@ -837,7 +863,7 @@
   }
 
   function applyDirectoryPreferences(directory = {}, syncForm = false) {
-    const nextMode = directory.autoRefresh ? "auto" : "manual";
+    const nextMode = directory.autoRefresh === false ? "manual" : "auto";
     const interval = Number(directory.refreshIntervalSecs);
     const nextInterval = Number.isFinite(interval) ? Math.min(3600, Math.max(60, Math.ceil(interval / 60) * 60)) : 300;
     const changed = state.ypRefreshMode !== nextMode || state.ypRefreshIntervalSecs !== nextInterval;
@@ -859,7 +885,7 @@
 
   async function saveDirectoryPreferences() {
     const field = byId("yp-refresh-interval");
-    const mode = document.querySelector('input[name="yp-refresh-mode"]:checked')?.value === "auto";
+    const mode = document.querySelector('input[name="yp-refresh-mode"]:checked')?.value !== "manual";
     const interval = Math.min(60, Math.max(1, Math.trunc(Number(field?.value) || 5))) * 60;
     const current = state.snapshot || {};
     const desktop = current.desktop || {};
@@ -1017,6 +1043,7 @@
 
   function activateView(view) {
     if (!viewTitles[view]) return;
+    if (view !== currentView()) setNotice("");
     document.querySelectorAll("[data-view]").forEach((button) => {
       const active = button.dataset.view === view;
       button.classList.toggle("active", active);
@@ -1914,7 +1941,7 @@
   async function action(label, command, args) {
     if (state.busy) return;
     setBusy(true);
-    setNotice(`${label}を実行中…`);
+    setNotice(`${label}を実行中…`, false, { persistent: true });
     let succeeded = false;
     try {
       const result = await invoke(command, args);
@@ -1969,7 +1996,7 @@
     if (!state.snapshot?.running || !channel || state.busy || state.ypBusy || !isPlayableYpChannel(channel)) return;
     state.ypBusy = true;
     updateYpControls();
-    setNotice(`${displayValue(channel.name)} の配信元に接続しています…`);
+    setNotice(`${displayValue(channel.name)} の配信元に接続しています…`, false, { persistent: true });
     try {
       await invoke("play_yp_channel", { channelId: String(channel.channelId), yellowPage: String(channel.yellowPage || "") });
       setNotice("設定したプレイヤーを起動しました。");

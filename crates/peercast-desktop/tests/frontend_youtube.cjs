@@ -58,12 +58,15 @@ const rowsState = {
     { id: 'upcoming', name: '配信者B', enabled: true, streams: [{ id: 'v2', title: '予約枠', status: 'upcoming' }] },
     { id: 'disabled', name: '停止中', enabled: false, streams: [{ id: 'v3', title: '隠す配信', status: 'live' }] },
     { id: 'invalid', name: '対象外', enabled: true, streams: [{ id: 'v4', title: '終了', status: 'ended' }] },
+    { id: 'offline', name: 'オフライン', enabled: true, streams: [{ id: 'v5', title: '終了済み', status: 'offline' }] },
+    { id: 'error', name: '確認失敗', enabled: true, error: 'refresh failed', streams: [{ id: 'v6', title: '古いライブ', status: 'live' }] },
+    { id: 'empty', name: '配信なし', enabled: true, streams: [] },
   ] },
 };
 const rows = appFunction('youtubeStreamRows', { state: rowsState, youtubeChannels: appFunction('youtubeChannels', { state: rowsState }) });
 assert.deepEqual(rows().map(({ channel, stream }) => [channel.id, stream?.status || null]), [
-  ['live', 'live'], ['upcoming', 'upcoming'], ['disabled', null], ['invalid', null],
-]);
+  ['live', 'live'],
+], 'Only currently live streams from monitored channels appear in the directory');
 const searchState = {
   ypQuery: '予約',
   youtubeSnapshot: { channels: [
@@ -72,7 +75,7 @@ const searchState = {
   ] },
 };
 const searched = appFunction('youtubeStreamRows', { state: searchState, youtubeChannels: appFunction('youtubeChannels', { state: searchState }) });
-assert.deepEqual(searched().map(({ channel }) => channel.id), ['b'], 'Search matches stream titles without exposing unrelated streams');
+assert.deepEqual(searched().map(({ channel }) => channel.id), [], 'Upcoming stream titles do not appear in the live-only directory');
 
 for (const command of ['youtube_add', 'youtube_remove', 'youtube_set_enabled', 'youtube_refresh', 'twitch_add', 'twitch_remove', 'twitch_set_enabled', 'twitch_refresh']) {
   assert(settings.includes(`"${command}"`), `Settings must wire ${command}`);
@@ -109,7 +112,7 @@ assert(!app.includes('youtube_add') && !app.includes('youtube_remove') && !app.i
 assert.match(settings, /name\.textContent = String\(channel\.name/ , 'Registered names must be inserted as text');
 assert.match(app, /window\.dispatchEvent\(new CustomEvent\("youtube-snapshot-polled"/);
 assert.match(settings, /addEventListener\("youtube-snapshot-polled"/);
-assert.match(settings, /youtubeMessage = "YouTube登録を読み込みました。";[\s\S]*\$\("youtube-status"\)\.textContent = state\.youtubeMessage/ , 'The polled snapshot updates the status even when the channel list is unchanged');
+assert.match(settings, /setProviderMessage\("youtube", "YouTube登録を読み込みました。"\);[\s\S]*\$\("youtube-status"\)\.textContent = state\.youtubeMessage/ , 'The polled snapshot updates the status even when the channel list is unchanged');
 assert.match(settings, /dispatchEvent\(new Event\("youtube-snapshot-requested"\)\)/);
 assert.match(app, /window\.dispatchEvent\(new CustomEvent\("twitch-snapshot-polled"/);
 assert.match(settings, /addEventListener\("twitch-snapshot-polled"/);
@@ -155,11 +158,8 @@ appFunction('appendYoutubeRows', {
   state: fixtureState, youtubeStreamRows: fixtureStreams, document: fixtureDocument,
   appendText: fixtureAppendText, youtubeStateLabel: stateLabel,
 })(fixtureRoot);
-assert.equal(fixtureRoot.children.length, 2);
-const errorCard = fixtureRoot.children[0];
-assert(!errorCard.className.includes('is-live'), 'Cached live status must not style an errored channel as live');
-assert.equal(errorCard.children.find((child) => child.className.includes('youtube-stream-status')).textContent, '確認できず');
-const liveCard = fixtureRoot.children[1];
+assert.equal(fixtureRoot.children.length, 1, 'A stale live result from an errored channel is omitted');
+const liveCard = fixtureRoot.children[0];
 const liveCopy = liveCard.children.find((child) => child.className.includes('youtube-stream-copy'));
 assert.equal(liveCopy.children.find((child) => child.className.includes('youtube-stream-title')).textContent, '<img src=x onerror=alert(1)>', 'Titles remain plain text in the rendered DOM');
 const playButton = liveCard.children.find((child) => child.className === 'youtube-stream-actions')?.children.find((child) => child.dataset.youtubePlay);
@@ -269,6 +269,7 @@ let polledSettingsRenders = 0;
 const polledSettingsStatus = { textContent: '' };
 const acceptTwitchPolledSnapshot = settingsFunction('acceptTwitchPolledSnapshot', {
   state: polledSettingsState,
+  setProviderMessage(provider, message) { polledSettingsState[`${provider}Message`] = message; },
   twitchSubscriptionFingerprint: settingsFunction('twitchSubscriptionFingerprint', {
     twitchSubscriptionStatus: settingsFunction('twitchSubscriptionStatus'),
   }),

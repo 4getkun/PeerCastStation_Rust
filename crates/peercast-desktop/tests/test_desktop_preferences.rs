@@ -147,40 +147,105 @@ async fn old_config_without_desktop_preferences_opens_with_defaults() {
     fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
 
     let backend = DesktopBackend::open(path.clone()).await.unwrap();
-    assert_eq!(
-        backend.snapshot().await.unwrap().desktop,
-        DesktopPreferences::default()
-    );
+    let mut legacy_defaults = DesktopPreferences::default();
+    legacy_defaults.directory.auto_refresh = false;
+    assert_eq!(backend.snapshot().await.unwrap().desktop, legacy_defaults);
     close(&backend).await;
 
     let reopened = DesktopBackend::open(path.clone()).await.unwrap();
-    assert_eq!(
-        reopened.snapshot().await.unwrap().desktop,
-        DesktopPreferences::default()
-    );
+    assert_eq!(reopened.snapshot().await.unwrap().desktop, legacy_defaults);
     let persisted = ConfigManager::new(&path).load().unwrap();
     assert_eq!(
         serde_json::from_value::<DesktopPreferences>(persisted.desktop).unwrap(),
-        DesktopPreferences::default()
+        legacy_defaults
     );
     close(&reopened).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fresh_install_defaults_to_auto_refresh_and_reopens_with_it_enabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("desktop.json");
+    let backend = DesktopBackend::open(path.clone()).await.unwrap();
+    let directory = backend.snapshot().await.unwrap().desktop.directory;
+    assert!(directory.auto_refresh);
+    assert_eq!(directory.refresh_interval_secs, 300);
+    close(&backend).await;
+
+    let reopened = DesktopBackend::open(path).await.unwrap();
+    let directory = reopened.snapshot().await.unwrap().desktop.directory;
+    assert!(directory.auto_refresh);
+    assert_eq!(directory.refresh_interval_secs, 300);
+    close(&reopened).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn existing_refresh_preferences_are_preserved_or_defaulted_to_manual() {
+    let dir = tempfile::tempdir().unwrap();
+
+    for (name, directory, expected_auto, expected_interval) in [
+        (
+            "custom-manual",
+            serde_json::json!({"autoRefresh": false, "refreshIntervalSecs": 600}),
+            false,
+            600,
+        ),
+        (
+            "auto",
+            serde_json::json!({"autoRefresh": true, "refreshIntervalSecs": 300}),
+            true,
+            300,
+        ),
+        (
+            "missing-mode",
+            serde_json::json!({"refreshIntervalSecs": 900}),
+            false,
+            900,
+        ),
+        ("missing-directory", serde_json::json!({}), false, 300),
+    ] {
+        let path = dir.path().join(format!("{name}.json"));
+        let mut legacy = serde_json::to_value(peercast_app::AppConfig::default()).unwrap();
+        legacy["desktop"] = serde_json::json!({"directory": directory});
+        fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+        let backend = DesktopBackend::open(path.clone()).await.unwrap();
+        let settings = backend.snapshot().await.unwrap().desktop.directory;
+        assert_eq!(settings.auto_refresh, expected_auto, "{name}");
+        assert_eq!(settings.refresh_interval_secs, expected_interval, "{name}");
+        close(&backend).await;
+
+        let reopened = DesktopBackend::open(path).await.unwrap();
+        let settings = reopened.snapshot().await.unwrap().desktop.directory;
+        assert_eq!(settings.auto_refresh, expected_auto, "{name} after reopen");
+        assert_eq!(
+            settings.refresh_interval_secs, expected_interval,
+            "{name} after reopen"
+        );
+        close(&reopened).await;
+    }
 }
 
 fn config_with_yellow_pages(
     pages: &[(&str, &str)],
     desktop: serde_json::Value,
 ) -> peercast_app::AppConfig {
-    let mut config = peercast_app::AppConfig::default();
-    config.desktop = desktop;
-    config.runtime.yellow_pages = pages
-        .iter()
-        .map(|(name, url)| YellowPageSettings {
-            name: (*name).into(),
-            channels_uri: Some((*url).into()),
-            ..YellowPageSettings::default()
-        })
-        .collect();
-    config
+    let runtime = peercast_app::runtime_config::RuntimeConfig {
+        yellow_pages: pages
+            .iter()
+            .map(|(name, url)| YellowPageSettings {
+                name: (*name).into(),
+                channels_uri: Some((*url).into()),
+                ..YellowPageSettings::default()
+            })
+            .collect(),
+        ..peercast_app::runtime_config::RuntimeConfig::default()
+    };
+    peercast_app::AppConfig {
+        desktop,
+        runtime,
+        ..peercast_app::AppConfig::default()
+    }
 }
 
 const SP_DEFAULT: &str = "http://bayonet.ddo.jp/sp/index.txt";

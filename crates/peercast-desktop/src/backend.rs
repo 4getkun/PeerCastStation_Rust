@@ -450,6 +450,8 @@ impl DesktopBackend {
     ) -> Result<Arc<Self>, String> {
         let (limits, yellow_pages, desktop) = match ConfigManager::new(&config_path).load() {
             Ok(config) => {
+                let desktop_has_auto_refresh =
+                    config.desktop.pointer("/directory/autoRefresh").is_some();
                 let desktop_had_yp_defaults_version = config
                     .desktop
                     .pointer("/directory/ypDefaultsVersion")
@@ -462,6 +464,9 @@ impl DesktopBackend {
                 } else {
                     serde_json::from_value(config.desktop).map_err(|error| error.to_string())?
                 };
+                if !desktop_has_auto_refresh {
+                    desktop.directory.auto_refresh = false;
+                }
                 let mut yellow_pages: Vec<YellowPageEntry> = config
                     .runtime
                     .yellow_pages
