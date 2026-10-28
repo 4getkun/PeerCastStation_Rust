@@ -119,7 +119,7 @@ export function App() {
               <h2 id="watch-title">チャンネルを選んで見る。</h2>
               <p>公開中の配信を一覧から選び、設定したプレイヤーで再生します。</p>
               <p>
-                YouTubeやTwitchのお気に入りチャンネルも登録できます。アプリの起動中は5分ごとに確認し、生配信が見つかると音と通知でお知らせします。同梱のPCRPlayerで視聴でき、ブラウザで開くこともできます。
+                YouTubeやTwitchのお気に入りチャンネルも登録できます。アプリの起動中は5分ごとに確認し、新しい生配信を検出すると音と通知でお知らせします。同梱のPCRPlayerで視聴でき、ブラウザで開くこともできます。
               </p>
             </div>
             <div className="step-list">
@@ -188,11 +188,11 @@ export function App() {
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/PCRPlayer-LICENSE.txt">PCRPlayer</a>
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/NotoSansJP-OFL.txt">Noto Sans JP — OFL</a>
                 <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/Tabler-Icons-MIT.txt">Tabler Icons — MIT</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/licenses/PCRPlayer/Node-LICENSE.txt">Node.jsと依存ライブラリのライセンス表示</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/licenses/PCRPlayer/FFmpeg-LGPL-2.1.txt">FFmpeg — LGPL-2.1-or-later</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/PCRPlayer-PeerCastRT-1.2.3-sources.7z">同梱PCRPlayer 対応ソース</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/licenses/PCRPlayer/Node-LICENSE.txt">Node.jsと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/licenses/PCRPlayer/FFmpeg-LGPL-2.1.txt">FFmpeg — LGPL-2.1-or-later</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PCRPlayer-PeerCastRT-1.2.4-sources.7z">同梱PCRPlayer 対応ソース</a>
+                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
               </div>
               <div className="third-party-license">
                 <strong>このページのアイコン</strong>
@@ -223,17 +223,17 @@ export function App() {
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
                 <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.2.3 <span>/</span> 7z形式</p>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.2.4 <span>/</span> 7z形式</p>
                 <p className="download-note">インストーラーとライセンス文書をひとつにまとめています。展開して、フォルダー内のセットアップを実行してください。</p>
-                <p className="download-checksum">SHA-256: <code>1307ec475e1685da2005c3ae06a9ad705650428a44228569bd326d8c3b26444d</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/PeerCastRT-1.2.3-windows-x64-installer.7z.sha256">チェックサム</a></p>
+                <p className="download-checksum">SHA-256: <code>403d0042fe9f4a05f058d3ed7f905e8e1ae1cb37cdf34222f72b80ede73eb520</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PeerCastRT-1.2.4-windows-x64-installer.7z.sha256">チェックサム</a></p>
                 <p className="download-note">セットアップにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/PeerCastRT-1.2.3-windows-x64-installer.7z">
+              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PeerCastRT-1.2.4-windows-x64-installer.7z">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
                 Windows版をダウンロード
               </a>
-              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.3/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
+              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
               </div>
             </div>
           </div>

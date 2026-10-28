@@ -797,17 +797,18 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 loop {
                     let requests = with_youtube(&youtube_app.state::<YouTubeService>(), |monitor| Ok(monitor.due_requests(current_time_ms()))).unwrap_or_default();
-                    for request in requests {
-                        let result = match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
+                    peercast_desktop::live_monitor::run_probe_batch(requests, |request| async move {
+                        match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
                             Ok(executable) => peercast_desktop::youtube_process::probe(&executable, &request.url).await,
                             Err(error) => Err(error),
-                        };
-                        let rows = with_youtube(&youtube_app.state::<YouTubeService>(), |monitor| Ok(monitor.complete(&request.id, result, current_time_ms()))).unwrap_or_default();
+                        }
+                    }, |id, result| {
+                        let rows = with_youtube(&youtube_app.state::<YouTubeService>(), |monitor| Ok(monitor.complete(&id, result, current_time_ms()))).unwrap_or_default();
                         if !rows.is_empty() {
                             let ledger = youtube_app.state::<FavoriteNotifications>();
                             notify_favorite_rows(&youtube_app, &ledger, &mut serde_json::Value::Array(rows));
                         }
-                    }
+                    }).await;
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
             });
@@ -815,17 +816,18 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 loop {
                     let requests = with_twitch(&twitch_app.state::<TwitchService>(), |monitor| Ok(monitor.due_requests(current_time_ms()))).unwrap_or_default();
-                    for request in requests {
-                        let result = match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
+                    peercast_desktop::live_monitor::run_probe_batch(requests, |request| async move {
+                        match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
                             Ok(executable) => peercast_desktop::twitch_process::probe(&executable, &request.url).await,
                             Err(error) => Err(error),
-                        };
-                        let rows = with_twitch(&twitch_app.state::<TwitchService>(), |monitor| Ok(monitor.complete(&request.id, result, current_time_ms()))).unwrap_or_default();
+                        }
+                    }, |id, result| {
+                        let rows = with_twitch(&twitch_app.state::<TwitchService>(), |monitor| Ok(monitor.complete(&id, result, current_time_ms()))).unwrap_or_default();
                         if !rows.is_empty() {
                             let ledger = twitch_app.state::<FavoriteNotifications>();
                             notify_favorite_rows(&twitch_app, &ledger, &mut serde_json::Value::Array(rows));
                         }
-                    }
+                    }).await;
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
             });

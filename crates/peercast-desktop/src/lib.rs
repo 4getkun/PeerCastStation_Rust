@@ -4,6 +4,7 @@ pub mod broadcast;
 pub mod broadcast_runtime;
 pub mod csharp_backend;
 pub mod favorite_notifications;
+pub mod live_monitor;
 pub mod live_player;
 pub mod native_window;
 pub mod player;

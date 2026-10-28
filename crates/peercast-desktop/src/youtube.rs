@@ -349,6 +349,12 @@ impl YouTubeMonitor {
         };
         let was_enabled = state.snapshot.channels[index].enabled;
         let mut candidate = state.snapshot.clone();
+        let previous_live_ids = candidate.channels[index]
+            .streams
+            .iter()
+            .filter(|stream| stream.status == "live")
+            .map(|stream| stream.id.clone())
+            .collect::<HashSet<_>>();
         let (identity_mismatch, duplicate_channel_id) = match &result {
             Ok(data) => {
                 let mismatch = data.channel_id.as_ref().is_some_and(|channel_id| {
@@ -406,9 +412,9 @@ impl YouTubeMonitor {
                         }
                         channel.streams = data.streams.clone();
                         if was_enabled {
-                            for stream in
-                                data.streams.iter().filter(|stream| stream.status == "live")
-                            {
+                            for stream in data.streams.iter().filter(|stream| {
+                                stream.status == "live" && !previous_live_ids.contains(&stream.id)
+                            }) {
                                 rows.push(json!({
                                     "name": channel.name,
                                     "isFavorite": true,
@@ -1088,6 +1094,127 @@ mod tests {
         assert_eq!(rows[0]["videoId"], LIVE_A);
         assert_eq!(rows[1]["videoId"], LIVE_B);
         assert_eq!(rows[0]["contentType"], "YouTube");
+    }
+
+    #[test]
+    fn suppressed_live_start_is_not_retried_after_ledger_cooldown() {
+        let (dir, monitor) = monitor();
+        let ledger_path = dir.path().join("notifications.json");
+        let mut ledger =
+            crate::favorite_notifications::FavoriteNotificationLedger::new(ledger_path);
+        let key = format!("youtube:{CHANNEL_A}");
+        ledger.mark_sent(std::slice::from_ref(&key), 1);
+        ledger.save().unwrap();
+
+        let id = monitor.add("https://youtube.com/@a", 0).unwrap().channels[0]
+            .id
+            .clone();
+        monitor.due_requests(0);
+        let live = probe(
+            CHANNEL_A,
+            "A",
+            json!([{"id": LIVE_A, "live_status": "is_live"}]),
+        );
+        let start_rows = monitor.complete(&id, Ok(live.clone()), 2);
+        assert_eq!(ledger.due(&start_rows, 2).len(), 0);
+
+        monitor.due_requests(5 * 60 * 1000 + 2);
+        let repeated_rows = monitor.complete(&id, Ok(live), 12 * 60 * 60 * 1000 + 2);
+        assert!(ledger
+            .due(&repeated_rows, 12 * 60 * 60 * 1000 + 2)
+            .is_empty());
+    }
+
+    #[test]
+    fn twitch_cached_live_and_error_recovery_do_not_create_new_notification_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("twitch.json");
+        let monitor = YouTubeMonitor::load_twitch(&path).unwrap();
+        let id = monitor
+            .add("https://www.twitch.tv/streamer", 0)
+            .unwrap()
+            .channels[0]
+            .id
+            .clone();
+        let live = ProbeData {
+            name: Some("Streamer".into()),
+            channel_id: Some("streamer".into()),
+            streams: vec![YouTubeStream {
+                id: "123456".into(),
+                title: "Live now".into(),
+                url: "https://www.twitch.tv/streamer".into(),
+                status: "live".into(),
+                scheduled_at_ms: None,
+            }],
+        };
+        monitor.due_requests(0);
+        assert_eq!(monitor.complete(&id, Ok(live.clone()), 1).len(), 1);
+
+        let restored = YouTubeMonitor::load_twitch(path).unwrap();
+        restored.due_requests(5 * 60 * 1000 + 1);
+        assert!(restored
+            .complete(&id, Ok(live.clone()), 5 * 60 * 1000 + 2)
+            .is_empty());
+        restored.due_requests(10 * 60 * 1000 + 2);
+        assert!(restored
+            .complete(&id, Err("temporary failure".into()), 10 * 60 * 1000 + 3)
+            .is_empty());
+        restored.due_requests(15 * 60 * 1000 + 3);
+        assert!(restored
+            .complete(&id, Ok(live), 15 * 60 * 1000 + 4)
+            .is_empty());
+        restored.due_requests(20 * 60 * 1000 + 4);
+        let rows = restored.complete(
+            &id,
+            Ok(ProbeData {
+                name: Some("Streamer".into()),
+                channel_id: Some("streamer".into()),
+                streams: vec![YouTubeStream {
+                    id: "654321".into(),
+                    title: "Another live".into(),
+                    url: "https://www.twitch.tv/streamer".into(),
+                    status: "live".into(),
+                    scheduled_at_ms: None,
+                }],
+            }),
+            20 * 60 * 1000 + 5,
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["streamId"], "654321");
+    }
+
+    #[test]
+    fn upcoming_to_live_and_new_live_ids_create_notification_events() {
+        let (_dir, monitor) = monitor();
+        let id = monitor.add("https://youtube.com/@a", 0).unwrap().channels[0]
+            .id
+            .clone();
+        monitor.due_requests(0);
+        assert!(monitor
+            .complete(
+                &id,
+                Ok(probe(
+                    CHANNEL_A,
+                    "A",
+                    json!([{"id": UPCOMING, "live_status": "is_upcoming"}]),
+                )),
+                1,
+            )
+            .is_empty());
+        monitor.due_requests(5 * 60 * 1000 + 1);
+        let rows = monitor.complete(
+            &id,
+            Ok(probe(
+                CHANNEL_A,
+                "A",
+                json!([
+                    {"id": UPCOMING, "live_status": "is_live"},
+                    {"id": LIVE_A, "live_status": "is_live"}
+                ]),
+            )),
+            5 * 60 * 1000 + 2,
+        );
+        assert_eq!(rows.len(), 2);
     }
 
     #[test]

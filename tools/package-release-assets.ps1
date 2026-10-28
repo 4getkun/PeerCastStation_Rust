@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PackageStage,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [string]$Version = '1.2.3'
+    [string]$Version = '1.2.4'
 )
 
 $ErrorActionPreference = 'Stop'
