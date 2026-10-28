@@ -196,21 +196,14 @@ async fn youtube_open(
     if window.label() != "main" {
         return Err("メイン画面から操作してください".into());
     }
-    let url = peercast_desktop::youtube_process::video_url(&video_id)?;
-    let stream_url = with_youtube(&service, |monitor| {
-        let channel = monitor.snapshot().channels.into_iter().find(|channel| {
-            channel.enabled
-                && channel.error.is_none()
-                && channel
-                    .streams
-                    .iter()
-                    .any(|stream| stream.id == video_id && stream.status == "live")
-        });
-        channel
-            .map(|_| url.clone())
-            .ok_or_else(|| "登録したチャンネルの現在の配信を選択してください".into())
+    let (url, title) = with_youtube(&service, |monitor| {
+        peercast_desktop::live_player::playback_target(
+            &monitor.snapshot(),
+            peercast_desktop::youtube::Provider::YouTube,
+            &video_id,
+        )
     })?;
-    peercast_desktop::live_player::open_live(&stream_url).await
+    peercast_desktop::live_player::open_live(&url, &title).await
 }
 
 #[tauri::command]
@@ -251,23 +244,14 @@ async fn twitch_open(
     if window.label() != "main" {
         return Err("メイン画面から操作してください".into());
     }
-    let url = with_twitch(&service, |monitor| {
-        let channel = monitor
-            .snapshot()
-            .channels
-            .into_iter()
-            .find(|channel| {
-                channel.enabled
-                    && channel.error.is_none()
-                    && channel
-                        .streams
-                        .iter()
-                        .any(|stream| stream.id == stream_id && stream.status == "live")
-            })
-            .ok_or_else(|| "登録したチャンネルの現在の配信を選択してください".to_owned())?;
-        peercast_desktop::twitch_process::channel_url(&channel.url)
+    let (url, title) = with_twitch(&service, |monitor| {
+        peercast_desktop::live_player::playback_target(
+            &monitor.snapshot(),
+            peercast_desktop::youtube::Provider::Twitch,
+            &stream_id,
+        )
     })?;
-    peercast_desktop::live_player::open_live(&url).await
+    peercast_desktop::live_player::open_live(&url, &title).await
 }
 
 #[tauri::command]
