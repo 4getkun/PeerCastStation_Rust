@@ -227,7 +227,7 @@ async fn discovery_rejects_other_products_and_remote_origins() {
 #[test]
 fn fresh_preferences_default_to_auto_refresh_and_opt_in_windows_features() {
     let prefs: DesktopPreferences = serde_json::from_value(json!({})).unwrap();
-    assert!(prefs.directory.auto_refresh);
+    assert_eq!(prefs.directory.auto_refresh, !cfg!(target_os = "linux"));
     assert_eq!(prefs.directory.refresh_interval_secs, 300);
     assert!(!prefs.window.minimize_to_tray);
     assert!(!prefs.window.launch_at_startup);

@@ -2,8 +2,9 @@
 
 This branch preserves the Linux preview implementation based on upstream
 `2c529d61c6093650f428fcc3451eb7bb8d87f9ec` (1.2.4). It is a preview snapshot;
-full-workspace validation is still in progress. This commit does not merge to
-main, publish a new release, or change the existing binary/source downloads.
+full-workspace validation has completed with the failures recorded below.
+This branch does not merge to main, publish a new release, or change the
+existing binary/source downloads.
 
 ## Current implementation
 
@@ -59,21 +60,66 @@ The root Cargo.lock is unchanged. The new icon.png is the original upstream
 ICO's embedded PNG under the existing icon license. Existing GPL, Noto OFL and
 Tabler MIT notices remain in the source; no external runtime binary is added.
 
-## Outstanding validation
+## Full-workspace result (2026-10-31)
 
-A previous full native desktop run had two OS-default expectation failures,
-addressed by the explicit OS-specific tests above, and one intermittent
-`directory_selection_creates_one_dynamic_relay_and_a_local_playlist` failure
-with `runtime has stopped`. That test passed alone; the full-run failure is
-still unresolved and is not reported as fixed.
+The follow-up run completed with `cargo test --workspace --locked --offline
+--no-fail-fast`: **511 passed, 8 failed, 1 ignored** (exit 101). The existing
+explicit public YP probe remained ignored; no ignored test was enabled merely
+to obtain a result. Full-workspace validation is not green.
 
-A subsequent full-workspace attempt stopped during compilation with EIO/SIGBUS
-when the Windows host disk filled. The new run keeps Cargo target/cache/build
-output on a separate disk, with a small dedicated ext4 test fixture directory,
-a 100 MiB fixture limit and at least 5 GiB host free space. At this snapshot,
-cache preparation is running and the new full-suite result is pending. It
-will be recorded separately. No tests, including the ignored explicit public
-YP probe, are enabled/disabled merely to claim success.
+The eight failures are in three desktop integration-test targets:
+
+- `test_desktop_preferences`: four failures in
+  `legacy_default_yellow_pages_migrate_once_and_custom_lists_are_preserved`,
+  `fresh_and_custom_or_empty_yellow_pages_have_expected_defaults`,
+  `fresh_install_defaults_to_auto_refresh_and_reopens_with_it_enabled`, and
+  `custom_player_and_rules_survive_limits_and_yp_saves_and_reopen`.
+- `test_player`: three failures in
+  `player_command_rejects_external_or_malformed_targets_and_missing_binary`,
+  `invalid_contacts_are_omitted_without_changing_the_stream_target`, and
+  `portable_player_command_keeps_three_literal_arguments_after_move`.
+- `test_player_rules_paths`: one failure in
+  `channel_metadata_cannot_add_arguments_or_expand_another_placeholder`.
+
+Initial inspection identifies Windows YP/auto-refresh/bundled PCRPlayer
+expectations and player fixtures lacking Linux executable semantics. These
+failures remain open for platform-appropriate test/fixture review; they are
+not reported as passing or as proven runtime fixes.
+
+One additional stale assertion in `test_csharp_backend.rs` was changed from
+unconditional auto-refresh enabled to `!cfg!(target_os = "linux")`, matching
+the agreed Linux initial-profile policy and preserving the Windows assertion.
+It passed in the full run. This is one further test-only difference from the
+published source archive; runtime application code was not changed by this
+validation follow-up. The changed file passed the existing Windows rustfmt
+check, and `git diff --check` passed.
+
+The previously intermittent
+`directory_selection_creates_one_dynamic_relay_and_a_local_playlist` test
+passed in both workspace attempts in this session (12/12 backend tests).
+`runtime has stopped` was not reproduced; its original cause remains unknown,
+so it is not declared fixed.
+
+Additional results:
+
+- Native workspace test-binary compilation (`--no-run`): passed.
+- Release CLI build needed by the existing packaging tests: passed.
+- Actual-module Linux policy harness: **28 passed**.
+- Node frontend checks: **12/12 suites passed**, including installer branding.
+- Existing executable-permission preflight: passed without weakening chmod
+  expectations. Linux clippy remains not run (component not installed).
+
+The older environment-disconnected session was confirmed stopped before a
+single replacement runner started. Cargo target/cache/build output stayed on
+a separate disk. Dedicated ext4 fixtures peaked at 64 KiB across these runs,
+below the 100 MiB limit, with host free-space monitoring above 5 GiB. The
+dedicated fixtures were removed and the original ignored target symlink was
+restored after each run. No WSL repair/reconfiguration, main merge, release,
+or site publication was performed.
+
+Full-run log SHA256: `96e23f873ef1e0fc4f73858694c223f64f43661d0d8b55e5a4a9047588e9b2b0`.
+Policy-harness log SHA256: `19c161a6dc3ff2bc4b61267215b3b7394282be0c9a6f02d5c5334c1e1b2f7474`.
+Logs and build artifacts are retained locally and are not committed.
 
 Continue validation with the provisioned native dependencies and an adequately
 sized `CARGO_TARGET_DIR`. `cargo test --workspace --locked --offline` requires
