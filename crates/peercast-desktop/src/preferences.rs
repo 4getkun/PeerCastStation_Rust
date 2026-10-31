@@ -28,7 +28,7 @@ pub struct DirectorySettings {
 impl Default for DirectorySettings {
     fn default() -> Self {
         Self {
-            auto_refresh: true,
+            auto_refresh: !cfg!(target_os = "linux"),
             refresh_interval_secs: 300,
             youtube_at_bottom: false,
             twitch_at_bottom: false,

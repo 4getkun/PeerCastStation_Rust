@@ -12,6 +12,7 @@ const settingsCss = fs.readFileSync(path.join(root, 'settings.css'), 'utf8');
 const settingsEmbeddedCss = fs.readFileSync(path.join(root, 'settings-embedded.css'), 'utf8');
 
 function appFunction(name, bindings = {}) {
+  bindings = { livePlayerName: () => 'PCRPlayer', livePlaybackReady: () => true, ...bindings };
   const match = app.match(new RegExp(`  (?:async )?function ${name}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n  \\}`));
   assert(match, `The ${name} helper must exist`);
   return new Function(...Object.keys(bindings), `return (${match[0].trim()})`)(...Object.values(bindings));
@@ -165,12 +166,33 @@ assert.equal(liveCopy.children.find((child) => child.className.includes('youtube
 const playButton = liveCard.children.find((child) => child.className === 'youtube-stream-actions')?.children.find((child) => child.dataset.youtubePlay);
 const browserButton = liveCard.children.find((child) => child.className === 'youtube-stream-actions')?.children.find((child) => child.dataset.youtubeBrowser);
 assert(playButton && browserButton, 'A current live card offers PCRPlayer and browser playback');
+// Dependency readiness gates only native playback, never browser or registration visibility.
+for (const reasonCode of ['ready', 'missing', 'invalid', 'unsupported']) {
+  const capabilities = { platform: 'linux', liveServices: true, liveDependencies: {
+    monitorReady: reasonCode === 'ready', playbackReady: reasonCode === 'ready', reasonCode, message: `dependency ${reasonCode}`,
+  } };
+  const state = { ...fixtureState, capabilities };
+  const root = new FixtureElement('div');
+  appFunction('appendYoutubeRows', {
+    state, youtubeStreamRows: fixtureStreams, document: fixtureDocument,
+    appendText: fixtureAppendText, youtubeStateLabel: stateLabel,
+    livePlayerName: appFunction('livePlayerName', { state }),
+    livePlaybackReady: appFunction('livePlaybackReady', { state }),
+  })(root);
+  const actions = root.children[0].children.find(child => child.className === 'youtube-stream-actions');
+  const play = actions.children.find(child => child.dataset.youtubePlay);
+  const browser = actions.children.find(child => child.dataset.youtubeBrowser);
+  assert.equal(play.textContent, 'mpvで再生');
+  assert.equal(play.disabled, reasonCode !== 'ready');
+  assert.notEqual(browser.disabled, true, 'Browser remains usable if native playback dependencies are absent');
+}
 const commands = [];
 let ypSelectionCount = 0;
 let ypPlaybackCount = 0;
 const clickHandler = appFunction('handleYpResultsClick', {
   state: { ...fixtureState, ypChannels: [] },
   invoke: (command, args) => { commands.push([command, args]); return Promise.resolve(); },
+  launchLivePlayback: (command, args) => { commands.push([command, args]); return Promise.resolve(); },
   text: () => {}, errorText: String,
   playYpChannel: () => { ypPlaybackCount += 1; },
   selectYpChannel: () => { ypSelectionCount += 1; },
@@ -365,6 +387,7 @@ async function testProviderContextActions() {
     closeAllContextMenus: () => { actionState.providerContextStream = null; },
     requestView: async () => true, currentView: () => 'settings',
     invoke: async (command, args) => { calls.push([command, args]); },
+    launchLivePlayback: async (command, args) => { calls.push([command, args]); },
     setNotice() {}, errorText: String,
   });
   await action('play');

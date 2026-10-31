@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 2,
+  "server": {
+    "port": 7144,
+    "bindAddress": "127.0.0.1",
+    "allowRemoteAdmin": false,
+    "maxRelays": 16,
+    "maxRelaysPerChannel": 4,
+    "maxDirects": 8,
+    "maxDirectsPerChannel": 2,
+    "maxUpstreamRate": 10000,
+    "maxUpstreamRateIpv6": 10000,
+    "maxRequestBufferBytes": 8192,
+    "requestTimeoutMs": 5000,
+    "maxRpcRequestBytes": 65536,
+    "ringbufferMaxBytes": 8388608,
+    "ringbufferWindowSecs": 3
+  },
+  "logging": {
+    "level": "info",
+    "maxLogBytes": 5242880,
+    "maxBackups": 3,
+    "maxInMemoryEntries": 1000
+  },
+  "lifecycle": {
+    "headless": true,
+    "shutdownTimeoutSecs": 5
+  },
+  "runtime": {
+    "channels": [],
+    "yellowPages": [],
+    "reconnect": {
+      "maxAttemptsPerCycle": 5,
+      "baseBackoffMs": 1000,
+      "maxBackoffMs": 30000,
+      "connectTimeoutMs": 5000,
+      "readTimeoutMs": 10000
+    },
+    "streaming": {
+      "safeStartTimeoutMs": 3000,
+      "subscriberQueuePackets": 128,
+      "maxHeaderBytes": 131072
+    },
+    "gossip": {
+      "maxEntries": 1024,
+      "windowSecs": 60
+    },
+    "probe": {
+      "maxConcurrentGlobal": 16,
+      "connectTimeoutMs": 5000,
+      "exchangeTimeoutMs": 10000
+    },
+    "ingest": {
+      "maxHeaderBytes": 8192,
+      "maxChunkBytes": 16777216
+    },
+    "directory": {
+      "maxTotalBytes": 2097152,
+      "maxLines": 10000,
+      "maxFieldLen": 4096,
+      "requestTimeoutMs": 5000,
+      "cacheTtlSecs": 180
+    },
+    "relay": {
+      "maxCandidateHosts": 64
+    },
+    "portMapping": {
+      "enabled": false,
+      "discoveryTimeoutMs": 3000,
+      "requestTimeoutMs": 3000,
+      "leaseDurationSecs": 1800,
+      "renewalMarginSecs": 300,
+      "retryBaseSecs": 5,
+      "retryMaxSecs": 300,
+      "maxMappingEntries": 256
+    }
+  },
+  "desktop": {
+    "directory": {
+      "autoRefresh": false,
+      "ypDefaultsVersion": 1
+    },
+    "player": {
+      "executable": null,
+      "arguments": "\"<stream/>\""
+    },
+    "window": {
+      "launchAtStartup": false
+    },
+    "recording": {
+      "enabled": false
+    }
+  }
+}

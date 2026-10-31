@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "linux"))]
 use sha2::{Digest, Sha256};
 use std::{path::Path, process::Stdio, time::Duration};
 use tokio::{io::AsyncReadExt, process::Command};
@@ -97,15 +98,23 @@ pub async fn probe(
         .ok_or("Twitchチャンネル名を確認できません")?;
     let executable = executable.to_owned();
     let verified = tokio::task::spawn_blocking(move || {
-        let bytes = std::fs::read(&executable).map_err(|_| "YouTube監視ツールを読めません")?;
-        if bytes.len() > 30 * 1024 * 1024
-            || format!("{:x}", Sha256::digest(&bytes)) != crate::youtube_process::YT_DLP_SHA256
+        #[cfg(target_os = "linux")]
         {
-            return Err(
-                "YouTube監視ツールの整合性を確認できません。再インストールしてください".to_owned(),
-            );
+            crate::live_runtime::verify_probe_path(&executable)
         }
-        Ok(executable)
+        #[cfg(not(target_os = "linux"))]
+        {
+            let bytes = std::fs::read(&executable).map_err(|_| "YouTube監視ツールを読めません")?;
+            if bytes.len() > 30 * 1024 * 1024
+                || format!("{:x}", Sha256::digest(&bytes)) != crate::youtube_process::YT_DLP_SHA256
+            {
+                return Err(
+                    "YouTube監視ツールの整合性を確認できません。再インストールしてください"
+                        .to_owned(),
+                );
+            }
+            Ok(executable)
+        }
     })
     .await
     .map_err(|error| error.to_string())??;

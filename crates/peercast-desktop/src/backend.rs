@@ -107,6 +107,7 @@ pub struct YellowPageEntry {
     pub channels_url: String,
 }
 
+#[cfg(not(target_os = "linux"))]
 fn default_yellow_pages() -> Vec<YellowPageEntry> {
     vec![
         YellowPageEntry {
@@ -130,6 +131,11 @@ fn default_yellow_pages() -> Vec<YellowPageEntry> {
             channels_url: "http://yp.pcgw.pgw.jp/index.txt".into(),
         },
     ]
+}
+
+#[cfg(target_os = "linux")]
+fn default_yellow_pages() -> Vec<YellowPageEntry> {
+    Vec::new()
 }
 
 fn is_legacy_default_yellow_pages(config: &AppConfig) -> bool {
@@ -435,7 +441,10 @@ impl DesktopBackend {
     }
 
     pub async fn open_detecting(config_path: PathBuf) -> Result<Arc<Self>, String> {
+        #[cfg(not(target_os = "linux"))]
         let external = CSharpBackend::detect().await;
+        #[cfg(target_os = "linux")]
+        let external = None;
         Self::open_with_external(config_path, external).await
     }
 
@@ -456,8 +465,9 @@ impl DesktopBackend {
                     .desktop
                     .pointer("/directory/ypDefaultsVersion")
                     .is_some();
-                let migrate_default =
-                    !desktop_had_yp_defaults_version && is_legacy_default_yellow_pages(&config);
+                let migrate_default = !cfg!(target_os = "linux")
+                    && !desktop_had_yp_defaults_version
+                    && is_legacy_default_yellow_pages(&config);
                 let limits = Limits::from_config(&config);
                 let mut desktop = if config.desktop.is_null() {
                     DesktopPreferences::default()
@@ -776,7 +786,11 @@ impl DesktopBackend {
             },
             config_path: self.config_path.display().to_string(),
             player_path: player_path.display().to_string(),
-            player_available: player_path.is_file(),
+            player_available: if cfg!(target_os = "linux") {
+                crate::platform::validate_executable(&player_path).is_ok()
+            } else {
+                player_path.is_file()
+            },
             desktop: inner.desktop.clone(),
             uptime_secs,
             active_tasks,

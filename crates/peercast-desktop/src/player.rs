@@ -4,7 +4,11 @@ use std::{
     process::Command,
 };
 
+#[cfg(not(target_os = "linux"))]
 pub const DEFAULT_PLAYER_ARGUMENTS: &str = "\"<stream/>\" \"<channelname/>\" \"<contact/>\"";
+
+#[cfg(target_os = "linux")]
+pub const DEFAULT_PLAYER_ARGUMENTS: &str = "\"<stream/>\"";
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
@@ -26,18 +30,29 @@ impl PlayerSettings {
     pub fn normalize(mut self) -> Result<Self, String> {
         if let Some(path) = self.executable.take() {
             if path.chars().any(char::is_control) {
-                return Err("プレイヤーには実行ファイル（.exe）のパスを指定してください".into());
+                return Err("プレイヤーには実行ファイルのパスを指定してください".into());
             }
             let path = path.trim().to_owned();
             if !path.is_empty() {
                 if path.len() > 32767
                     || path.chars().any(char::is_control)
-                    || !Path::new(&path)
-                        .extension()
-                        .and_then(|value| value.to_str())
-                        .is_some_and(|value| value.eq_ignore_ascii_case("exe"))
+                    || (cfg!(windows)
+                        && !Path::new(&path)
+                            .extension()
+                            .and_then(|value| value.to_str())
+                            .is_some_and(|value| value.eq_ignore_ascii_case("exe")))
                 {
-                    return Err("プレイヤーには実行ファイル（.exe）のパスを指定してください".into());
+                    return Err("プレイヤーには実行ファイルのパスを指定してください".into());
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    if !Path::new(&path).is_absolute() {
+                        return Err(
+                            "プレイヤーは絶対パスで指定してください（例: /usr/bin/mpv）".into()
+                        );
+                    }
+                    // Configuration must remain loadable when a removable player is absent.
+                    // Existence and execution permission are checked immediately before launch.
                 }
                 self.executable = Some(path);
             }
@@ -58,6 +73,7 @@ pub struct PlayerLaunch {
     pub process_id: u32,
 }
 
+#[cfg(not(target_os = "linux"))]
 pub fn bundled_player_path(application_exe: &Path) -> Result<PathBuf, String> {
     let application_dir = application_exe
         .parent()
@@ -74,6 +90,12 @@ pub fn bundled_player_path(application_exe: &Path) -> Result<PathBuf, String> {
         return Ok(resource);
     }
     Ok(adjacent)
+}
+
+#[cfg(target_os = "linux")]
+pub fn bundled_player_path(_application_exe: &Path) -> Result<PathBuf, String> {
+    // Deliberately do not search PATH or the current directory for executable code.
+    Ok(PathBuf::from("/usr/bin/mpv"))
 }
 
 pub fn default_player_path() -> Result<PathBuf, String> {
@@ -103,6 +125,9 @@ pub fn player_command(
     {
         return Err("このアプリのローカル再生URLだけを開けます".into());
     }
+    #[cfg(target_os = "linux")]
+    let _ = (channel_name, contact_url);
+    #[cfg(not(target_os = "linux"))]
     let contact = reqwest::Url::parse(contact_url)
         .ok()
         .filter(|url| {
@@ -120,12 +145,17 @@ pub fn player_command(
             player.display()
         ));
     }
+    #[cfg(target_os = "linux")]
+    crate::platform::validate_executable(&player)?;
     let mut command = Command::new(&player);
+    #[cfg(not(target_os = "linux"))]
     command
         .arg(playlist_url)
         .arg(channel_name)
         .arg(contact)
         .current_dir(player.parent().expect("player has a parent"));
+    #[cfg(target_os = "linux")]
+    command.arg(playlist_url);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -141,13 +171,17 @@ pub fn launch_player(
 ) -> Result<PlayerLaunch, String> {
     let application_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let player = bundled_player_path(&application_exe)?;
-    let child = player_command(&application_exe, &playlist_url, channel_name, contact_url)?
-        .spawn()
-        .map_err(|error| format!("PCRPlayerを起動できませんでした: {error}"))?;
+    let process_id = crate::platform::spawn_player_process(player_command(
+        &application_exe,
+        &playlist_url,
+        channel_name,
+        contact_url,
+    )?)
+    .map_err(|error| format!("PCRPlayerを起動できませんでした: {error}"))?;
     Ok(PlayerLaunch {
         player_path: player.display().to_string(),
         playlist_url,
-        process_id: child.id(),
+        process_id,
     })
 }
 
@@ -376,6 +410,8 @@ pub fn configured_player_command(
     if !player.is_file() {
         return Err(format!("プレイヤーが見つかりません: {}", player.display()));
     }
+    #[cfg(target_os = "linux")]
+    crate::platform::validate_executable(&player)?;
     let arguments: Vec<_> = split_arguments(&settings.arguments)?
         .into_iter()
         .map(|argument| context.expand(&argument))
@@ -408,12 +444,15 @@ pub fn launch_configured_player(
 ) -> Result<PlayerLaunch, String> {
     let application_exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let player = resolved_player_path(&application_exe, settings)?;
-    let child = configured_player_command(&application_exe, settings, &context)?
-        .spawn()
-        .map_err(|error| format!("プレイヤーを起動できませんでした: {error}"))?;
+    let process_id = crate::platform::spawn_player_process(configured_player_command(
+        &application_exe,
+        settings,
+        &context,
+    )?)
+    .map_err(|error| format!("プレイヤーを起動できませんでした: {error}"))?;
     Ok(PlayerLaunch {
         player_path: player.display().to_string(),
         playlist_url: context.playlist_url,
-        process_id: child.id(),
+        process_id,
     })
 }

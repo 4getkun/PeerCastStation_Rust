@@ -16,6 +16,43 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
+#[tauri::command]
+fn platform_capabilities() -> serde_json::Value {
+    serde_json::json!({"platform": std::env::consts::OS, "externalPlayer": cfg!(target_os = "linux"),
+        "liveServices": peercast_desktop::platform::LIVE_SERVICES_SUPPORTED,
+        "liveDependencies": peercast_desktop::live_runtime::dependencies(),
+        "updater": peercast_desktop::platform::UPDATER_SUPPORTED})
+}
+
+#[tauri::command]
+fn live_dependencies_refresh(
+    window: tauri::WebviewWindow,
+) -> Result<peercast_desktop::live_runtime::LiveDependencies, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    Ok(peercast_desktop::live_runtime::refresh_dependencies())
+}
+
+#[tauri::command]
+fn live_playback_status(
+    window: tauri::WebviewWindow,
+) -> Result<peercast_desktop::platform::LiveLaunchStatus, String> {
+    if window.label() != "main" {
+        return Err("メイン画面から操作してください".into());
+    }
+    Ok(peercast_desktop::live_player::launch_status())
+}
+
+fn require_live_monitor() -> Result<(), String> {
+    let dependencies = peercast_desktop::live_runtime::refresh_dependencies();
+    if dependencies.monitor_ready {
+        Ok(())
+    } else {
+        Err(dependencies.message)
+    }
+}
+
 type Backend = Arc<DesktopBackend>;
 type FavoriteNotifications = Arc<Mutex<FavoriteNotificationLedger>>;
 
@@ -31,6 +68,9 @@ fn with_youtube<T>(
     service: &YouTubeService,
     action: impl FnOnce(&mut peercast_desktop::youtube::YouTubeMonitor) -> Result<T, String>,
 ) -> Result<T, String> {
+    if !peercast_desktop::platform::LIVE_SERVICES_SUPPORTED {
+        return Err("このプラットフォームではYouTube/Twitchは未対応です。".into());
+    }
     let mut guard = service
         .monitor
         .lock()
@@ -45,6 +85,9 @@ fn with_twitch<T>(
     service: &TwitchService,
     action: impl FnOnce(&mut peercast_desktop::youtube::YouTubeMonitor) -> Result<T, String>,
 ) -> Result<T, String> {
+    if !peercast_desktop::platform::LIVE_SERVICES_SUPPORTED {
+        return Err("このプラットフォームではYouTube/Twitchは未対応です。".into());
+    }
     let mut guard = service
         .monitor
         .lock()
@@ -142,6 +185,7 @@ fn twitch_refresh(
     if window.label() != "main" {
         return Err("メイン画面から操作してください".into());
     }
+    require_live_monitor()?;
     with_twitch(&service, |monitor| {
         monitor.request_refresh(current_time_ms())
     })
@@ -182,6 +226,7 @@ fn youtube_refresh(
     if window.label() != "main" {
         return Err("メイン画面から操作してください".into());
     }
+    require_live_monitor()?;
     with_youtube(&service, |monitor| {
         monitor.request_refresh(current_time_ms())
     })
@@ -192,7 +237,7 @@ async fn youtube_open(
     window: tauri::WebviewWindow,
     service: State<'_, YouTubeService>,
     video_id: String,
-) -> Result<(), String> {
+) -> Result<Option<u64>, String> {
     if window.label() != "main" {
         return Err("メイン画面から操作してください".into());
     }
@@ -240,7 +285,7 @@ async fn twitch_open(
     window: tauri::WebviewWindow,
     service: State<'_, TwitchService>,
     stream_id: String,
-) -> Result<(), String> {
+) -> Result<Option<u64>, String> {
     if window.label() != "main" {
         return Err("メイン画面から操作してください".into());
     }
@@ -373,10 +418,12 @@ async fn choose_file(
     tauri::async_runtime::spawn_blocking(move || {
         let picker = app.dialog().file().set_parent(&window);
         let selected = match kind.as_str() {
-            "player" => picker
-                .set_title("プレイヤーを選択")
-                .add_filter("実行ファイル", &["exe"])
-                .blocking_pick_file(),
+            "player" => {
+                let picker = picker.set_title("プレイヤーを選択");
+                #[cfg(windows)]
+                let picker = picker.add_filter("実行ファイル", &["exe"]);
+                picker.blocking_pick_file()
+            }
             "sound" => picker
                 .set_title("通知音を選択")
                 .add_filter("WAVファイル", &["wav"])
@@ -490,31 +537,33 @@ async fn open_recording_folder(
             .ok_or("録画ファイルの保存先がまだありません")?
     } else {
         let settings = backend.recording_settings().await?;
-        let path = std::path::PathBuf::from(settings.directory);
-        if path.is_absolute() {
-            path
-        } else {
-            std::env::current_exe()
-                .map_err(|error| error.to_string())?
-                .parent()
-                .ok_or("アプリの配置先を取得できません")?
-                .join(path)
-        }
+        peercast_desktop::platform::recording_directory(
+            &std::env::current_exe().map_err(|error| error.to_string())?,
+            std::path::Path::new(&settings.directory),
+        )?
     };
     std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
-    let explorer = std::path::PathBuf::from(
-        std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
-    )
-    .join("explorer.exe");
-    std::process::Command::new(explorer)
-        .arg({
-            let value = path.to_string_lossy();
-            if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
-                format!(r"\\{unc}")
-            } else {
-                value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
-            }
-        })
+    #[cfg(windows)]
+    {
+        let explorer = std::path::PathBuf::from(
+            std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
+        )
+        .join("explorer.exe");
+        std::process::Command::new(explorer)
+            .arg({
+                let value = path.to_string_lossy();
+                if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
+                    format!(r"\\{unc}")
+                } else {
+                    value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
+                }
+            })
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(windows))]
+    std::process::Command::new("/usr/bin/xdg-open")
+        .arg(&path)
         .spawn()
         .map_err(|error| error.to_string())?;
     Ok(())
@@ -763,9 +812,10 @@ async fn close_window(app: tauri::AppHandle, backend: State<'_, Backend>) -> Res
 }
 
 fn main() {
-    tauri::Builder::default()
-        .manage(UpdateManager::default())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default().manage(UpdateManager::default());
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             peercast_desktop::native_window::restore_main(app);
         }))
@@ -774,7 +824,8 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::Builder::new().app_name("Peercast RT").build())
         .setup(|app| {
-            let mut path = app.path().app_local_data_dir()?.join("tauri-test.json");
+            let profile = if cfg!(target_os = "linux") { "linux-desktop.json" } else { "tauri-test.json" };
+            let mut path = app.path().app_local_data_dir()?.join(profile);
             let mut arguments = std::env::args_os().skip(1);
             while let Some(argument) = arguments.next() {
                 if argument == "--settings" {
@@ -796,6 +847,12 @@ fn main() {
             let youtube_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
+                    // A missing/invalid helper does not consume due requests or emit notifications.
+                    // The shared readiness cache bounds rechecks; explicit refresh can recover sooner.
+                    if !peercast_desktop::live_runtime::dependencies().monitor_ready {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        continue;
+                    }
                     let requests = with_youtube(&youtube_app.state::<YouTubeService>(), |monitor| Ok(monitor.due_requests(current_time_ms()))).unwrap_or_default();
                     peercast_desktop::live_monitor::run_probe_batch(requests, |request| async move {
                         match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
@@ -815,6 +872,12 @@ fn main() {
             let twitch_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
+                    // A missing/invalid helper does not consume due requests or emit notifications.
+                    // The shared readiness cache bounds rechecks; explicit refresh can recover sooner.
+                    if !peercast_desktop::live_runtime::dependencies().monitor_ready {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        continue;
+                    }
                     let requests = with_twitch(&twitch_app.state::<TwitchService>(), |monitor| Ok(monitor.due_requests(current_time_ms()))).unwrap_or_default();
                     peercast_desktop::live_monitor::run_probe_batch(requests, |request| async move {
                         match std::env::current_exe().map_err(|error| error.to_string()).and_then(|exe| peercast_desktop::youtube_process::bundled_executable(&exe)) {
@@ -843,6 +906,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            platform_capabilities,
+            live_dependencies_refresh,
+            live_playback_status,
             updater::update_status,
             updater::check_update,
             updater::download_update,

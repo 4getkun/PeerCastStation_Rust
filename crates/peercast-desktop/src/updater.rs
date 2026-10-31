@@ -94,6 +94,9 @@ impl UpdateManager {
 }
 
 fn authorize(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if !crate::platform::UPDATER_SUPPORTED {
+        return Err("このOSでは自動更新は未対応です。Linux版は手動で更新してください。".into());
+    }
     if window.label() == "main" {
         Ok(())
     } else {
@@ -150,6 +153,13 @@ async fn bounded_body(
 
 #[tauri::command]
 pub fn update_status(manager: State<'_, UpdateManager>) -> UpdateStatus {
+    if !crate::platform::UPDATER_SUPPORTED {
+        return UpdateStatus {
+            phase: "unsupported".into(),
+            error: Some("Linux版は手動更新です".into()),
+            ..UpdateStatus::default()
+        };
+    }
     manager.status()
 }
 

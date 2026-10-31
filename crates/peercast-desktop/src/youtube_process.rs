@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "linux"))]
 use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
@@ -71,16 +72,23 @@ pub fn video_url(id: &str) -> Result<String, String> {
 }
 
 pub fn bundled_executable(application_exe: &Path) -> Result<PathBuf, String> {
-    let parent = application_exe
-        .parent()
-        .ok_or("アプリの配置先を取得できません")?;
-    for relative in ["YouTube/yt-dlp.exe", "resources/YouTube/yt-dlp.exe"] {
-        let candidate = parent.join(relative);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
+    #[cfg(target_os = "linux")]
+    {
+        crate::live_runtime::monitor_path(application_exe)
     }
-    Err("同梱のYouTube監視ツールが見つかりません。アプリを再インストールしてください".into())
+    #[cfg(not(target_os = "linux"))]
+    {
+        let parent = application_exe
+            .parent()
+            .ok_or("アプリの配置先を取得できません")?;
+        for relative in ["YouTube/yt-dlp.exe", "resources/YouTube/yt-dlp.exe"] {
+            let candidate = parent.join(relative);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+        Err("同梱のYouTube監視ツールが見つかりません。アプリを再インストールしてください".into())
+    }
 }
 
 pub async fn probe(
@@ -91,15 +99,23 @@ pub async fn probe(
     let executable = executable.to_owned();
     // Verify the exact bundled release, never a PATH executable or user-selected command.
     let verified = tokio::task::spawn_blocking(move || {
-        let bytes = std::fs::read(&executable).map_err(|_| "YouTube監視ツールを読めません")?;
-        if bytes.len() > 30 * 1024 * 1024
-            || format!("{:x}", Sha256::digest(&bytes)) != YT_DLP_SHA256
+        #[cfg(target_os = "linux")]
         {
-            return Err(
-                "YouTube監視ツールの整合性を確認できません。再インストールしてください".to_owned(),
-            );
+            crate::live_runtime::verify_probe_path(&executable)
         }
-        Ok(executable)
+        #[cfg(not(target_os = "linux"))]
+        {
+            let bytes = std::fs::read(&executable).map_err(|_| "YouTube監視ツールを読めません")?;
+            if bytes.len() > 30 * 1024 * 1024
+                || format!("{:x}", Sha256::digest(&bytes)) != YT_DLP_SHA256
+            {
+                return Err(
+                    "YouTube監視ツールの整合性を確認できません。再インストールしてください"
+                        .to_owned(),
+                );
+            }
+            Ok(executable)
+        }
     })
     .await
     .map_err(|error| error.to_string())??;

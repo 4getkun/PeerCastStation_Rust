@@ -14,6 +14,7 @@
   const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const UPDATE_LAST_CHECK_KEY = "peercast-rt.update.last-successful-check";
   const state = {
+    capabilities: { platform: "unknown", liveServices: false, updater: false },
     snapshot: null,
     noticeTimer: null,
     noticeToken: 0,
@@ -82,6 +83,99 @@
     youtubeSource: "all",
   };
 
+  function livePlayerName() {
+    return state.capabilities.platform === "linux" ? "mpv" : "PCRPlayer";
+  }
+  function livePlaybackReady() {
+    return state.capabilities.liveServices === true &&
+      (state.capabilities.platform !== "linux" || state.capabilities.liveDependencies?.playbackReady === true);
+  }
+  async function launchLivePlayback(command, args) {
+    if (!livePlaybackReady()) return;
+    const key = `${command}:${args.videoId || args.streamId}`;
+    const pending = state.pendingLivePlayback ||= new Set();
+    if (pending.has(key)) return;
+    pending.add(key);
+    try {
+      const generation = await invoke(command, args);
+      if (state.capabilities?.platform === "linux") watchLivePlayback(generation);
+    } finally { pending.delete(key); }
+  }
+  function stopLivePlaybackWatch() {
+    state.livePlaybackWatchToken = (state.livePlaybackWatchToken || 0) + 1;
+    if (state.livePlaybackWatchTimer != null) window.clearTimeout(state.livePlaybackWatchTimer);
+    state.livePlaybackWatchTimer = null;
+  }
+  function watchLivePlayback(generation) {
+    if (state.capabilities?.platform !== "linux" || state.livePlaybackWatchDisposed ||
+        !Number.isSafeInteger(generation) || generation <= 0 || generation <= (state.livePlaybackGeneration || 0)) return;
+    stopLivePlaybackWatch();
+    state.livePlaybackGeneration = generation;
+    const token = state.livePlaybackWatchToken;
+    // No startup-wide polling. Only the latest Linux launch owns this timer.
+    const poll = async () => {
+      if (token !== state.livePlaybackWatchToken) return;
+      state.livePlaybackWatchTimer = null;
+      try {
+        const status = await invoke("live_playback_status", {});
+        if (token !== state.livePlaybackWatchToken) return;
+        if (!status || status.generation !== generation) {
+          stopLivePlaybackWatch(); // A newer backend launch superseded this one.
+          return;
+        }
+        if (status.state === "failed") {
+          stopLivePlaybackWatch();
+          setNotice(status.message || "mpv の再生に失敗しました。依存関係と公開ライブの状態を確認してください。", true);
+          return;
+        }
+        if (status.state === "exited" || status.state === "idle") {
+          stopLivePlaybackWatch();
+          return;
+        }
+        if (status.state !== "starting" && status.state !== "running") {
+          stopLivePlaybackWatch();
+          return;
+        }
+      } catch (_) {
+        if (token !== state.livePlaybackWatchToken) return;
+        stopLivePlaybackWatch();
+        setNotice("mpv の終了状態を確認できませんでした。再生状態はプレイヤーで確認してください。", true);
+        return;
+      }
+      if (token === state.livePlaybackWatchToken) state.livePlaybackWatchTimer = window.setTimeout(poll, 1000);
+    };
+    state.livePlaybackWatchTimer = window.setTimeout(poll, 1000);
+  }
+  window.addEventListener("pagehide", () => {
+    state.livePlaybackWatchDisposed = true;
+    stopLivePlaybackWatch();
+  });
+  function applyLiveDependencies(dependencies) {
+    if (!dependencies) return;
+    const changed = JSON.stringify(state.capabilities.liveDependencies) !== JSON.stringify(dependencies);
+    state.capabilities.liveDependencies = dependencies;
+    const note = byId("live-dependencies-status");
+    if (note) {
+      note.hidden = dependencies.reasonCode === "ready";
+      note.textContent = dependencies.message;
+    }
+    text("provider-context-play", `${livePlayerName()}で再生`);
+    if (changed) {
+      window.dispatchEvent(new CustomEvent("live-dependencies-updated", { detail: dependencies }));
+      if (currentView() === "yp") renderYpDirectory();
+    }
+  }
+  async function fetchLiveDependencies() {
+    if (state.liveDependenciesBusy) return;
+    state.liveDependenciesBusy = true;
+    try {
+      const capabilities = await invoke("platform_capabilities");
+      applyLiveDependencies(capabilities?.liveDependencies);
+    } catch (_) { /* Keep the last known state; backend validates every launch. */ }
+    finally { state.liveDependenciesBusy = false; }
+  }
+  window.addEventListener("live-dependencies-rechecked", (event) => applyLiveDependencies(event.detail));
+
   const viewTitles = { yp: "チャンネル", channels: "配信", connections: "接続", recordings: "録画", logs: "ログ", settings: "設定" };
   const internalTestId = "0123456789abcdef0123456789abcdef";
   const logRanks = { error: 0, fatal: 0, warn: 1, warning: 1, info: 2, debug: 3, trace: 4 };
@@ -124,6 +218,7 @@
   }
 
   async function checkForApplicationUpdate() {
+    if (state.capabilities?.updater === false) return;
     try {
       const status = await invoke("check_update");
       try { localStorage.setItem(UPDATE_LAST_CHECK_KEY, String(Date.now())); } catch { /* Updating still works without WebView storage. */ }
@@ -136,6 +231,7 @@
   }
 
   function scheduleApplicationUpdateChecks() {
+    if (state.capabilities?.updater === false) return;
     let lastSuccessfulCheck = 0;
     try { lastSuccessfulCheck = Number(localStorage.getItem(UPDATE_LAST_CHECK_KEY) || 0); } catch { /* Ignore unavailable storage. */ }
     const elapsed = Number.isFinite(lastSuccessfulCheck) ? Date.now() - lastSuccessfulCheck : UPDATE_CHECK_INTERVAL_MS;
@@ -393,11 +489,12 @@
     select.replaceChildren();
     for (const [value, label] of [["peercast", "Peercast"], ["all", "すべてのチャンネル"], ["youtube", "YouTube"], ["twitch", "Twitch"]]) {
       const option = document.createElement("option");
+      if (state.capabilities?.liveServices === false && ["youtube", "twitch"].includes(value)) continue;
       option.value = value;
       option.textContent = label;
       select.append(option);
     }
-    const values = new Set(["peercast", "all", "youtube", "twitch"]);
+    const values = new Set(state.capabilities?.liveServices === false ? ["peercast", "all"] : ["peercast", "all", "youtube", "twitch"]);
     state.ypSource = values.has(previous) ? previous : "peercast";
     select.value = state.ypSource;
     return true;
@@ -519,10 +616,12 @@
       if (stream?.status === "live" && stream.id) {
         const actions = document.createElement("div");
         actions.className = "youtube-stream-actions";
-        const play = appendText(actions, "button", "button button-outline youtube-open", "PCRPlayerで再生");
+        const play = appendText(actions, "button", "button button-outline youtube-open", `${livePlayerName()}で再生`);
         play.type = "button";
+        play.disabled = !livePlaybackReady();
+        play.title = play.disabled ? state.capabilities.liveDependencies?.message || "再生の準備ができていません" : "";
         play.dataset.youtubePlay = String(stream.id);
-        play.setAttribute("aria-label", `${stream.title || "配信"}をPCRPlayerで再生`);
+        play.setAttribute("aria-label", `${stream.title || "配信"}を${livePlayerName()}で再生`);
         const browser = appendText(actions, "button", "button button-outline youtube-open", "ブラウザで開く");
         browser.type = "button";
         browser.dataset.youtubeBrowser = String(stream.id);
@@ -564,10 +663,12 @@
       appendText(card, "span", "youtube-stream-status status-live", "配信中");
       const actions = document.createElement("div");
       actions.className = "youtube-stream-actions";
-      const play = appendText(actions, "button", "button button-outline youtube-open", "PCRPlayerで再生");
+      const play = appendText(actions, "button", "button button-outline youtube-open", `${livePlayerName()}で再生`);
       play.type = "button";
+      play.disabled = !livePlaybackReady();
+      play.title = play.disabled ? state.capabilities.liveDependencies?.message || "再生の準備ができていません" : "";
       play.dataset.twitchPlay = streamId;
-      play.setAttribute("aria-label", `${stream.title || channel.name || "配信"}をPCRPlayerで再生`);
+      play.setAttribute("aria-label", `${stream.title || channel.name || "配信"}を${livePlayerName()}で再生`);
       const browser = appendText(actions, "button", "button button-outline youtube-open", "ブラウザで開く");
       browser.type = "button";
       browser.dataset.twitchBrowser = streamId;
@@ -579,6 +680,7 @@
   }
 
   async function fetchYoutubeStatus() {
+    if (state.capabilities?.liveServices === false) return;
     if (state.youtubeQueryBusy || document.visibilityState === "hidden") return;
     state.youtubeQueryBusy = true;
     const revision = state.youtubeRevision;
@@ -600,6 +702,7 @@
   }
 
   async function fetchTwitchStatus() {
+    if (state.capabilities?.liveServices === false) return;
     if (state.twitchQueryBusy || document.visibilityState === "hidden") return;
     state.twitchQueryBusy = true;
     const revision = state.twitchRevision;
@@ -1105,6 +1208,7 @@
     if (state.settingsView) return;
     if (state.settingsMountPromise) return state.settingsMountPromise;
     state.settingsMountPromise = (async () => {
+      await state.capabilitiesReady;
       const host = byId("settings-host");
       if (!host) throw new Error("設定画面の表示領域が見つかりません。");
       if (typeof window.createSettingsView !== "function") throw new Error("設定画面を初期化できません。");
@@ -1122,6 +1226,7 @@
       });
       [...parsed.body.childNodes].forEach((node) => shadow.append(document.importNode(node, true)));
       const settingsView = window.createSettingsView(shadow, {
+        platformCapabilities: state.capabilities,
         initialSnapshot: state.snapshot,
         onBack: () => requestView("yp"),
         onSaved: (snapshot) => {
@@ -2183,8 +2288,9 @@
   function handleYpResultsClick(event) {
     const youtubePlay = event.target.closest("[data-youtube-play]");
     if (youtubePlay) {
-      void invoke("youtube_open", { videoId: youtubePlay.dataset.youtubePlay }).catch((error) => {
-        text("yp-status", `PCRPlayerで再生できませんでした: ${errorText(error)}`);
+      if (!livePlaybackReady() || youtubePlay.disabled) return;
+      void launchLivePlayback("youtube_open", { videoId: youtubePlay.dataset.youtubePlay }).catch((error) => {
+        text("yp-status", `${livePlayerName()}で再生できませんでした: ${errorText(error)}`);
       });
       return;
     }
@@ -2197,8 +2303,9 @@
     }
     const twitchPlay = event.target.closest("[data-twitch-play]");
     if (twitchPlay) {
-      void invoke("twitch_open", { streamId: twitchPlay.dataset.twitchPlay }).catch((error) => {
-        text("yp-status", `PCRPlayerで再生できませんでした: ${errorText(error)}`);
+      if (!livePlaybackReady() || twitchPlay.disabled) return;
+      void launchLivePlayback("twitch_open", { streamId: twitchPlay.dataset.twitchPlay }).catch((error) => {
+        text("yp-status", `${livePlayerName()}で再生できませんでした: ${errorText(error)}`);
       });
       return;
     }
@@ -2232,7 +2339,7 @@
       event.preventDefault();
       closeAllContextMenus();
       state.providerContextStream = { provider, streamId };
-      byId("provider-context-play").disabled = !state.snapshot?.running || state.busy;
+      byId("provider-context-play").disabled = !livePlaybackReady() || state.busy;
       placeContextMenu(menu, event.clientX, event.clientY);
       byId("provider-context-play")?.focus();
       return;
@@ -2289,12 +2396,16 @@
       if (moved || currentView() === "settings") state.settingsView?.openYellowPagesSubtab(target.provider);
       return;
     }
+    if (action === "play" && !livePlaybackReady()) return;
     const command = target.provider === "twitch"
       ? action === "browser" ? "twitch_open_browser" : "twitch_open"
       : action === "browser" ? "youtube_open_browser" : "youtube_open";
     const args = target.provider === "twitch" ? { streamId: target.streamId } : { videoId: target.streamId };
-    try { await invoke(command, args); }
-    catch (error) { setNotice(`${action === "browser" ? "ブラウザで開けませんでした" : "PCRPlayerで再生できませんでした"}: ${errorText(error)}`, true); }
+    try {
+      if (action === "browser") await invoke(command, args);
+      else await launchLivePlayback(command, args);
+    }
+    catch (error) { setNotice(`${action === "browser" ? "ブラウザで開けませんでした" : `${livePlayerName()}で再生できませんでした`}: ${errorText(error)}`, true); }
   }
   bind("provider-context-play", "click", () => { void runProviderContextAction("play"); });
   bind("provider-context-browser", "click", () => { void runProviderContextAction("browser"); });
@@ -2525,15 +2636,36 @@
   bind("log-wrap", "change", renderLogs);
   bind("copy-logs", "click", copyVisibleLogs);
 
-  refresh();
-  scheduleApplicationUpdateChecks();
-  window.setInterval(() => refresh(false), 1000);
-  void fetchYoutubeStatus();
-  void fetchTwitchStatus();
-  window.setInterval(() => {
-    if (document.visibilityState !== "hidden") {
+  // Resolve native capabilities before any optional-service or updater request.
+  // Fail closed if the platform command is unavailable; PeerCast remains usable.
+  async function startApplication() {
+    try {
+      state.capabilitiesReady = invoke("platform_capabilities").catch(() => null);
+      const capabilities = await state.capabilitiesReady;
+      if (capabilities && typeof capabilities.platform === "string") state.capabilities = capabilities;
+      else throw new Error("プラットフォーム情報がありません");
+    } catch (error) {
+      setNotice(`プラットフォーム情報を取得できません。ライブサービスと自動更新は無効です: ${errorText(error)}`, true);
+    }
+    applyLiveDependencies(state.capabilities.liveDependencies);
+    if (state.capabilities.platform === "linux") {
+      text("about-main-platform", "配信の視聴とP2Pリレーを行うLinux開発版です。");
+      text("about-main-player", "ライブ再生: 外部mpv（別途配置が必要）");
+    }
+    await refresh();
+    scheduleApplicationUpdateChecks();
+    window.setInterval(() => refresh(false), 1000);
+    if (state.capabilities.liveServices === true) {
       void fetchYoutubeStatus();
       void fetchTwitchStatus();
+      window.setInterval(() => {
+        if (document.visibilityState !== "hidden") {
+          void fetchLiveDependencies();
+          void fetchYoutubeStatus();
+          void fetchTwitchStatus();
+        }
+      }, YOUTUBE_STATUS_POLL_MS);
     }
-  }, YOUTUBE_STATUS_POLL_MS);
+  }
+  void startApplication();
 })();

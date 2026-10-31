@@ -210,6 +210,10 @@ async fn yellow_pages_default_crud_empty_and_limits_survive_reopen() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("desktop.json");
     let backend = DesktopBackend::open(path.clone()).await.unwrap();
+    // Linux starts offline; other platforms retain the existing directory presets.
+    #[cfg(target_os = "linux")]
+    assert!(backend.snapshot().await.unwrap().yellow_pages.is_empty());
+    #[cfg(not(target_os = "linux"))]
     assert_eq!(
         backend.snapshot().await.unwrap().yellow_pages,
         vec![
@@ -283,7 +287,7 @@ async fn yellow_pages_default_crud_empty_and_limits_survive_reopen() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn old_single_sp_default_migrates_to_five_current_defaults() {
+async fn single_sp_config_is_preserved_on_linux_and_migrated_elsewhere() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("desktop.json");
     let mut config = AppConfig::default();
@@ -296,6 +300,10 @@ async fn old_single_sp_default_migrates_to_five_current_defaults() {
     ConfigManager::new(&path).save(&config).unwrap();
 
     let backend = DesktopBackend::open(path.clone()).await.unwrap();
+    // A saved Linux directory is an explicit choice, not a request for more YPs.
+    #[cfg(target_os = "linux")]
+    let expected = vec![yp("SP", "http://bayonet.ddo.jp/sp/index.txt")];
+    #[cfg(not(target_os = "linux"))]
     let expected = vec![
         yp("SP", "http://bayonet.ddo.jp/sp/index.txt"),
         yp("p@YP", "https://p-at.net/index.txt"),
@@ -315,16 +323,11 @@ async fn old_single_sp_default_migrates_to_five_current_defaults() {
                 .map(|url| (page.name.as_str(), url.as_str()))
         })
         .collect();
-    assert_eq!(
-        saved_pages,
-        vec![
-            ("SP", "http://bayonet.ddo.jp/sp/index.txt"),
-            ("p@YP", "https://p-at.net/index.txt"),
-            ("0yp", "https://yayaue.me/yp/index.txt"),
-            ("YPv6", "http://ypv6.pecastation.org/index.txt"),
-            ("平成YP", "http://yp.pcgw.pgw.jp/index.txt"),
-        ]
-    );
+    let expected_saved_pages: Vec<_> = expected
+        .iter()
+        .map(|page| (page.name.as_str(), page.channels_url.as_str()))
+        .collect();
+    assert_eq!(saved_pages, expected_saved_pages);
     close_backend(&backend).await;
 }
 

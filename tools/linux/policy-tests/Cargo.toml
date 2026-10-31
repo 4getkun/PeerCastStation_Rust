@@ -1,0 +1,20 @@
+[package]
+name = "peercast-linux-policy-tests"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+serde = {version="1.0",features=["derive"]}
+serde_json="1.0"
+reqwest={version="0.12",default-features=false,features=["rustls-tls","stream","http2"]}
+
+tokio = {version="1.43", features=["sync","time","net","io-util","macros","rt-multi-thread","fs","process"]}
+chrono = {version="=0.4.45",default-features=false,features=["clock"]}
+regex = "=1.13.1"
+unicode-normalization = "0.1"
+futures-util="0.3"
+peercast-app={path="../../../crates/peercast-app"}
+peercast-rpc={path="../../../crates/peercast-rpc"}
+tempfile="3"
+uuid={version="1.29.0",features=["v4"]}
+
+[workspace]

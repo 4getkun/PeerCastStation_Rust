@@ -182,6 +182,9 @@ async fn rejects_the_33rd_dynamic_relay() {
 
 #[tokio::test]
 async fn concurrent_duplicate_adds_share_one_channel_and_worker() {
+    // Hold the first connection open: a refused port permits immediate retries,
+    // so an attempt count on that fixture cannot measure duplicate workers.
+    let (endpoint, mut accepted, acceptor) = loopback_acceptor().await;
     let (runtime, tracker) = make_runtime();
     runtime.start().await.unwrap();
     let mut adds = Vec::new();
@@ -189,7 +192,7 @@ async fn concurrent_duplicate_adds_share_one_channel_and_worker() {
         let runtime = Arc::clone(&runtime);
         adds.push(tokio::spawn(async move {
             runtime
-                .add_relay_channel(relay("3123456789abcdef0123456789abcdef"))
+                .add_relay_channel(relay_at("3123456789abcdef0123456789abcdef", endpoint))
                 .await
                 .unwrap()
         }));
@@ -201,10 +204,18 @@ async fn concurrent_duplicate_adds_share_one_channel_and_worker() {
     assert!(channels
         .iter()
         .all(|channel| Arc::ptr_eq(&channels[0], channel)));
-    tokio::task::yield_now().await;
+    let mut first = next_connection(&mut accepted).await;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), accepted.recv())
+            .await
+            .is_err(),
+        "duplicate adds must not start a second connection"
+    );
     assert_eq!(channels[0].snapshot().await.connection_attempts, 1);
     assert_eq!(runtime.channel_snapshots().await.len(), 1);
     drain(&runtime, &tracker).await;
+    assert_closed(&mut first).await;
+    acceptor.abort();
 }
 
 #[tokio::test]

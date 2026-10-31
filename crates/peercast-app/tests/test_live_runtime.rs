@@ -501,7 +501,51 @@ async fn relay_live_stream_replays_byte_and_time_bounded_content_over_http() {
 }
 
 #[tokio::test]
-async fn relay_retries_use_configured_short_read_timeout_and_backoff() {
+async fn relay_startup_retains_thirty_second_grace_before_retry() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut config = AppConfig::default();
+    config.runtime.reconnect.read_timeout_ms = 60;
+    config
+        .runtime
+        .channels
+        .push(relay_channel(listener.local_addr().unwrap()));
+    let running = start_server(config).await;
+    let (mut first, peer) = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), relay_handshake(&mut first, peer))
+        .await
+        .expect("fixture handshake should complete");
+    let started = Instant::now();
+    // A parent can wait for its first keyframe. The configured 60ms live
+    // timeout must not replace the intentional 30s pre-media grace period.
+    assert!(
+        tokio::time::timeout(Duration::from_secs(29), listener.accept())
+            .await
+            .is_err(),
+        "must not retry during startup grace"
+    );
+    let (_second, _) = tokio::time::timeout(Duration::from_secs(4), listener.accept())
+        .await
+        .expect("silent startup must still time out and retry")
+        .unwrap();
+    assert!(started.elapsed() >= Duration::from_secs(29));
+    assert_eq!(
+        running
+            .runtime
+            .channel(CHANNEL_ID)
+            .unwrap()
+            .snapshot()
+            .await
+            .connection_attempts,
+        2
+    );
+    stop_server(running).await;
+}
+
+#[tokio::test]
+async fn relay_retries_use_configured_short_read_timeout_after_media() {
     let relay_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let relay_addr = relay_listener.local_addr().unwrap();
     let mut config = AppConfig::default();
@@ -515,8 +559,17 @@ async fn relay_retries_use_configured_short_read_timeout_and_backoff() {
 
     let (retry_tx, retry_rx) = oneshot::channel();
     let relay_task = tokio::spawn(async move {
+        let (mut first, peer) = relay_listener.accept().await.unwrap();
+        relay_handshake(&mut first, peer).await;
+        write_channel_packet(
+            &mut first,
+            ChannelId::from_hex(CHANNEL_ID).unwrap(),
+            ID4::from_bytes(*b"RAW "),
+            0,
+            PacketPayload::Header(Bytes::from_static(b"timeout-header")),
+        )
+        .await;
         let first_at = Instant::now();
-        let (_first, _) = relay_listener.accept().await.unwrap();
         let (second, _) = tokio::time::timeout(Duration::from_millis(700), relay_listener.accept())
             .await
             .expect("configured read timeout and retry should create a second connection")

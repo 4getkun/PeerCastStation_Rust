@@ -41,7 +41,7 @@
   }
   function renderUpdateNotes(element, notes) { element.textContent = notes || "更新内容はありません。"; }
 
-  window.createSettingsView = (root, { onBack, onSaved, initialSnapshot } = {}) => {
+  window.createSettingsView = (root, { onBack, onSaved, initialSnapshot, platformCapabilities = { platform: "unknown", liveServices: false, updater: false } } = {}) => {
   const invoke = (name, args) => {
     const call = window.__TAURI__?.core?.invoke;
     return typeof call === "function"
@@ -49,7 +49,7 @@
       : Promise.reject(new Error("設定画面はアプリ内でのみ利用できます。バックエンドに接続できません。"));
   };
   const $ = (id) => root.querySelector(`#${id}`);
-  const defaultArguments = `"<stream/>" "<channelname/>" "<contact/>"`;
+  const defaultArguments = platformCapabilities.platform === "linux" ? `"<stream/>"` : `"<stream/>" "<channelname/>" "<contact/>"`;
   function normalizeWindowPreferences(value = {}) {
     const width = value.width == null || value.width === "" ? Number.NaN : Number(value.width);
     const height = value.height == null || value.height === "" ? Number.NaN : Number(value.height);
@@ -112,7 +112,7 @@
   const ruleFields = ["name", "details", "comment", "contactUrl", "yellowPage", "streamUrl", "contentType", "listeners", "bitrate"];
   const recordingDefaults = { enabled: false, directory: "recordings", channelSubfolders: true, limitConcurrent: true, maxConcurrent: 5, retryCount: 30, retryIntervalSecs: 10, disconnectEveryRetries: 5, disconnectOnRetryEnd: true, splitMinutes: null, splitSizeMb: null, allDay: true, watchStart: "00:00", watchEnd: "23:59", monitorIntervalSecs: 60, rules: [] };
   function cloneRecording(value) { return { ...value, rules: (value.rules || []).map((rule) => ({ ...rule, fields: [...rule.fields] })) }; }
-  const state = { snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), directory: { youtubeAtBottom: false, twitchAtBottom: false }, window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
+  const state = { capabilities: platformCapabilities, snapshot: null, limits: null, pages: [], savedPages: [], selected: null, player: { executable: null, arguments: defaultArguments }, savedPlayer: { executable: null, arguments: defaultArguments }, rules: [], savedRules: [], selectedRule: null, rulesSearch: "", recording: cloneRecording(recordingDefaults), savedRecording: cloneRecording(recordingDefaults), directory: { youtubeAtBottom: false, twitchAtBottom: false }, window: normalizeWindowPreferences(), selectedWindowPreset: "", selectedRecordingRule: null, recordingRulesSearch: "", recordingRulesFingerprint: null, recordingListFingerprint: null, dirty: false, loading: true, ready: false, busy: false, previewing: false, preferenceFingerprint: null, listFingerprint: null, rulesFingerprint: null, leavePromise: null, resolveLeave: null, updateStatus: null, updateStatusLoading: false, updateActionBusy: false, updatePollTimer: null, updatePollRequest: null, updateViewActive: false, updateDeferred: false, updateDisposed: false };
   Object.assign(state, { youtubeSnapshot: null, youtubeLoaded: false, youtubeLoading: false, youtubeBusy: false, youtubeMessage: "読み込み中", twitchSnapshot: null, twitchLoaded: false, twitchLoading: false, twitchBusy: false, twitchMessage: "読み込み中" });
   Object.assign(state, { noticeTimer: null, noticeGeneration: 0, statusTimer: null, statusGeneration: 0, providerMessages: new Map(), providerMessageToken: 0 });
   const meta = {
@@ -254,15 +254,15 @@
     $("delete-page").disabled = !editable || state.selected === null;
     $("save-button").disabled = !editable || !state.dirty;
     $("cancel-button").disabled = state.busy;
-    $("youtube-at-bottom").disabled = !editable;
-    $("twitch-at-bottom").disabled = !editable;
-    const youtubeDisabled = !state.ready || state.loading || state.busy || state.youtubeLoading || state.youtubeBusy;
+    $("youtube-at-bottom").disabled = !editable || state.capabilities?.liveServices === false;
+    $("twitch-at-bottom").disabled = !editable || state.capabilities?.liveServices === false;
+    const youtubeDisabled = state.capabilities?.liveServices === false || !state.ready || state.loading || state.busy || state.youtubeLoading || state.youtubeBusy;
     ["youtube-url", "youtube-add", "youtube-refresh"].forEach((id) => { $(id).disabled = youtubeDisabled; });
     root.querySelectorAll("[data-youtube-action]").forEach((button) => { button.disabled = youtubeDisabled; });
     const refreshState = youtubeRefreshState(state.youtubeSnapshot, Date.now());
     $("youtube-refresh").disabled = youtubeDisabled || refreshState.disabled;
     $("youtube-refresh").title = refreshState.remainingSeconds > 0 ? `手動確認はあと${refreshState.remainingSeconds}秒後にできます` : "登録チャンネルを今すぐ確認します";
-    const twitchDisabled = !state.ready || state.loading || state.busy || state.twitchLoading || state.twitchBusy;
+    const twitchDisabled = state.capabilities?.liveServices === false || !state.ready || state.loading || state.busy || state.twitchLoading || state.twitchBusy;
     ["twitch-url", "twitch-add", "twitch-refresh"].forEach((id) => { $(id).disabled = twitchDisabled; });
     root.querySelectorAll("[data-twitch-action]").forEach((button) => { button.disabled = twitchDisabled; });
     const twitchRefresh = youtubeRefreshState(state.twitchSnapshot, Date.now());
@@ -445,6 +445,7 @@
     return true;
   }
   async function loadYoutubeSettings() {
+    if (state.capabilities?.liveServices === false) return;
     if (state.youtubeLoaded || state.youtubeLoading) return;
     state.youtubeLoading = true;
     setProviderMessage("youtube", "YouTube登録を読み込み中です…", { persistent: true });
@@ -473,6 +474,7 @@
     renderControls();
   });
   async function youtubeSettingsMutation(command, args) {
+    if (state.capabilities?.liveServices === false) return;
     if (state.youtubeBusy || !state.ready) return false;
     state.youtubeBusy = true;
     setProviderMessage("youtube", "YouTube登録を更新しています…", { persistent: true });
@@ -491,6 +493,7 @@
     }
   }
   async function loadTwitchSettings() {
+    if (state.capabilities?.liveServices === false) return;
     if (state.twitchLoaded || state.twitchLoading) return;
     state.twitchLoading = true;
     setProviderMessage("twitch", "Twitch登録を読み込み中です…", { persistent: true });
@@ -527,6 +530,7 @@
     renderControls();
   });
   async function twitchSettingsMutation(command, args) {
+    if (state.capabilities?.liveServices === false) return;
     if (state.twitchBusy || !state.ready) return false;
     state.twitchBusy = true;
     setProviderMessage("twitch", "Twitch登録を更新しています…", { persistent: true });
@@ -887,10 +891,10 @@
     const configuredPlayer = typeof snapshot.desktop?.player?.executable === "string" && snapshot.desktop.player.executable.trim() ? snapshot.desktop.player.executable : null;
     const playerPath = configuredPlayer || (typeof snapshot.playerPath === "string" && snapshot.playerPath.trim() ? snapshot.playerPath : "同梱プレイヤー");
     const playerStatus = typeof snapshot.playerAvailable === "boolean"
-      ? snapshot.playerAvailable ? "利用可能" : "見つかりません"
+      ? snapshot.playerAvailable ? "利用可能" : (state.capabilities?.platform === "linux" ? "見つからないか実行権限がありません。設定から変更できます" : "見つかりません")
       : "状態を確認できません";
     $("player-status").textContent = `${playerPath}（${playerStatus}）`;
-    $("player-editor-status").textContent = `保存済み設定: ${playerPath}（${playerStatus}）。`;
+    $("player-editor-status").textContent = `保存済み設定: ${playerPath}（${playerStatus}）。${state.capabilities?.platform === "linux" ? " mpvを別途インストールするか、実行可能なプレイヤーの絶対パスを指定してください。" : ""}`;
     state.loading = false;
     state.ready = true;
     renderList();
@@ -905,6 +909,14 @@
     state.updatePollTimer = null;
   }
   function renderUpdaterControls() {
+    if (state.capabilities?.updater === false) {
+      $("update-status").textContent = "この環境では自動更新は利用できません。Linux版は手動で更新してください。";
+      $("update-current-version").textContent = "Linux開発版 — Windows更新パッケージは使用しません";
+      $("about-current-version").textContent = "Linux開発版";
+      ["update-check", "update-download", "update-cancel", "update-install", "update-later"].forEach((id) => { $(id).disabled = true; $(id).hidden = true; });
+      ["update-loading", "update-progress", "update-progress-label", "update-warning", "update-ready-note"].forEach((id) => { $(id).hidden = true; });
+      return;
+    }
     const status = state.updateStatus;
     const model = updateCardModel(status);
     const locked = !status || state.updateStatusLoading || state.updateActionBusy || model.busy;
@@ -938,11 +950,13 @@
     $("update-loading").hidden = !state.updateStatusLoading;
   }
   function scheduleUpdatePoll() {
+    if (state.capabilities?.updater === false) return;
     stopUpdatePolling();
     if (!state.updateViewActive || state.updateDisposed || document.hidden || !isUpdateBusy()) return;
     state.updatePollTimer = window.setTimeout(pollUpdateStatus, 500);
   }
   async function pollUpdateStatus() {
+    if (state.capabilities?.updater === false) return;
     state.updatePollTimer = null;
     if (!state.updateViewActive || state.updateDisposed || document.hidden || !isUpdateBusy() || state.updatePollRequest) return;
     state.updatePollRequest = invoke("update_status").then((status) => {
@@ -957,6 +971,7 @@
     await state.updatePollRequest;
   }
   async function ensureUpdateStatus() {
+    if (state.capabilities?.updater === false) return;
     if (state.updateStatus) { renderUpdaterControls(); scheduleUpdatePoll(); return; }
     if (state.updateStatusLoading) return state.updatePollRequest;
     state.updateStatusLoading = true;
@@ -974,6 +989,7 @@
     return state.updatePollRequest;
   }
   async function runUpdateAction(command) {
+    if (state.capabilities?.updater === false) return;
     if (!state.updateViewActive || state.updateActionBusy || state.updateStatusLoading
       || (isUpdateBusy() && command !== "cancel_update_download")
       || (command === "cancel_update_download" && state.updateStatus?.phase !== "downloading")) return;
@@ -1025,6 +1041,7 @@
     }
   }
   function activateYellowPagesSubtab(name, focus = false) {
+    if (state.capabilities?.liveServices === false && name !== "yp") return;
     const tabs = [...root.querySelectorAll("[data-yp-subtab]")];
     const activeTab = tabs.find((tab) => tab.dataset.ypSubtab === name);
     if (!activeTab) return;
@@ -1043,7 +1060,7 @@
     if (tab) activateYellowPagesSubtab(tab.dataset.ypSubtab);
   });
   ypSubtabs?.addEventListener("keydown", (event) => {
-    const tabs = [...ypSubtabs.querySelectorAll("[data-yp-subtab]")];
+    const tabs = [...ypSubtabs.querySelectorAll("[data-yp-subtab]")].filter((tab) => !tab.disabled);
     const index = tabs.indexOf(event.target.closest("[data-yp-subtab]"));
     if (index < 0) return;
     const nextIndex = event.key === "Home" ? 0
@@ -1435,6 +1452,49 @@
   $("continue-editing").addEventListener("click", (event) => { event.preventDefault(); $("discard-dialog").close("continue"); });
 
 
+  function renderLiveDependencies() {
+    const dependencies = state.capabilities.liveDependencies;
+    const panel = $("live-dependencies-panel");
+    if (panel) panel.hidden = state.capabilities.platform !== "linux";
+    const status = $("settings-live-dependencies-status");
+    if (status) status.textContent = dependencies?.message || "ライブ再生の依存関係を確認してください。";
+  }
+  window.addEventListener("live-dependencies-updated", (event) => {
+    state.capabilities.liveDependencies = event.detail;
+    renderLiveDependencies();
+  });
+  $("live-dependencies-recheck")?.addEventListener("click", async () => {
+    const button = $("live-dependencies-recheck");
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const dependencies = await invoke("live_dependencies_refresh", {});
+      window.dispatchEvent(new CustomEvent("live-dependencies-rechecked", { detail: dependencies }));
+      state.capabilities.liveDependencies = dependencies;
+      renderLiveDependencies();
+    } catch (error) {
+      $("settings-live-dependencies-status").textContent = `依存関係を確認できませんでした: ${error.message || error}`;
+    } finally { button.disabled = false; }
+  });
+  renderLiveDependencies();
+
+  if (state.capabilities.liveServices === false) {
+    ["youtube", "twitch"].forEach((provider) => {
+      $("tab-" + provider).disabled = true;
+      $("tab-" + provider).title = "このプラットフォームでは未対応です";
+      $(provider + "-status").textContent = "このプラットフォームではYouTube/Twitchは未対応です。";
+    });
+    const note = $("linux-services-note");
+    if (note) note.hidden = false;
+  }
+  if (state.capabilities.platform === "linux") {
+    $("twitch-player-note").textContent = "現在のライブをmpvで再生できます。YouTube/Twitchの録画はこの版では対応していません。表示順は「変更を保存」で反映されます。追加・監視切替・解除はすぐに保存されます。";
+    $("default-player-label").textContent = "標準の外部プレイヤー（mpv）を使う";
+    $("player-editor-status").textContent = "mpvを別途インストールしてください。別のプレイヤーは絶対パスで指定します。";
+    $("player-executable").placeholder = "/usr/bin/mpv";
+    $("player-platform-note").textContent = 'Linuxの既定引数は "<stream/>" のみです。固定引数の空白は二重引用符で囲みます。シェルは実行されません。';
+    $("about-platform-description").textContent = "PeerCastの視聴とP2Pリレーを行うLinux開発版（外部プレイヤー使用）";
+  }
   renderControls();
   if (initialSnapshot) applySnapshot(initialSnapshot, true);
   else invoke("snapshot").then((snapshot) => {

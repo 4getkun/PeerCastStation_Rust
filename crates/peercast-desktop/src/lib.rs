@@ -6,6 +6,7 @@ pub mod csharp_backend;
 pub mod favorite_notifications;
 pub mod live_monitor;
 pub mod live_player;
+pub mod live_runtime;
 pub mod native_window;
 pub mod player;
 pub mod preferences;
@@ -19,3 +20,5 @@ pub mod twitch_process;
 pub mod updater;
 pub mod youtube;
 pub mod youtube_process;
+
+pub mod platform;

@@ -1451,6 +1451,37 @@ mod incremental_reader_tests {
         assert_eq!(flags & active_mask, 0);
     }
 
+    // TCP can already contain periodic updates when removal/shutdown occurs.
+    // Require a withdrawal within a single bounded deadline, validating every
+    // intervening packet rather than assuming the next packet is the withdrawal.
+    async fn next_withdrawal(
+        atoms: &mut tokio::sync::mpsc::UnboundedReceiver<Atom>,
+        target: [u8; 16],
+        allowed_active: &[[u8; 16]],
+    ) -> Atom {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let atom = atoms.recv().await.expect("fixture must remain open");
+                assert_eq!(atom.name(), ID4::PCP_BCST, "quit must follow withdrawals");
+                let id = announcement_channel_id(&atom);
+                let (_, flags) = host_endpoint_and_flags(&atom);
+                let mask =
+                    HostFlags1::RECV.raw() | HostFlags1::DIRECT.raw() | HostFlags1::RELAY.raw();
+                if flags & mask == 0 {
+                    assert_withdrawn(&atom, target);
+                    return atom;
+                }
+                assert_eq!(flags & mask, mask);
+                assert!(
+                    allowed_active.iter().any(|allowed| id == *allowed),
+                    "unexpected or resurrected channel: {id:?}"
+                );
+            }
+        })
+        .await
+        .expect("required withdrawal must arrive before deadline")
+    }
+
     #[tokio::test]
     async fn removing_final_channel_withdraws_then_quits() {
         let cid = [3; 16];
@@ -1462,7 +1493,7 @@ mod incremental_reader_tests {
         assert_eq!(announcement_channel_id(&initial), cid);
 
         assert!(client.remove_channel(&ChannelId::from_bytes(cid)).await);
-        let withdrawal = next_fixture_atom(&mut atoms).await;
+        let withdrawal = next_withdrawal(&mut atoms, cid, &[cid]).await;
         let quit = next_fixture_atom(&mut atoms).await;
         run_loop.await.unwrap().unwrap();
         fixture.await.unwrap();
@@ -1490,12 +1521,15 @@ mod incremental_reader_tests {
         assert!(initial_ids.contains(&removed_id.to_vec()));
         assert!(initial_ids.contains(&remaining_id.to_vec()));
 
+        // Deliberately queue periodic updates, exercising the buffered-packet race.
+        tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(
             client
                 .remove_channel(&ChannelId::from_bytes(removed_id))
                 .await
         );
-        let removed_withdrawal = next_fixture_atom(&mut atoms).await;
+        let removed_withdrawal =
+            next_withdrawal(&mut atoms, removed_id, &[removed_id, remaining_id]).await;
         let remaining_update = next_fixture_atom(&mut atoms).await;
         assert_withdrawn(&removed_withdrawal, removed_id);
         assert_eq!(remaining_update.name(), ID4::PCP_BCST);
@@ -1505,8 +1539,10 @@ mod incremental_reader_tests {
             HostFlags1::RECV.raw() | HostFlags1::DIRECT.raw() | HostFlags1::RELAY.raw();
         assert_eq!(active_flags & active_mask, active_mask);
 
+        // Queue updates again before shutdown; none may resurrect the removed ID.
+        tokio::time::sleep(Duration::from_millis(100)).await;
         client.shutdown();
-        let remaining_withdrawal = next_fixture_atom(&mut atoms).await;
+        let remaining_withdrawal = next_withdrawal(&mut atoms, remaining_id, &[remaining_id]).await;
         let quit = next_fixture_atom(&mut atoms).await;
         run_loop.await.unwrap().unwrap();
         fixture.await.unwrap();

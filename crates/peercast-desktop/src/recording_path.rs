@@ -114,15 +114,8 @@ pub fn create_recording_target(
     content_type: &str,
     segment: u32,
 ) -> Result<RecordingTarget, String> {
-    let requested = PathBuf::from(&settings.directory);
-    let requested = if requested.is_absolute() {
-        requested
-    } else {
-        application_exe
-            .parent()
-            .ok_or("アプリの配置先を取得できません")?
-            .join(requested)
-    };
+    let requested =
+        crate::platform::recording_directory(application_exe, Path::new(&settings.directory))?;
     fs::create_dir_all(&requested)
         .map_err(|error| format!("保存先フォルダーを作成できません: {error}"))?;
     let root = fs::canonicalize(requested).map_err(|error| error.to_string())?;

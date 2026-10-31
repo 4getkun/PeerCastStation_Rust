@@ -89,6 +89,8 @@
           <p class="error-message" id="form-error" role="alert" hidden></p>
         </div>
         </div>
+        <p id="linux-services-note" class="muted-note" hidden>このプラットフォームではYouTube/Twitchは未対応です。</p>
+        <div id="live-dependencies-panel" hidden><p id="settings-live-dependencies-status" role="status"></p><button id="live-dependencies-recheck" type="button" class="button button-secondary">依存関係を再確認</button></div>
         <div class="yp-subpanel youtube-subpanel" id="panel-youtube" role="tabpanel" aria-labelledby="tab-youtube" data-yp-panel="youtube" hidden>
         <section class="youtube-settings-manager" aria-labelledby="youtube-settings-title">
           <div class="section-title"><div><h2 id="youtube-settings-title">YouTubeお気に入り</h2><p>登録チャンネルのライブ配信と予約をチャンネル一覧に表示します。監視はアプリ起動中に5分間隔で行います。</p></div><button id="youtube-refresh" type="button" class="button button-secondary">今すぐ確認</button></div>
@@ -103,7 +105,7 @@
         <section class="youtube-settings-manager" aria-labelledby="twitch-settings-title">
           <div class="section-title"><div><h2 id="twitch-settings-title">Twitchお気に入り</h2><p>登録チャンネルの配信中カードをチャンネル一覧に表示します。監視はアプリ起動中に5分間隔で行います。</p></div><button id="twitch-refresh" type="button" class="button button-secondary">今すぐ確認</button></div>
           <label class="youtube-directory-order"><input id="twitch-at-bottom" type="checkbox"> 「すべてのチャンネル」で末尾に表示する</label>
-          <p class="youtube-settings-save-note">PCRPlayerで再生できます。録画はプレイヤーの右クリックから。表示順は「変更を保存」で反映されます。追加・監視切替・解除はすぐに保存されます。</p>
+          <p id="twitch-player-note" class="youtube-settings-save-note">PCRPlayerで再生できます。録画はプレイヤーの右クリックから。表示順は「変更を保存」で反映されます。追加・監視切替・解除はすぐに保存されます。</p>
           <form id="twitch-add-form" class="youtube-settings-add"><label for="twitch-url">チャンネルURL</label><input id="twitch-url" type="url" required maxlength="2048" placeholder="https://www.twitch.tv/channel"><button id="twitch-add" type="submit" class="button button-secondary">お気に入りに追加</button></form>
           <p id="twitch-status" class="youtube-settings-status" role="status" aria-live="polite">読み込み中</p>
           <div id="twitch-subscriptions" class="youtube-settings-subscriptions" aria-label="Twitch登録チャンネル"></div>
@@ -114,7 +116,7 @@
       <section class="page-content player-content" id="panel-player" role="tabpanel" aria-labelledby="tab-player" hidden>
         <div class="content-column player-column">
           <div class="section-title"><div><h2>起動するプレイヤー</h2><p>掲載チャンネルを開くときに使う実行ファイルと引数</p></div></div>
-          <label class="check-row" for="use-bundled-player"><input id="use-bundled-player" type="checkbox" checked><span>同梱プレイヤーを使う</span></label>
+          <label class="check-row" for="use-bundled-player"><input id="use-bundled-player" type="checkbox" checked><span id="default-player-label">同梱プレイヤーを使う</span></label>
           <div class="field-group">
             <label for="player-executable">実行ファイルのパス</label>
             <div class="input-action-row"><input id="player-executable" type="text" autocomplete="off" disabled><button id="choose-player" class="button button-secondary" type="button" disabled>参照…</button></div>
@@ -126,7 +128,7 @@
             <div class="tag-buttons" aria-label="テンプレートタグを挿入">
               <button type="button" data-player-tag="&lt;stream/&gt;" disabled>&lt;stream/&gt;</button><button type="button" data-player-tag="&lt;directstream/&gt;" disabled>&lt;directstream/&gt;</button><button type="button" data-player-tag="&lt;channelname/&gt;" disabled>&lt;channelname/&gt;</button><button type="button" data-player-tag="&lt;contact/&gt;" disabled>&lt;contact/&gt;</button><button type="button" data-player-tag="&lt;description/&gt;" disabled>&lt;description/&gt;</button><button type="button" data-player-tag="&lt;comment/&gt;" disabled>&lt;comment/&gt;</button><button type="button" data-player-tag="&lt;genre/&gt;" disabled>&lt;genre/&gt;</button><button type="button" data-player-tag="&lt;id/&gt;" disabled>&lt;id/&gt;</button><button type="button" data-player-tag="&lt;type/&gt;" disabled>&lt;type/&gt;</button><button type="button" data-player-tag="&lt;bitrate/&gt;" disabled>&lt;bitrate/&gt;</button><button type="button" data-player-tag="&lt;listener/&gt;" disabled>&lt;listener/&gt;</button><button type="button" data-player-tag="&lt;ypname/&gt;" disabled>&lt;ypname/&gt;</button><button type="button" data-player-tag="&lt;direct/&gt;" disabled>&lt;direct/&gt;</button>
             </div>
-            <p class="muted-note">各ボタンでタグをカーソル位置へ挿入できます。&lt;stream/&gt; はローカルの再生リスト、&lt;directstream/&gt; は直接配信URL、&lt;channelname/&gt;・&lt;contact/&gt;・&lt;description/&gt;・&lt;comment/&gt;・&lt;genre/&gt;・&lt;id/&gt;・&lt;type/&gt;・&lt;bitrate/&gt;・&lt;listener/&gt;・&lt;ypname/&gt; は各チャンネル情報、&lt;direct/&gt; は 0 です。空白を含む固定引数は二重引用符で囲みます。PCRPlayerの初期設定は <code>&quot;&lt;stream/&gt;&quot; &quot;&lt;channelname/&gt;&quot; &quot;&lt;contact/&gt;&quot;</code> です。</p>
+            <p id="player-platform-note" class="muted-note">各ボタンでタグをカーソル位置へ挿入できます。&lt;stream/&gt; はローカルの再生リスト、&lt;directstream/&gt; は直接配信URL、&lt;channelname/&gt;・&lt;contact/&gt;・&lt;description/&gt;・&lt;comment/&gt;・&lt;genre/&gt;・&lt;id/&gt;・&lt;type/&gt;・&lt;bitrate/&gt;・&lt;listener/&gt;・&lt;ypname/&gt; は各チャンネル情報、&lt;direct/&gt; は 0 です。空白を含む固定引数は二重引用符で囲みます。PCRPlayerの初期設定は <code>&quot;&lt;stream/&gt;&quot; &quot;&lt;channelname/&gt;&quot; &quot;&lt;contact/&gt;&quot;</code> です。</p>
           </div>
         </div>
       </section>
@@ -261,7 +263,7 @@
           </section>
         </div>
         <div class="content-column version-about">
-          <div class="about-card"><img src="assets/peer-loop.png" alt="" class="about-logo"><div><h3>Peercast RT</h3><p id="about-current-version">バージョンを確認しています</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーション</p><p>日本語フォント: Noto Sans JP</p><details class="license-details"><summary>フォントのライセンス</summary><pre class="license-text">Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
+          <div class="about-card"><img src="assets/peer-loop.png" alt="" class="about-logo"><div><h3>Peercast RT</h3><p id="about-current-version">バージョンを確認しています</p><p id="about-platform-description">配信の視聴とP2Pリレーを行うWindows向けアプリケーション</p><p>日本語フォント: Noto Sans JP</p><details class="license-details"><summary>フォントのライセンス</summary><pre class="license-text">Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
