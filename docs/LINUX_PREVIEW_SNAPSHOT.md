@@ -2,7 +2,8 @@
 
 This branch preserves the Linux preview implementation based on upstream
 `2c529d61c6093650f428fcc3451eb7bb8d87f9ec` (1.2.4). It is a preview snapshot;
-full-workspace validation has completed with the failures recorded below.
+the OS-specific test follow-up passed its focused checks, but the subsequent
+full-workspace run was stopped by the host free-space guard during compilation.
 This branch does not merge to main, publish a new release, or change the
 existing binary/source downloads.
 
@@ -60,7 +61,51 @@ The root Cargo.lock is unchanged. The new icon.png is the original upstream
 ICO's embedded PNG under the existing icon license. Existing GPL, Noto OFL and
 Tabler MIT notices remain in the source; no external runtime binary is added.
 
-## Full-workspace result (2026-10-31)
+## OS-specific test follow-up (2026-10-31)
+
+The eight baseline failures below were addressed in three test files only:
+
+- `test_desktop_preferences.rs`: explicit Linux empty-YP/manual-refresh defaults,
+  preservation of saved Linux YP lists, and a Unix-executable player fixture.
+  Non-Linux defaults, saved markers, reopen checks and custom-list assertions
+  remain in place.
+- `test_player.rs`: all three tests still run on both platforms. Windows keeps
+  the original bundled PCRPlayer command and three literal arguments. Linux
+  builds the command with an explicit executable fixture, checks the fixed
+  `/usr/bin/mpv` default path separately, and expects stream-only arguments.
+  Invalid-target checks cover both command entry points. Missing-player and
+  0600 rejection followed by 0700 acceptance are tested without spawning the
+  fixture or depending on a host mpv installation.
+- `test_player_rules_paths.rs`: the Unix command-building fixture now has 0700
+  permission. The existing metadata/argument-injection assertions are unchanged.
+
+No tests were skipped and no safety assertions or runtime implementation code
+were removed/relaxed. Focused native results: **29 passed** across the three
+integration-test targets, then **28 passed** in the actual-module Linux policy
+harness. The changed Rust files passed the existing Windows rustfmt check.
+
+The requested subsequent workspace run (`--workspace --locked --offline
+--no-fail-fast`) was attempted once. It stopped during compilation when the
+host C: free-space guard crossed below 5 GiB; no full-run test results were
+produced. Windows targeted-test execution was not started: preparation of its
+existing public Cargo cache on the separate disk also stopped at the same
+capacity boundary. Existing Windows tools were present; no new dependency or
+tool was installed. Neither full-workspace nor Windows runtime validation is
+claimed as passing for this follow-up.
+
+Heavy target/cache/build outputs stayed on the separate disk. The dedicated
+ext4 fixture peaked at 64 KiB and was removed; the original target symlink was
+restored, and owned Cargo/compiler/cache-copy processes finished or stopped.
+Resume the outstanding full and Windows checks only with adequate host free
+space. No automatic deletion, repair, WSL restart or configuration change was
+performed. The earlier `runtime has stopped` flake remains unresolved.
+
+Focused-test log SHA256: `8cedf55c298b2914d1a2ecbb8844c0f5ab1b74c30b461943710e1f3568102fd5`.
+Policy-harness log SHA256: `72e6d6426471bd19c8a331cac51f565d9c56336c7b517e7bc4aacbb8213ea3e3`.
+Interrupted workspace-compilation log SHA256:
+`a68fd02abcb5f95afd2cbde83056fe51c0bef88af78b3a8285014df072ab909e`.
+
+## Baseline full-workspace result (before OS test fixes, 2026-10-31)
 
 The follow-up run completed with `cargo test --workspace --locked --offline
 --no-fail-fast`: **511 passed, 8 failed, 1 ignored** (exit 101). The existing
@@ -83,8 +128,8 @@ The eight failures are in three desktop integration-test targets:
 
 Initial inspection identifies Windows YP/auto-refresh/bundled PCRPlayer
 expectations and player fixtures lacking Linux executable semantics. These
-failures remain open for platform-appropriate test/fixture review; they are
-not reported as passing or as proven runtime fixes.
+failures prompted the OS-specific test/fixture follow-up above. They were
+not reported as passing or as proven runtime fixes in this baseline run.
 
 One additional stale assertion in `test_csharp_backend.rs` was changed from
 unconditional auto-refresh enabled to `!cfg!(target_os = "linux")`, matching

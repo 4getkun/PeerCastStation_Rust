@@ -45,6 +45,11 @@ fn channel_metadata_cannot_add_arguments_or_expand_another_placeholder() {
     let temp = tempfile::tempdir().unwrap();
     let player = temp.path().join("custom player.exe");
     fs::write(&player, b"fixture, never executed").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&player, fs::Permissions::from_mode(0o700)).unwrap();
+    }
     let context = PlayerContext::from_yp(URL.into(), &json!({"name":"配信\" --other <contact/>","contactUrl":"https://example.com/thread?a=1&b=2"})).unwrap();
     let settings = PlayerSettings {
         executable: Some(player.display().to_string()),

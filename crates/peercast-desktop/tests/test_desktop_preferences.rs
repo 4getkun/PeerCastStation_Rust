@@ -163,18 +163,18 @@ async fn old_config_without_desktop_preferences_opens_with_defaults() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fresh_install_defaults_to_auto_refresh_and_reopens_with_it_enabled() {
+async fn fresh_install_uses_platform_auto_refresh_default_and_reopens_with_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("desktop.json");
     let backend = DesktopBackend::open(path.clone()).await.unwrap();
     let directory = backend.snapshot().await.unwrap().desktop.directory;
-    assert!(directory.auto_refresh);
+    assert_eq!(directory.auto_refresh, !cfg!(target_os = "linux"));
     assert_eq!(directory.refresh_interval_secs, 300);
     close(&backend).await;
 
     let reopened = DesktopBackend::open(path).await.unwrap();
     let directory = reopened.snapshot().await.unwrap().desktop.directory;
-    assert!(directory.auto_refresh);
+    assert_eq!(directory.auto_refresh, !cfg!(target_os = "linux"));
     assert_eq!(directory.refresh_interval_secs, 300);
     close(&reopened).await;
 }
@@ -268,8 +268,13 @@ async fn legacy_default_yellow_pages_migrate_once_and_custom_lists_are_preserved
         let path = dir.path().join("desktop.json");
         let config = config_with_yellow_pages(&old_pages, serde_json::Value::Null);
         fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let migrated = if cfg!(target_os = "linux") {
+            old_pages.iter().map(|(name, url)| yp(name, url)).collect()
+        } else {
+            expected.clone()
+        };
         let backend = DesktopBackend::open(path.clone()).await.unwrap();
-        assert_eq!(backend.snapshot().await.unwrap().yellow_pages, expected);
+        assert_eq!(backend.snapshot().await.unwrap().yellow_pages, migrated);
         close(&backend).await;
         let persisted = ConfigManager::new(&path).load().unwrap();
         let marker = persisted
@@ -278,7 +283,7 @@ async fn legacy_default_yellow_pages_migrate_once_and_custom_lists_are_preserved
             .unwrap();
         assert_eq!(marker.as_u64(), Some(1));
         let backend = DesktopBackend::open(path).await.unwrap();
-        assert_eq!(backend.snapshot().await.unwrap().yellow_pages, expected);
+        assert_eq!(backend.snapshot().await.unwrap().yellow_pages, migrated);
         close(&backend).await;
     }
 
@@ -297,11 +302,14 @@ async fn legacy_default_yellow_pages_migrate_once_and_custom_lists_are_preserved
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fresh_and_custom_or_empty_yellow_pages_have_expected_defaults() {
+async fn fresh_and_custom_or_empty_yellow_pages_have_platform_defaults() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fresh.json");
     let backend = DesktopBackend::open(path).await.unwrap();
-    assert_eq!(backend.snapshot().await.unwrap().yellow_pages.len(), 5);
+    assert_eq!(
+        backend.snapshot().await.unwrap().yellow_pages.len(),
+        if cfg!(target_os = "linux") { 0 } else { 5 }
+    );
     close(&backend).await;
 
     for pages in [vec![("Custom", "https://example.com/index.txt")], vec![]] {
@@ -353,6 +361,11 @@ async fn custom_player_and_rules_survive_limits_and_yp_saves_and_reopen() {
     let path = dir.path().join("desktop.json");
     let custom_player = dir.path().join("custom-player.exe");
     fs::write(&custom_player, b"fixture").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&custom_player, fs::Permissions::from_mode(0o700)).unwrap();
+    }
     let backend = DesktopBackend::open(path.clone()).await.unwrap();
     let initial = backend.snapshot().await.unwrap();
     let desktop = DesktopPreferences {
