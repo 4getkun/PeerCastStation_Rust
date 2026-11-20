@@ -2,12 +2,12 @@
 
 ## Project-specific decisions
 
-- Build one Japanese single-page distribution site for PeerCast RT, focused on video streaming and P2P relaying.
+- Build one Japanese single-page distribution site for PeerCast RS, focused on video streaming and P2P relaying.
 - The sticky top navigation uses in-page anchors for 「はじめに」「視聴する」「配信する」「ライセンス」「ダウンロード」, in that order. Place the direct GitHub link to `https://github.com/4getkun/PeerCastStation_Rust` rightmost. Keep license details before the final download section. Do not add an update-history section.
 - Do not add a support navigation item. Keep a footer.
 - Use the selected product-hero mockup as the visual direction: white and pale lavender, blue-violet accents, flat Windows / Visual Studio 2015-like controls, plain non-corporate Japanese copy.
 - The hero app visual is an illustrative video-channel UI mockup, clearly labeled as not an actual screenshot. Do not generate a software screenshot.
-- Replace the illustrative mockup with a fresh real PeerCast RT screenshot later.
+- Replace the illustrative mockup with a fresh real PeerCast RS screenshot later.
 - The license section should state the repository's GPL-3.0-or-later project license and accurately attribute third-party icon assets; link to the license documents packaged under the archive's `licenses/` directory.
 - Use one manual-download button for a 7z archive containing the installer and license documents. Show its verified release metadata and SHA-256, with a checksum sidecar and license documents available from the public download host. The app updater uses its separately signed installer EXE.
 - Hero links to instructional sections must say 「視聴のしかた」「配信のしかた」; they do not start playback or broadcasting on the website.

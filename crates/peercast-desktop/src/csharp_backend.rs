@@ -174,7 +174,7 @@ impl CSharpBackend {
                 false,
             ));
         }
-        let page=self.rpc_params("addYellowPage",json!({"protocol":"pcp","name":"SP (Peercast RT)","announceUri":crate::broadcast::SP_ANNOUNCE_URI,"uri":crate::broadcast::SP_ANNOUNCE_URI,"channelsUri":"http://bayonet.ddo.jp/sp/index.txt"})).await?;
+        let page=self.rpc_params("addYellowPage",json!({"protocol":"pcp","name":"SP (PeerCast RS)","announceUri":crate::broadcast::SP_ANNOUNCE_URI,"uri":crate::broadcast::SP_ANNOUNCE_URI,"channelsUri":"http://bayonet.ddo.jp/sp/index.txt"})).await?;
         Ok((
             page["yellowPageId"]
                 .as_i64()
@@ -191,7 +191,7 @@ impl CSharpBackend {
             .iter()
             .any(|page| {
                 page["yellowPageId"] == id
-                    && page["name"] == "SP (Peercast RT)"
+                    && (page["name"] == "SP (PeerCast RS)" || page["name"] == "SP (Peercast RT)")
                     && is_sp_uri(
                         page["announceUri"]
                             .as_str()

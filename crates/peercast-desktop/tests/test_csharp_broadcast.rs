@@ -97,7 +97,7 @@ async fn mock_api(
                         "addYellowPage" => {
                             guard.pages.push(json!({
                                 "yellowPageId":OWNED_YP_ID,
-                                "name":"SP (Peercast RT)",
+                                "name":"SP (PeerCast RS)",
                                 "protocol":"pcp",
                                 "uri":SP_ANNOUNCE_URI,
                                 "announceUri":SP_ANNOUNCE_URI,
@@ -111,7 +111,7 @@ async fn mock_api(
                             json!(CHANNEL_ID)
                         }
                         "getChannelInfo" => json!({
-                            "yellowPages":[{"yellowPageId":OWNED_YP_ID,"name":"SP (Peercast RT)","status":"Idle"}]
+                            "yellowPages":[{"yellowPageId":OWNED_YP_ID,"name":"SP (PeerCast RS)","status":"Idle"}]
                         }),
                         "stopChannel" => {
                             drop(guard);

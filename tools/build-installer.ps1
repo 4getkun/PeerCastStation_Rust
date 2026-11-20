@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$PlayerArchive,
-    [string]$Version = '1.2.4',
+    [string]$Version = '1.3.0',
     [string]$CliVersion = '2.12.4',
     [string]$WorkDirectory = '',
     [switch]$SkipPackageBuild
@@ -68,7 +68,7 @@ $config = [ordered]@{
                 headerImage = (Join-Path $repoRoot 'crates\peercast-desktop\icons\installer-header.bmp')
                 sidebarImage = (Join-Path $repoRoot 'crates\peercast-desktop\icons\installer-sidebar.bmp')
                 installerHooks = (Join-Path $repoRoot 'crates\peercast-desktop\icons\installer-assets.nsh')
-                startMenuFolder = 'PeerCast RT'
+                startMenuFolder = 'PeerCast RS'
             }
         }
     }
@@ -88,7 +88,7 @@ finally {
     Pop-Location
 }
 
-$installer = Join-Path $repoRoot "target\release\bundle\nsis\PeerCast RT_${Version}_x64-setup.exe"
+$installer = Join-Path $repoRoot "target\release\bundle\nsis\PeerCast RS_${Version}_x64-setup.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw "Installer was not produced: $installer" }
 $hash = Get-FileHash -LiteralPath $installer -Algorithm SHA256
 Write-Output "Installer: $installer"

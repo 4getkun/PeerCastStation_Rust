@@ -30,9 +30,9 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
             .set_icon(icon.clone())
             .map_err(|error| error.to_string())?;
     }
-    let tray = TrayIconBuilder::with_id("peercast-rt-tray")
+    let tray = TrayIconBuilder::with_id("peercast-rs-tray")
         .icon(icon)
-        .tooltip("Peercast RT")
+        .tooltip("PeerCast RS")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {

@@ -71,7 +71,7 @@ async function main() {
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
       <rect width="150" height="57" fill="#ffffff"/>
       <path d="M0 55.5H150" stroke="#ddd7ea"/>
-      <text x="52" y="27" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="13" font-weight="700" fill="#241c35">PeerCast RT</text>
+      <text x="52" y="27" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="13" font-weight="700" fill="#241c35">PeerCast RS</text>
       <text x="52" y="41" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="8" fill="#7d7688">セットアップ</text>
     </svg>`,
   });
@@ -85,7 +85,7 @@ async function main() {
       <defs><linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3effc"/><stop offset="1" stop-color="#ebe5f8"/></linearGradient></defs>
       <rect width="164" height="314" fill="url(#panel)"/>
       <rect width="4" height="314" fill="#735bd3"/>
-      <text x="24" y="104" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="15" font-weight="700" fill="#241c35">PeerCast RT</text>
+      <text x="24" y="104" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="15" font-weight="700" fill="#241c35">PeerCast RS</text>
       <text x="24" y="126" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="9" fill="#665f73">配信と視聴を、</text>
       <text x="24" y="141" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="9" fill="#665f73">ひとつのアプリで。</text>
       <rect x="20" y="169" width="124" height="42" rx="6" fill="#ffffff" fill-opacity="0.78"/>
@@ -103,7 +103,7 @@ async function main() {
   const railSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="239" height="588" viewBox="0 0 239 588">
       <defs><linearGradient id="rail" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f0fd"/><stop offset="1" stop-color="#ebe5f8"/></linearGradient></defs>
       <rect width="239" height="588" fill="#f8f6fd"/>
-      <text x="39" y="169" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="24" font-weight="700" fill="#241c35">PeerCast RT</text>
+      <text x="39" y="169" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="24" font-weight="700" fill="#241c35">PeerCast RS</text>
       <text x="39" y="210" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="14" fill="#665f73">配信と視聴を、</text>
       <text x="39" y="234" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="14" fill="#665f73">ひとつのアプリで。</text>
       <text x="39" y="350" font-family="Segoe UI,Yu Gothic UI,Meiryo UI,sans-serif" font-size="15" font-weight="600" fill="#3d344e">ようこそ</text>

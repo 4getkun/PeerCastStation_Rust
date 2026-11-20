@@ -12,7 +12,7 @@
   const YOUTUBE_STATUS_POLL_MS = 5_000;
   const UPDATE_INITIAL_CHECK_DELAY_MS = 30_000;
   const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-  const UPDATE_LAST_CHECK_KEY = "peercast-rt.update.last-successful-check";
+  const UPDATE_LAST_CHECK_KEY = "peercast-rs.update.last-successful-check";
   const state = {
     snapshot: null,
     noticeTimer: null,
@@ -1512,7 +1512,7 @@
     if (detail) detail.hidden = false;
     text("broadcast-detail-name", displayValue(broadcast.name || channel.name));
     text("broadcast-detail-status", displayValue(broadcast.status || channel.status));
-    text("broadcast-detail-manager", broadcast.managedByRt ? "Peercast RT" : (state.snapshot?.backendLabel || "PeerCastStation C#"));
+    text("broadcast-detail-manager", broadcast.managedByRs ? "PeerCast RS" : (state.snapshot?.backendLabel || "PeerCastStation C#"));
     text("broadcast-detail-input-url", displayValue(broadcast.inputUrl));
     text("broadcast-detail-stream-url", displayValue(broadcast.streamUrl));
     text("broadcast-detail-announcement", displayValue(broadcast.announcementStatus || "掲載していません"));
@@ -1891,7 +1891,7 @@
     const running = Boolean(snapshot.running);
     const dot = byId("state-dot");
     if (dot) dot.className = `state-dot ${running ? "is-running" : "is-stopped"}`;
-    const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "Peercast RT");
+    const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "PeerCast RS");
     text("state-label", `${backendLabel} ${running ? "稼働中" : "停止中"}`);
     text("endpoint", snapshot.endpoint || "停止中");
     text("uptime", running ? formatAppUptime(snapshot.uptimeSecs) : "停止中");

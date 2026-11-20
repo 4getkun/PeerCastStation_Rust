@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Peercast RT</title>
+  <title>PeerCast RS</title>
   <link rel="stylesheet" href="style.css">
   <script src="settings.js" defer></script>
   <script src="app.js" defer></script>
@@ -12,7 +12,7 @@
 <body>
 <div class="app-shell">
   <header id="titlebar" class="titlebar" aria-label="ウィンドウタイトルバー">
-    <div class="titlebar-brand"><img src="assets/peer-loop.png" alt=""><strong>Peercast RT</strong></div>
+    <div class="titlebar-brand"><img src="assets/peer-loop.png" alt=""><strong>PeerCast RS</strong></div>
     <span class="titlebar-divider" aria-hidden="true"></span>
     <span id="titlebar-view" class="titlebar-view">チャンネル</span>
     <div class="titlebar-drag-region" aria-hidden="true"></div>
@@ -23,7 +23,7 @@
     </div>
   </header>
   <aside class="rail" aria-label="アプリケーション">
-    <div class="brand"><img src="assets/peer-loop.png" class="brand-logo" alt=""><strong>Peercast RT</strong></div>
+    <div class="brand"><img src="assets/peer-loop.png" class="brand-logo" alt=""><strong>PeerCast RS</strong></div>
     <nav class="rail-nav" aria-label="メインメニュー">
       <button type="button" class="nav-item active" data-view="yp" aria-current="page"><span class="icon icon-world" aria-hidden="true"></span>チャンネル</button>
       <button type="button" class="nav-item" data-view="channels"><span class="icon icon-broadcast" aria-hidden="true"></span>配信</button>
@@ -32,7 +32,7 @@
       <button type="button" class="nav-item" data-view="logs"><span class="icon icon-file-text" aria-hidden="true"></span>ログ</button>
       <button type="button" id="settings-button" class="nav-item" data-view="settings"><span class="icon icon-settings" aria-hidden="true"></span>設定</button>
     </nav>
-    <div class="rail-bottom"><button type="button" id="about-button" class="rail-link"><span class="icon icon-info-circle" aria-hidden="true"></span>Peercast RTについて</button><button type="button" id="quit-button" class="rail-link"><span class="icon icon-logout" aria-hidden="true"></span>終了</button></div>
+    <div class="rail-bottom"><button type="button" id="about-button" class="rail-link"><span class="icon icon-info-circle" aria-hidden="true"></span>PeerCast RSについて</button><button type="button" id="quit-button" class="rail-link"><span class="icon icon-logout" aria-hidden="true"></span>終了</button></div>
   </aside>
   <main class="main-pane">
     <header class="page-header">
@@ -55,7 +55,7 @@
       </section>
       <section id="view-channels" class="list-pane" aria-label="配信" hidden>
         <div class="list-heading channels-heading"><span>配信チャンネル</span><span>状態</span></div>
-        <div class="list-context">RT配信と接続中の配信を表示します。入力URLはHTTP形式に対応しています（RTMP入力には未対応です）。</div>
+        <div class="list-context">RS配信と接続中の配信を表示します。入力URLはHTTP形式に対応しています（RTMP入力には未対応です）。</div>
         <details id="broadcast-form" class="broadcast-form">
           <summary><span class="icon icon-plus" aria-hidden="true"></span>新しい配信を設定</summary>
           <form id="broadcast-start-form" class="broadcast-form-grid">
@@ -104,7 +104,7 @@
       <section id="view-logs" class="logs-pane" aria-label="ログ" hidden>
         <div class="log-filters"><label class="search-field"><span class="icon icon-search" aria-hidden="true"></span><input id="log-search" type="search" placeholder="メッセージ・分類で検索" aria-label="ログを検索"></label><select id="log-level-filter" aria-label="ログの表示レベル"><option value="all">すべてのレベル</option><option value="error">Error以上</option><option value="warn">Warn以上</option><option value="info">Info以上</option><option value="debug">Debug以上</option><option value="trace">Trace以上</option></select><label class="wrap-label"><input type="checkbox" id="log-wrap" checked>折り返す</label><button type="button" id="copy-logs" class="button button-outline log-copy-button" disabled><span class="icon icon-clipboard" aria-hidden="true"></span>ログをコピー</button></div>
         <div id="logs-list" class="logs-list"></div>
-        <details class="diagnostics"><summary>診断と稼働情報</summary><p>再起動・停止はPeercast RTの接続だけを操作します。接続先のPeerCastStation C#版は終了しません。</p><p id="backend-actions-note" hidden></p><dl><div><dt>稼働時間</dt><dd id="uptime">—</dd></div><div><dt>アクティブタスク</dt><dd id="active-tasks">—</dd></div><div><dt>ローカル待受</dt><dd id="endpoint">—</dd></div><div><dt>送受信診断</dt><dd><span id="probe-status">未実行</span> <span id="probe-bytes">—</span> <span id="probe-elapsed">—</span></dd></div></dl><div class="diagnostic-actions"><button id="probe-button" type="button" class="button button-outline">送受信を診断</button><button id="restart-button" type="button" class="button button-outline">RT接続を再起動</button><button id="stop-button" type="button" class="button button-outline">RT接続を停止</button></div></details>
+        <details class="diagnostics"><summary>診断と稼働情報</summary><p>再起動・停止はPeerCast RSの接続だけを操作します。接続先のPeerCastStation C#版は終了しません。</p><p id="backend-actions-note" hidden></p><dl><div><dt>稼働時間</dt><dd id="uptime">—</dd></div><div><dt>アクティブタスク</dt><dd id="active-tasks">—</dd></div><div><dt>ローカル待受</dt><dd id="endpoint">—</dd></div><div><dt>送受信診断</dt><dd><span id="probe-status">未実行</span> <span id="probe-bytes">—</span> <span id="probe-elapsed">—</span></dd></div></dl><div class="diagnostic-actions"><button id="probe-button" type="button" class="button button-outline">送受信を診断</button><button id="restart-button" type="button" class="button button-outline">RS接続を再起動</button><button id="stop-button" type="button" class="button button-outline">RS接続を停止</button></div></details>
       </section>
       <aside class="detail-pane" aria-label="選択したチャンネルの詳細">
         <div id="detail-empty" class="empty-state"><span class="icon icon-broadcast" aria-hidden="true"></span><strong>チャンネルを選択</strong><p>一覧から配信を選ぶと情報を表示します。</p></div>
@@ -138,7 +138,7 @@
 <div id="provider-context-menu" class="context-menu" role="menu" aria-label="ライブ配信の操作" hidden><button id="provider-context-play" type="button" role="menuitem">PCRPlayerで再生</button><button id="provider-context-browser" type="button" role="menuitem">ブラウザで開く</button><button id="provider-context-manage" type="button" role="menuitem">登録を管理</button></div>
 <div id="runtime-context-menu" class="context-menu" role="menu" aria-label="接続操作" hidden><button id="runtime-context-reconnect" type="button" role="menuitem">再接続</button><button id="runtime-context-disconnect" type="button" role="menuitem">切断</button><button id="runtime-context-clear" type="button" role="menuitem" title="接続一覧の切断済みチャンネルと表示メッセージ・保持中のログを消去します。稼働中の接続、配信、録画、設定は変更しません。">クリア（切断済み・ログ）</button></div>
 <div id="recording-context-menu" class="context-menu" role="menu" aria-label="録画ファイル操作" hidden><button id="recording-context-play" type="button" role="menuitem">既定のアプリで再生</button><button id="recording-context-reveal" type="button" role="menuitem">ファイルの場所を開く</button><button id="recording-context-trash" type="button" role="menuitem">ファイルをごみ箱へ移動</button></div>
-<dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-heading"><img src="assets/peer-loop.png" alt="" width="76" height="52"><h2 id="about-title">Peercast RT</h2><button type="button" id="close-about" class="icon-button" aria-label="閉じる"><span class="icon icon-x" aria-hidden="true"></span></button></div><p id="about-version">バージョン情報を確認しています</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーションです。</p><p>PCRPlayer v0.2.7 / GPL-3.0<br>日本語フォント: Noto Sans JP / SIL Open Font License 1.1<br>アイコン: Tabler Icons / MIT</p><details class="font-license"><summary>フォントのライセンス</summary><pre>Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
+<dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-heading"><img src="assets/peer-loop.png" alt="" width="76" height="52"><h2 id="about-title">PeerCast RS</h2><button type="button" id="close-about" class="icon-button" aria-label="閉じる"><span class="icon icon-x" aria-hidden="true"></span></button></div><p id="about-version">バージョン情報を確認しています</p><p>配信の視聴とP2Pリレーを行うWindows向けアプリケーションです。</p><p>PCRPlayer v0.2.7 / GPL-3.0<br>日本語フォント: Noto Sans JP / SIL Open Font License 1.1<br>アイコン: Tabler Icons / MIT</p><details class="font-license"><summary>フォントのライセンス</summary><pre>Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name &#39;Source&#39;
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

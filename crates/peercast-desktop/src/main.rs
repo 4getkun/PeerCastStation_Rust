@@ -772,15 +772,23 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::Builder::new().app_name("Peercast RT").build())
+        .plugin(tauri_plugin_autostart::Builder::new().app_name("PeerCast RS").build())
         .setup(|app| {
-            let mut path = app.path().app_local_data_dir()?.join("tauri-test.json");
+            let app_data_dir = app.path().app_local_data_dir()?;
+            let mut path = app_data_dir.join("tauri-test.json");
+            let mut custom_settings = false;
             let mut arguments = std::env::args_os().skip(1);
             while let Some(argument) = arguments.next() {
                 if argument == "--settings" {
                     path = arguments.next().ok_or_else(|| {
                         std::io::Error::other("--settings には設定ファイルのパスが必要です")
                     })?.into();
+                    custom_settings = true;
+                }
+            }
+            if !custom_settings {
+                if let Err(error) = peercast_desktop::preferences::migrate_legacy_app_data(&app_data_dir) {
+                    eprintln!("Legacy PeerCast RT settings migration skipped: {error}");
                 }
             }
             let ledger_path = path.with_extension("favorite-notifications.json");
@@ -914,5 +922,5 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("failed to run Peercast RT");
+        .expect("failed to run PeerCast RS");
 }

@@ -4,12 +4,13 @@ function Get-PeerCastPlayerSourceAssets {
         [Parameter(Mandatory)][string]$Version,
         [Parameter(Mandatory)][string]$WorkRoot,
         [Parameter(Mandatory)][string]$LicenseRoot,
-        [Parameter(Mandatory)][string]$PublicBase
+        [Parameter(Mandatory)][string]$PublicBase,
+        [string]$Bucket = 'peercast-rs-downloads'
     )
 
     # Tie the modified player's corresponding source to the actual packaged EXE.
     $sourceRoot = Join-Path $RepoRoot "target/pcrplayer-source-release-$Version"
-    $sourceName = "PCRPlayer-PeerCastRT-$Version-sources.7z"
+    $sourceName = "PCRPlayer-PeerCastRS-$Version-sources.7z"
     $sourceFile = Join-Path $sourceRoot $sourceName
     $manifestPath = Join-Path $sourceRoot 'source-release-manifest.json'
     foreach ($path in @($sourceFile, "$sourceFile.sha256", $manifestPath)) {
@@ -30,9 +31,9 @@ function Get-PeerCastPlayerSourceAssets {
         @{ File="$sourceFile.sha256"; Name="$sourceName.sha256"; Type='text/plain; charset=utf-8' },
         @{ File=$manifestPath; Name='PCRPlayer-source-release-manifest.json'; Type='application/json' }
     )) {
-        @{ Bucket='peercast-rt-downloads'; Base=$PublicBase; Key="releases/$Version/$($source.Name)"; File=$source.File; Type=$source.Type }
+        @{ Bucket=$Bucket; Base=$PublicBase; Key="releases/$Version/$($source.Name)"; File=$source.File; Type=$source.Type }
     }
     foreach ($notice in Get-ChildItem -LiteralPath (Join-Path $LicenseRoot 'PCRPlayer') -File -ErrorAction Stop) {
-        @{ Bucket='peercast-rt-downloads'; Base=$PublicBase; Key="releases/$Version/licenses/PCRPlayer/$($notice.Name)"; File=$notice.FullName; Type='text/plain; charset=utf-8' }
+        @{ Bucket=$Bucket; Base=$PublicBase; Key="releases/$Version/licenses/PCRPlayer/$($notice.Name)"; File=$notice.FullName; Type='text/plain; charset=utf-8' }
     }
 }

@@ -11,7 +11,7 @@ import {
 } from "@tabler/icons-react";
 import heroArt from "./assets/hero-lavender.png";
 import peerLoop from "./assets/peer-loop.png";
-import appScreenshot from "./assets/peercast-rt-window-latest.jpg";
+import appScreenshot from "./assets/peercast-rs-window-latest.jpg";
 
 const navItems = [
   { id: "top", label: "はじめに" },
@@ -46,9 +46,9 @@ export function App() {
     <>
       <header className="site-header">
         <div className="header-inner">
-          <a className="brand" href="#top" aria-label="PeerCast RT はじめに">
+          <a className="brand" href="#top" aria-label="PeerCast RS はじめに">
             <img src={peerLoop} alt="" className="brand-mark" />
-            <span>PeerCast RT</span>
+            <span>PeerCast RS</span>
           </a>
           <nav className="main-nav" aria-label="ページ内ナビゲーション">
             {navItems.map(({ id, label, download }) => (
@@ -80,10 +80,10 @@ export function App() {
           <img className="hero-art" src={heroArt} alt="" aria-hidden="true" />
           <div className="hero-inner content-width">
             <div className="hero-copy">
-              <p className="eyebrow"><span className="eyebrow-mark" /> PeerCast RT / Windows向け</p>
+              <p className="eyebrow"><span className="eyebrow-mark" /> PeerCast RS / Windows向け</p>
               <h1 id="hero-title">配信と視聴を、<br />ひとつのアプリで。</h1>
               <p className="hero-lead">
-                PeerCast RTは、動画配信をP2Pで中継するWindowsアプリです。
+                PeerCast RSは、動画配信をP2Pで中継するWindowsアプリです。
                 公開中のチャンネルを選んで見たり、自分の配信を始めたりできます。
               </p>
               <div className="hero-actions">
@@ -105,7 +105,7 @@ export function App() {
               <img
                 className="app-screenshot"
                 src={appScreenshot}
-                alt="PeerCast RTのチャンネル一覧。架空の配信チャンネルを5件表示した画面。"
+                alt="PeerCast RSのチャンネル一覧。架空の配信チャンネルを5件表示した画面。"
               />
               <figcaption>画面は最新ビルドで撮影しています（掲載用の架空チャンネルを使用）。</figcaption>
             </figure>
@@ -146,7 +146,7 @@ export function App() {
             <div className="section-intro">
               <p className="section-kicker">配信する</p>
               <h2 id="broadcast-title">自分の配信を始める。</h2>
-              <p>エンコーダーから映像をPeerCast RTへ送り、チャンネルとして配信します。</p>
+              <p>エンコーダーから映像をPeerCast RSへ送り、チャンネルとして配信します。</p>
             </div>
             <div className="broadcast-details">
               <div className="input-method">
@@ -167,14 +167,14 @@ export function App() {
               <p className="section-kicker">ライセンス</p>
               <h2 id="licenses-title">GNU GPL v3.0以降で公開しています。</h2>
               <p>
-                PeerCast RTのソースコードは、GNU General Public License version 3 or later
+                PeerCast RSのソースコードは、GNU General Public License version 3 or later
                 （GPL-3.0-or-later）の条件で公開しています。
               </p>
             </div>
             <div className="license-details">
               <p className="license-identifier">GPL-3.0-or-later</p>
               <p>
-                PeerCast RT本体のライセンスは、リポジトリのワークスペース設定に基づいています。
+                PeerCast RS本体のライセンスは、リポジトリのワークスペース設定に基づいています。
                 依存ライブラリや同梱素材には個別の条件があるため、再配布時は各コンポーネントの表示も確認してください。
               </p>
               <a className="license-link" href="https://www.gnu.org/licenses/gpl" target="_blank" rel="noopener noreferrer">
@@ -183,16 +183,16 @@ export function App() {
               </a>
               <div className="license-files">
                 <strong>配布ファイル内のライセンス</strong>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/LICENSE-GPL-3.0.txt">PeerCast RT — GPL-3.0-or-later</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/LICENSE_AUDIT.md">ライセンス確認メモ</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/PCRPlayer-LICENSE.txt">PCRPlayer</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/NotoSansJP-OFL.txt">Noto Sans JP — OFL</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/licenses/Tabler-Icons-MIT.txt">Tabler Icons — MIT</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/licenses/PCRPlayer/Node-LICENSE.txt">Node.jsと依存ライブラリのライセンス表示</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/licenses/PCRPlayer/FFmpeg-LGPL-2.1.txt">FFmpeg — LGPL-2.1-or-later</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PCRPlayer-PeerCastRT-1.2.4-sources.7z">同梱PCRPlayer 対応ソース</a>
-                <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/licenses/LICENSE-GPL-3.0.txt">PeerCast RS — GPL-3.0-or-later</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/licenses/LICENSE_AUDIT.md">ライセンス確認メモ</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/licenses/PCRPlayer-LICENSE.txt">PCRPlayer</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/licenses/NotoSansJP-OFL.txt">Noto Sans JP — OFL</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/licenses/Tabler-Icons-MIT.txt">Tabler Icons — MIT</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/licenses/yt-dlp/THIRD_PARTY_LICENSES.txt">yt-dlpと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/licenses/PCRPlayer/Node-LICENSE.txt">Node.jsと依存ライブラリのライセンス表示</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/licenses/PCRPlayer/FFmpeg-LGPL-2.1.txt">FFmpeg — LGPL-2.1-or-later</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/PCRPlayer-PeerCastRS-1.3.0-sources.7z">同梱PCRPlayer 対応ソース</a>
+                <a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース</a>
               </div>
               <div className="third-party-license">
                 <strong>このページのアイコン</strong>
@@ -222,18 +222,18 @@ export function App() {
             <div className="download-panel">
               <div className="download-copy">
                 <p className="section-kicker">ダウンロード</p>
-                <h2 id="download-title">PeerCast RT for Windows</h2>
-                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.2.4 <span>/</span> 7z形式</p>
+                <h2 id="download-title">PeerCast RS for Windows</h2>
+                <p className="download-meta">Windows x64 <span>/</span> バージョン 1.3.0 <span>/</span> 7z形式</p>
                 <p className="download-note">インストーラーとライセンス文書をひとつにまとめています。展開して、フォルダー内のセットアップを実行してください。</p>
-                <p className="download-checksum">SHA-256: <code>403d0042fe9f4a05f058d3ed7f905e8e1ae1cb37cdf34222f72b80ede73eb520</code> · <a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PeerCastRT-1.2.4-windows-x64-installer.7z.sha256">チェックサム</a></p>
+                <p className="download-checksum">SHA-256: <code>dff90c2b92ebeefc63e839de5ce4679c1569b9f5fe51a8364cc60901ecab09ef</code> · <a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/PeerCastRS-1.3.0-windows-x64-installer.7z.sha256">チェックサム</a></p>
                 <p className="download-note">セットアップにWindowsの発行元署名はありません。</p>
               </div>
               <div className="download-actions">
-              <a className="button button-primary download-button" href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PeerCastRT-1.2.4-windows-x64-installer.7z">
+              <a className="button button-primary download-button" href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/PeerCastRS-1.3.0-windows-x64-installer.7z">
                 <IconArrowDown size={19} stroke={2} aria-hidden="true" />
                 Windows版をダウンロード
               </a>
-              <small><a href="https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
+              <small><a href="https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/yt-dlp-2026.08.19-sources.7z">yt-dlp 2026.08.19 対応ソース（7z）</a></small>
               </div>
             </div>
           </div>
@@ -244,10 +244,10 @@ export function App() {
         <div className="footer-inner content-width">
           <a className="footer-brand" href="#top">
             <img src={peerLoop} alt="" />
-            <span>PeerCast RT</span>
+            <span>PeerCast RS</span>
           </a>
           <p>Windows向け動画配信ソフトウェア</p>
-          <span className="copyright">© {year} PeerCast RT</span>
+          <span className="copyright">© {year} PeerCast RS</span>
         </div>
       </footer>
     </>

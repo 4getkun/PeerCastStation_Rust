@@ -1,8 +1,8 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PackageStage,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [string]$Version = '1.2.4'
+    [string]$Version = '1.3.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +15,7 @@ $zipRoot = Join-Path $outputRoot 'zip-root'
 $licenseRoot = Join-Path $zipRoot 'licenses'
 New-Item -ItemType Directory -Path $licenseRoot -Force | Out-Null
 
-$installerName = "PeercastRT_${Version}_x64-setup.exe"
+$installerName = "PeerCastRS_${Version}_x64-setup.exe"
 $installerAsset = Join-Path $outputRoot $installerName
 Copy-Item -LiteralPath $installerSource -Destination $installerAsset
 Copy-Item -LiteralPath $installerAsset -Destination (Join-Path $zipRoot $installerName)
@@ -24,7 +24,7 @@ foreach ($name in @('README-JA.txt', 'SOURCE.txt', 'player-bundle.json')) {
     Copy-Item -LiteralPath (Join-Path $stageRoot $name) -Destination (Join-Path $zipRoot $name)
 }
 @(
-    "PeerCast RT $Version for Windows x64"
+    "PeerCast RS $Version for Windows x64"
     ''
     "このフォルダー内の $installerName を実行してインストールしてください。"
     'PCRPlayer はセットアップに同梱されています。'
@@ -46,7 +46,7 @@ $installerHash = (Get-FileHash -LiteralPath $installerAsset -Algorithm SHA256).H
 "$installerHash  $installerName" | Set-Content -LiteralPath (Join-Path $zipRoot 'SHA256SUMS.txt') -Encoding ascii
 "$installerHash  $installerName" | Set-Content -LiteralPath "$installerAsset.sha256" -Encoding ascii
 
-$zipName = "PeerCastRT-${Version}-windows-x64-installer.7z"
+$zipName = "PeerCastRS-${Version}-windows-x64-installer.7z"
 $zipAsset = Join-Path $outputRoot $zipName
 $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
 if (-not (Test-Path -LiteralPath $sevenZip)) { throw '7-Zip was not found.' }

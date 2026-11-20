@@ -108,3 +108,13 @@ The packaged PCRPlayer source archive is published with the PeerCast RT 1.1.2 re
 | Node.js 24.22.1 | Unmodified official x64 executable. MIT and third-party notices are retained in `PCRPlayer/licenses/Node-LICENSE.txt`. Upstream binary and FFmpeg source hashes are pinned in `tools/pcrplayer/live/runtime-lock.json`. |
 
 The live bridge keeps video and recording audio as stream copies. Only playback audio is decoded to PCM for the existing DirectShow audio renderer. No user settings, recordings, or resolved media URLs are included in the package.
+
+## 9. PeerCast RS 1.3.0 rename and bundled PCRPlayer refactoring
+
+Starting in version 1.3.0, the application is renamed from PeerCast RT to **PeerCast RS**, with dedicated downloads hosted at `https://peercast-rs-downloads.fourgetkun.com` (and legacy updater pointers maintained for existing PeerCast RT installations).
+
+| Component | License and release material |
+|---|---|
+| PeerCast RS 1.3.0 | GPL-3.0-or-later; source repository `https://github.com/4getkun/PeerCastStation_Rust`. |
+| Modified PCRPlayer (refactored live bridge) | GPL; corresponding C++ source (`LiveBridge.h` RAII handle cleanup and `%LOCALAPPDATA%\PeerCast RS\live-logs` startup logging), refactored `pcr-live-bridge.cjs` with bounded log rotation and explicit recorder state machine, and build inputs are in `PCRPlayer-PeerCastRS-1.3.0-sources.7z`. |
+| yt-dlp 2026.08.19 | Unmodified official x64 executable (`GPL-3.0-or-later` / `Unlicense`); corresponding source archive `yt-dlp-2026.08.19-sources.7z`. |

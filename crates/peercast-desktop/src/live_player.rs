@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn bundled_player_requires_existing_binary() {
         let root = tempfile::tempdir().unwrap();
-        let app = root.path().join("Peercast-RT.exe");
+        let app = root.path().join("PeerCast-RS.exe");
         assert!(bundled_player(&app).is_err());
         std::fs::create_dir(root.path().join("PCRPlayer")).unwrap();
         let player = root.path().join("PCRPlayer/PCRPlayer64.exe");
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn live_command_keeps_title_as_one_literal_argument() {
         let root = tempfile::tempdir().unwrap();
-        let app = root.path().join("Peercast-RT.exe");
+        let app = root.path().join("PeerCast-RS.exe");
         std::fs::create_dir(root.path().join("PCRPlayer")).unwrap();
         std::fs::write(root.path().join("PCRPlayer/PCRPlayer64.exe"), b"fixture").unwrap();
         let title = "日本語 \"引用\" & C:\\配信";

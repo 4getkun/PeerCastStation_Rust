@@ -1,9 +1,9 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PlayerArchive,
-    [string]$Version = '1.2.4',
-    [string]$ReleaseNotes = '自動更新と新しいインストーラーデザインを追加しました。',
+    [string]$Version = '1.3.0',
+    [string]$ReleaseNotes = 'プログラム名を PeerCast RS に改名し、同梱プレイヤーのリファクタリングおよび既存設定の自動引き継ぎに対応しました。',
     [string]$WorkDirectory = '',
     [string]$ReleaseDirectory = '',
     [switch]$SkipBuild,
@@ -35,10 +35,10 @@ $releaseRoot = if ([string]::IsNullOrWhiteSpace($ReleaseDirectory)) {
 } else {
     [IO.Path]::GetFullPath($ReleaseDirectory)
 }
-$bundleInstaller = Join-Path $repoRoot "target/release/bundle/nsis/PeerCast RT_${Version}_x64-setup.exe"
+$bundleInstaller = Join-Path $repoRoot "target/release/bundle/nsis/PeerCast RS_${Version}_x64-setup.exe"
 $bundleSignature = "$bundleInstaller.sig"
-$installerName = "PeercastRT_${Version}_x64-setup.exe"
-$zipName = "PeerCastRT-${Version}-windows-x64-installer.7z"
+$installerName = "PeerCastRS_${Version}_x64-setup.exe"
+$zipName = "PeerCastRS-${Version}-windows-x64-installer.7z"
 $installerAsset = Join-Path $releaseRoot $installerName
 $zipAsset = Join-Path $releaseRoot $zipName
 $licenseRoot = Join-Path $releaseRoot 'zip-root/licenses'
@@ -64,18 +64,31 @@ $null = Assert-UpdaterSignatureVersion -SignatureText $signature -ExpectedVersio
 $renamedSignature = "$installerAsset.sig"
 Copy-Item -LiteralPath $bundleSignature -Destination $renamedSignature -Force
 
-$dedicatedBase = 'https://peercast-rt-downloads.fourgetkun.com'
-$legacyBase = 'https://downloads.misaka.fourgetkun.com'
+$dedicatedBucket = 'peercast-rs-downloads'
+$dedicatedBase = 'https://peercast-rs-downloads.fourgetkun.com'
+$legacyRtBucket = 'peercast-rt-downloads'
+$legacyRtBase = 'https://peercast-rt-downloads.fourgetkun.com'
+$legacyMisakaBucket = 'misaka-downloads'
+$legacyMisakaBase = 'https://downloads.misaka.fourgetkun.com'
+
 $dedicatedArtifactKey = "releases/$Version/$installerName"
-$legacyArtifactKey = "peercast-rt/releases/$Version/$installerName"
-$dedicatedVersionedKey = "updates/windows-x64/PeercastRT_$Version.json"
-$legacyVersionedKey = "peercast-rt/updates/windows-x64/PeercastRT_$Version.json"
+$legacyRtArtifactKey = "releases/$Version/$installerName"
+$legacyMisakaArtifactKey = "peercast-rt/releases/$Version/$installerName"
+
+$dedicatedVersionedKey = "updates/windows-x64/PeerCastRS_$Version.json"
+$legacyRtVersionedKey = "updates/windows-x64/PeerCastRS_$Version.json"
+$legacyMisakaVersionedKey = "peercast-rt/updates/windows-x64/PeerCastRS_$Version.json"
+
 $dedicatedLatestKey = 'updates/stable/windows-x64/latest.json'
-$legacyLatestKey = 'peercast-rt/updates/stable/windows-x64/latest.json'
-$dedicatedManifestPath = Join-Path $releaseRoot "PeercastRT_${Version}_updater.json"
-$legacyManifestPath = Join-Path $releaseRoot "PeercastRT_${Version}_legacy-updater.json"
+$legacyRtLatestKey = 'updates/stable/windows-x64/latest.json'
+$legacyMisakaLatestKey = 'peercast-rt/updates/stable/windows-x64/latest.json'
+
+$dedicatedManifestPath = Join-Path $releaseRoot "PeerCastRS_${Version}_updater.json"
+$legacyRtManifestPath = Join-Path $releaseRoot "PeerCastRS_${Version}_legacy-rt-updater.json"
+$legacyMisakaManifestPath = Join-Path $releaseRoot "PeerCastRS_${Version}_legacy-misaka-updater.json"
 $dedicatedLatestPath = Join-Path $releaseRoot 'latest.json'
-$legacyLatestPath = Join-Path $releaseRoot 'latest-legacy.json'
+$legacyRtLatestPath = Join-Path $releaseRoot 'latest-legacy-rt.json'
+$legacyMisakaLatestPath = Join-Path $releaseRoot 'latest-legacy-misaka.json'
 $publishedAt = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
 
 function Write-UpdaterManifest([string]$Path, [string]$ArtifactUrl) {
@@ -90,9 +103,11 @@ function Write-UpdaterManifest([string]$Path, [string]$ArtifactUrl) {
 }
 
 Write-UpdaterManifest $dedicatedManifestPath "$dedicatedBase/$dedicatedArtifactKey"
-Write-UpdaterManifest $legacyManifestPath "$legacyBase/$legacyArtifactKey"
+Write-UpdaterManifest $legacyRtManifestPath "$legacyRtBase/$legacyRtArtifactKey"
+Write-UpdaterManifest $legacyMisakaManifestPath "$legacyMisakaBase/$legacyMisakaArtifactKey"
 Copy-Item -LiteralPath $dedicatedManifestPath -Destination $dedicatedLatestPath -Force
-Copy-Item -LiteralPath $legacyManifestPath -Destination $legacyLatestPath -Force
+Copy-Item -LiteralPath $legacyRtManifestPath -Destination $legacyRtLatestPath -Force
+Copy-Item -LiteralPath $legacyMisakaManifestPath -Destination $legacyMisakaLatestPath -Force
 
 $installerHash = (Get-FileHash -LiteralPath $installerAsset -Algorithm SHA256).Hash.ToLowerInvariant()
 $zipHash = (Get-FileHash -LiteralPath $zipAsset -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -151,20 +166,25 @@ function Test-PublicObject([string]$Url, [string]$File, [string]$ContentType) {
 }
 
 $immutable = @(
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key=$dedicatedArtifactKey; File=$installerAsset; Type='application/octet-stream' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="$dedicatedArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$zipName"; File=$zipAsset; Type='application/x-7z-compressed' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$installerName.sha256"; File="$installerAsset.sha256"; Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key="releases/$Version/$zipName.sha256"; File="$zipAsset.sha256"; Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key=$dedicatedVersionedKey; File=$dedicatedManifestPath; Type='application/json' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key='licenses/LICENSE-GPL-3.0.txt'; File=(Join-Path $licenseRoot 'LICENSE-GPL-3.0.txt'); Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key='licenses/LICENSE_AUDIT.md'; File=(Join-Path $licenseRoot 'LICENSE_AUDIT.md'); Type='text/markdown; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key='licenses/PCRPlayer-LICENSE.txt'; File=(Join-Path $licenseRoot 'PCRPlayer-LICENSE.txt'); Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key='licenses/NotoSansJP-OFL.txt'; File=(Join-Path $licenseRoot 'NotoSansJP-OFL.txt'); Type='text/plain; charset=utf-8' },
-    @{ Bucket='peercast-rt-downloads'; Base=$dedicatedBase; Key='licenses/Tabler-Icons-MIT.txt'; File=(Join-Path $licenseRoot 'Tabler-Icons-MIT.txt'); Type='text/plain; charset=utf-8' },
-    @{ Bucket='misaka-downloads'; Base=$legacyBase; Key=$legacyArtifactKey; File=$installerAsset; Type='application/octet-stream' },
-    @{ Bucket='misaka-downloads'; Base=$legacyBase; Key="$legacyArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
-    @{ Bucket='misaka-downloads'; Base=$legacyBase; Key=$legacyVersionedKey; File=$legacyManifestPath; Type='application/json' }
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key=$dedicatedArtifactKey; File=$installerAsset; Type='application/octet-stream' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key="$dedicatedArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key="releases/$Version/$zipName"; File=$zipAsset; Type='application/x-7z-compressed' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key="releases/$Version/$installerName.sha256"; File="$installerAsset.sha256"; Type='text/plain; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key="releases/$Version/$zipName.sha256"; File="$zipAsset.sha256"; Type='text/plain; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key=$dedicatedVersionedKey; File=$dedicatedManifestPath; Type='application/json' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key='licenses/LICENSE-GPL-3.0.txt'; File=(Join-Path $licenseRoot 'LICENSE-GPL-3.0.txt'); Type='text/plain; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key='licenses/LICENSE_AUDIT.md'; File=(Join-Path $licenseRoot 'LICENSE_AUDIT.md'); Type='text/markdown; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key='licenses/PCRPlayer-LICENSE.txt'; File=(Join-Path $licenseRoot 'PCRPlayer-LICENSE.txt'); Type='text/plain; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key='licenses/NotoSansJP-OFL.txt'; File=(Join-Path $licenseRoot 'NotoSansJP-OFL.txt'); Type='text/plain; charset=utf-8' },
+    @{ Bucket=$dedicatedBucket; Base=$dedicatedBase; Key='licenses/Tabler-Icons-MIT.txt'; File=(Join-Path $licenseRoot 'Tabler-Icons-MIT.txt'); Type='text/plain; charset=utf-8' },
+    # Legacy PeerCast RT updater bridge
+    @{ Bucket=$legacyRtBucket; Base=$legacyRtBase; Key=$legacyRtArtifactKey; File=$installerAsset; Type='application/octet-stream' },
+    @{ Bucket=$legacyRtBucket; Base=$legacyRtBase; Key="$legacyRtArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
+    @{ Bucket=$legacyRtBucket; Base=$legacyRtBase; Key=$legacyRtVersionedKey; File=$legacyRtManifestPath; Type='application/json' },
+    # Legacy misaka-downloads updater bridge
+    @{ Bucket=$legacyMisakaBucket; Base=$legacyMisakaBase; Key=$legacyMisakaArtifactKey; File=$installerAsset; Type='application/octet-stream' },
+    @{ Bucket=$legacyMisakaBucket; Base=$legacyMisakaBase; Key="$legacyMisakaArtifactKey.sig"; File=$renamedSignature; Type='text/plain; charset=utf-8' },
+    @{ Bucket=$legacyMisakaBucket; Base=$legacyMisakaBase; Key=$legacyMisakaVersionedKey; File=$legacyMisakaManifestPath; Type='application/json' }
 )
 
 $ytSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/yt-dlp/lock.json') -Raw | ConvertFrom-Json
@@ -172,14 +192,14 @@ $ytSourceName = "yt-dlp-$($ytSpec.version)-sources.7z"
 $ytSourceFile = Join-Path $repoRoot "target/youtube-helper/$ytSourceName"
 foreach ($source in @(@{File=$ytSourceFile;Name=$ytSourceName;Type='application/x-7z-compressed'}, @{File="$ytSourceFile.sha256";Name="$ytSourceName.sha256";Type='text/plain; charset=utf-8'})) {
     if (-not (Test-Path -LiteralPath $source.File)) { throw "Missing yt-dlp source asset: $($source.File)" }
-    $immutable += @{Bucket='peercast-rt-downloads';Base=$dedicatedBase;Key="releases/$Version/$($source.Name)";File=$source.File;Type=$source.Type}
+    $immutable += @{Bucket=$dedicatedBucket;Base=$dedicatedBase;Key="releases/$Version/$($source.Name)";File=$source.File;Type=$source.Type}
 }
 foreach ($notice in Get-ChildItem -LiteralPath (Join-Path $licenseRoot 'yt-dlp') -File) {
     $noticeType = if ($notice.Extension -eq '.json') { 'application/json' } else { 'text/plain; charset=utf-8' }
-    $immutable += @{Bucket='peercast-rt-downloads';Base=$dedicatedBase;Key="releases/$Version/licenses/yt-dlp/$($notice.Name)";File=$notice.FullName;Type=$noticeType}
+    $immutable += @{Bucket=$dedicatedBucket;Base=$dedicatedBase;Key="releases/$Version/licenses/yt-dlp/$($notice.Name)";File=$notice.FullName;Type=$noticeType}
 }
 
-$immutable += @(Get-PeerCastPlayerSourceAssets -RepoRoot $repoRoot -Version $Version -WorkRoot $workRoot -LicenseRoot $licenseRoot -PublicBase $dedicatedBase)
+$immutable += @(Get-PeerCastPlayerSourceAssets -RepoRoot $repoRoot -Version $Version -WorkRoot $workRoot -LicenseRoot $licenseRoot -PublicBase $dedicatedBase -Bucket $dedicatedBucket)
 foreach ($item in $immutable) {
     if (-not (Test-Path -LiteralPath $item.File -PathType Leaf) -or (Get-Item -LiteralPath $item.File).Length -eq 0) {
         throw "Missing or empty release input: $($item.File)"
@@ -190,8 +210,10 @@ foreach ($item in $immutable) { Invoke-WranglerPut $item.Bucket $item.Key $item.
 foreach ($item in $immutable) { Test-PublicObject "$($item.Base)/$($item.Key)" $item.File $item.Type }
 
 # Mutable stable pointers are switched only after every immutable object is verified.
-Invoke-WranglerPut 'peercast-rt-downloads' $dedicatedLatestKey $dedicatedLatestPath 'application/json' 'no-store'
-Invoke-WranglerPut 'misaka-downloads' $legacyLatestKey $legacyLatestPath 'application/json' 'no-store'
+Invoke-WranglerPut $dedicatedBucket $dedicatedLatestKey $dedicatedLatestPath 'application/json' 'no-store'
+Invoke-WranglerPut $legacyRtBucket $legacyRtLatestKey $legacyRtLatestPath 'application/json' 'no-store'
+Invoke-WranglerPut $legacyMisakaBucket $legacyMisakaLatestKey $legacyMisakaLatestPath 'application/json' 'no-store'
 Test-PublicObject "$dedicatedBase/$dedicatedLatestKey" $dedicatedLatestPath 'application/json'
-Test-PublicObject "$legacyBase/$legacyLatestKey" $legacyLatestPath 'application/json'
-Write-Output 'R2 publication completed; both stable pointers were verified last over HTTP/2.'
+Test-PublicObject "$legacyRtBase/$legacyRtLatestKey" $legacyRtLatestPath 'application/json'
+Test-PublicObject "$legacyMisakaBase/$legacyMisakaLatestKey" $legacyMisakaLatestPath 'application/json'
+Write-Output 'R2 publication completed; all stable pointers (RS, legacy RT, legacy misaka) were verified last over HTTP/2.'

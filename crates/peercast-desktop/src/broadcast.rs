@@ -122,7 +122,7 @@ pub struct BroadcastSnapshot {
     pub input_url: String,
     pub stream_url: String,
     pub announcement_status: String,
-    pub managed_by_rt: bool,
+    pub managed_by_rs: bool,
 }
 struct ManagedBroadcast {
     request: BroadcastRequest,
@@ -213,7 +213,7 @@ impl BroadcastManager {
                     "掲載しない"
                 }
                 .into(),
-                managed_by_rt: true,
+                managed_by_rs: true,
             };
             self.jobs.lock().await.push(ManagedBroadcast {
                 request,
@@ -284,7 +284,7 @@ impl BroadcastManager {
                 "掲載しない"
             }
             .into(),
-            managed_by_rt: true,
+            managed_by_rs: true,
         };
         self.jobs.lock().await.push(ManagedBroadcast {
             request,

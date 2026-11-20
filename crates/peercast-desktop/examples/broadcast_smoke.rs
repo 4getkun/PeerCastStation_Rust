@@ -23,9 +23,9 @@ async fn main() -> Result<(), String> {
     let result = async {
         let snapshot = backend
             .start_broadcast(BroadcastRequest {
-                name: "Peercast RT 配信テスト（無音・短時間）".into(),
+                name: "PeerCast RS 配信テスト（無音・短時間）".into(),
                 genre: "test".into(),
-                description: "Peercast RT 1.0.5 / 自作の無音FLVで接続確認".into(),
+                description: "PeerCast RS 1.3.0 / 自作の無音FLVで接続確認".into(),
                 comment: "短時間のテストです。確認後に配信・掲載を停止します。".into(),
                 source_mode: if silent { "push" } else { "pull" }.into(),
                 source_uri: if silent {

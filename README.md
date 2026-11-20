@@ -48,15 +48,17 @@ GPLv3 (compatible with upstream PeerCastStation).
 
 The Windows x64 download is one 7z archive containing the installer, checksums, and a `licenses/` folder:
 
-- [PeerCast RT 1.2.4 for Windows x64](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PeerCastRT-1.2.4-windows-x64-installer.7z)
-- [7z SHA-256 checksum](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PeerCastRT-1.2.4-windows-x64-installer.7z.sha256) (`403d0042fe9f4a05f058d3ed7f905e8e1ae1cb37cdf34222f72b80ede73eb520`)
-- [Bundled PCRPlayer corresponding source archive for PeerCast RT 1.2.4](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/PCRPlayer-PeerCastRT-1.2.4-sources.7z)
-- [yt-dlp 2026.08.19 corresponding source archive](https://peercast-rt-downloads.fourgetkun.com/releases/1.2.4/yt-dlp-2026.08.19-sources.7z)
-- [PeerCast RT distribution site](https://fourgetkun.com/peercast-rt/)
+- [PeerCast RS 1.3.0 for Windows x64](https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/PeerCastRS-1.3.0-windows-x64-installer.7z)
+- [7z SHA-256 checksum](https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/PeerCastRS-1.3.0-windows-x64-installer.7z.sha256) (`dff90c2b92ebeefc63e839de5ce4679c1569b9f5fe51a8364cc60901ecab09ef`)
+- [Bundled PCRPlayer corresponding source archive for PeerCast RS 1.3.0](https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/PCRPlayer-PeerCastRS-1.3.0-sources.7z)
+- [yt-dlp 2026.08.19 corresponding source archive](https://peercast-rs-downloads.fourgetkun.com/releases/1.3.0/yt-dlp-2026.08.19-sources.7z)
+- [PeerCast RS distribution site](https://fourgetkun.com/peercast-rs/)
 
 The window size uses physical pixels by default; enable the logical-size checkbox in Appearance to follow Windows display scaling. The Connections context menu can clear transient messages and the in-memory log without changing active connections or channel rules.
 
-Extract the archive and run `PeercastRT_1.2.4_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected.
+Extract the archive and run `PeerCastRS_1.3.0_x64-setup.exe`. The completion page lets you choose whether to launch the app. An uninstaller is included and appears in Windows Installed Apps; settings and web cache are retained unless their removal is explicitly selected. Existing PeerCast RT installations migrate settings and shortcuts automatically on update.
+
+Version 1.3.0 renames the application from PeerCast RT to **PeerCast RS**, introduces automatic one-time migration of legacy PeerCast RT settings and Windows shortcuts/registry entries, and refactors the bundled PCRPlayer live bridge with RAII Win32 handle management, `%LOCALAPPDATA%\PeerCast RS\live-logs` startup logging, bounded log pruning, and an explicit recorder state machine.
 
 Version 1.2.0 adds Twitch favorites alongside YouTube and plays current live streams in the bundled PCRPlayer. Settings > Yellow Pages has separate YP, YouTube, and Twitch tabs. The Connections context menu now removes disconnected entries when cleared, while preserving active connections. Named window-size presets, existing player settings, and recordings are retained.
 
@@ -74,9 +76,9 @@ Register up to 20 public channels per service in Settings > Yellow Pages > YouTu
 
 Play opens the current live stream in the bundled PCRPlayer; the context menu also offers opening it in a browser. Archives and member-only/login-required streams are not supported. Playback selects an available H.264 rendition up to 1920×1080, automatically sizes the window once to fit the source and monitor, and averages bitrate over eight seconds. Twitch starts with a six-second buffer. Existing PeerCast playback and posting-pane settings are preserved.
 
-PCRPlayer's context menu can start and stop a separate MKV recording of a YouTube or Twitch live stream. Video and audio are copied without re-encoding; recording adds a second network connection. These recordings are managed by the player rather than the PeerCast RT recording queue. Public YouTube and Twitch streams were tested with audio and video; recording finalization and disconnect cleanup were also checked. Service changes can still affect extraction or availability.
+PCRPlayer's context menu can start and stop a separate MKV recording of a YouTube or Twitch live stream. Video and audio are copied without re-encoding; recording adds a second network connection. These recordings are managed by the player rather than the PeerCast RS recording queue. Public YouTube and Twitch streams were tested with audio and video; recording finalization and disconnect cleanup were also checked. Service changes can still affect extraction or availability.
 
-Before building a Windows installer, run `pwsh -File tools/prepare-youtube-helper.ps1 -ReleaseVersion 1.2.4`. This prepares the hash-pinned helper, license notices, and corresponding-source archive used by the existing packaging and publishing scripts. `tools/yt-dlp/lock.json` records all upstream source URLs and SHA-256 hashes; update it together with the helper version and embedded digest when changing yt-dlp.
+Before building a Windows installer, run `pwsh -File tools/prepare-youtube-helper.ps1 -ReleaseVersion 1.3.0`. This prepares the hash-pinned helper, license notices, and corresponding-source archive used by the existing packaging and publishing scripts. `tools/yt-dlp/lock.json` records all upstream source URLs and SHA-256 hashes; update it together with the helper version and embedded digest when changing yt-dlp.
 
 The modified PCRPlayer source and build inputs are in the matching corresponding-source archive above. The byte-preserving patch and portable live-runtime recipes are in `tools/pcrplayer/live/`. Build the minimal LGPL FFmpeg with `build-ffmpeg.ps1`, then run `tools/prepare-live-player.ps1 -PlayerSource <player-folder> -FfmpegBundle <runtime-bundle>` before packaging the player. It includes hash-pinned Node.js and FFmpeg binaries with their notices; the matching source release includes the FFmpeg source tarball and build configuration.
 
@@ -84,4 +86,4 @@ Version 1.0.4 improves relay startup, adds a copy button for filtered logs and a
 
 Version 1.0.5 adds channel reconnect/disconnect and recording playback, Explorer, and Recycle Bin actions to context menus. It fixes FLV recording timestamps and saves WMV streams as `.wmv` without re-encoding. Recorded paths use ordinary Windows notation in the UI. Update requests now negotiate HTTP/2, which the download host requires; version 1.0.4 needs a one-time manual update because its HTTP/1.1 client cannot retrieve the update manifest.
 
-Update artifacts are signed for PeerCast RT's built-in updater. The installer does not have an Authenticode publisher signature, and the 7z format does not guarantee that Chrome or Windows warnings will be absent. Verify the SHA-256 checksum before running it.
+Update artifacts are signed for PeerCast RS's built-in updater. The installer does not have an Authenticode publisher signature, and the 7z format does not guarantee that Chrome or Windows warnings will be absent. Verify the SHA-256 checksum before running it.

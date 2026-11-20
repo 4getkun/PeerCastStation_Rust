@@ -116,3 +116,69 @@ fn validate_window_size(width: u32, height: u32) -> Result<(), String> {
     }
     Ok(())
 }
+
+const LEGACY_APP_IDENTIFIER: &str = "com.fourgetkun.peercast-rt";
+const LEGACY_MIGRATION_FILES: [&str; 4] = [
+    "tauri-test.json",
+    "tauri-test.favorite-notifications.json",
+    "tauri-test.youtube.json",
+    "tauri-test.twitch.json",
+];
+
+/// Copies persisted settings from the former `com.fourgetkun.peercast-rt` data directory
+/// into the current PeerCast RS data directory on first launch after renaming.
+pub fn migrate_legacy_app_data(target_dir: &std::path::Path) -> std::io::Result<usize> {
+    let Some(parent) = target_dir.parent() else {
+        return Ok(0);
+    };
+    let legacy_dir = parent.join(LEGACY_APP_IDENTIFIER);
+    if legacy_dir == target_dir || !legacy_dir.is_dir() {
+        return Ok(0);
+    }
+    if target_dir.join(LEGACY_MIGRATION_FILES[0]).exists() {
+        return Ok(0);
+    }
+    let mut copied = 0usize;
+    for filename in LEGACY_MIGRATION_FILES {
+        let source = legacy_dir.join(filename);
+        let destination = target_dir.join(filename);
+        if source.is_file() && !destination.exists() {
+            std::fs::create_dir_all(target_dir)?;
+            std::fs::copy(&source, &destination)?;
+            copied += 1;
+        }
+    }
+    Ok(copied)
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::migrate_legacy_app_data;
+
+    #[test]
+    fn migrates_legacy_peercast_rt_files_once_without_overwriting() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("com.fourgetkun.peercast-rt");
+        let target = root.path().join("com.fourgetkun.peercast-rs");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("tauri-test.json"), r#"{"migrated":true}"#).unwrap();
+        std::fs::write(legacy.join("tauri-test.youtube.json"), r#"{"channels":[]}"#).unwrap();
+
+        assert_eq!(migrate_legacy_app_data(&target).unwrap(), 2);
+        assert_eq!(
+            std::fs::read_to_string(target.join("tauri-test.json")).unwrap(),
+            r#"{"migrated":true}"#
+        );
+        assert_eq!(
+            std::fs::read_to_string(target.join("tauri-test.youtube.json")).unwrap(),
+            r#"{"channels":[]}"#
+        );
+
+        std::fs::write(target.join("tauri-test.json"), r#"{"migrated":false}"#).unwrap();
+        assert_eq!(migrate_legacy_app_data(&target).unwrap(), 0);
+        assert_eq!(
+            std::fs::read_to_string(target.join("tauri-test.json")).unwrap(),
+            r#"{"migrated":false}"#
+        );
+    }
+}

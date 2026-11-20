@@ -766,7 +766,7 @@ impl DesktopBackend {
                 .external
                 .as_ref()
                 .map(|external| external.agent_name().to_owned())
-                .unwrap_or_else(|| "Peercast RT".into()),
+                .unwrap_or_else(|| "PeerCast RS".into()),
             running: inner.running.is_some(),
             endpoint,
             ingest_endpoint: if self.external.is_some() {

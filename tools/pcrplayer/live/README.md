@@ -1,7 +1,7 @@
 # PCRPlayer live playback
 
 `pcrplayer-live.patch` applies to the unmodified corresponding source archive shipped
-with PeerCast RT 1.1.2. It preserves the upstream file encodings and line endings.
+with PeerCast RT 1.1.2 (now renamed PeerCast RS). It preserves the upstream file encodings and line endings.
 Apply it from that archive's `source` directory with:
 
 ```powershell

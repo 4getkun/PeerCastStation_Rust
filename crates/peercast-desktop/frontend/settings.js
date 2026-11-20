@@ -878,7 +878,7 @@
       renderRecordingRulesList();
       setStatus("設定を読み込みました");
     }
-    const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "Peercast RT");
+    const backendLabel = snapshot.backendLabel || (snapshot.backendKind === "csharp" ? "PeerCastStation (C#)" : "PeerCast RS");
     $("backend-status").textContent = `${backendLabel} · ${snapshot.running ? "稼働中" : "停止中"}`;
     $("backend-endpoint").textContent = snapshot.endpoint || "—";
     $("backend-uptime").textContent = snapshot.running ? formatBackendUptime(snapshot.uptimeSecs) : "—";

@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  base: "/peercast-rt/",
+  base: "/peercast-rs/",
   publicDir: false,
   build: {
     outDir: "dist/client",

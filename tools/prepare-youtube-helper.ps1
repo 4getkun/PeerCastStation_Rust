@@ -2,7 +2,7 @@
 param(
     [string]$CacheDirectory = '',
     [string]$OutputDirectory = '',
-    [string]$ReleaseVersion = '1.2.4'
+    [string]$ReleaseVersion = '1.3.0'
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -32,7 +32,7 @@ Copy-Item -LiteralPath (Join-Path $cache $spec.unlicense.name) -Destination $lic
 Copy-Item -LiteralPath (Join-Path $repo 'crates/peercast-desktop/icons/LICENSE.txt') -Destination (Join-Path $licenses 'GPL-3.0.txt') -Force
 Copy-Item -LiteralPath $lockFile -Destination (Join-Path $licenses 'source-manifest.json') -Force
 $sourceName = "yt-dlp-$($spec.version)-sources.7z"
-$sourceUrl = "https://peercast-rt-downloads.fourgetkun.com/releases/$ReleaseVersion/$sourceName"
+$sourceUrl = "https://peercast-rs-downloads.fourgetkun.com/releases/$ReleaseVersion/$sourceName"
 @(
     "yt-dlp $($spec.version) - unmodified official Windows x64 executable"
     "Binary SHA-256: $($spec.binary.sha256)"

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$PlayerSource,
     [string]$Destination = (Join-Path $PSScriptRoot '..\target\windows-x64'),
     [ValidateSet('debug', 'release', 'win11-x64')][string]$Profile = 'release',
@@ -38,9 +38,9 @@ New-Item -ItemType Directory -Path $playerRoot -Force | Out-Null
 $binary = Join-Path $packageRoot "target\$Profile\peercast-desktop.exe"
 if ($SkipBuild -and -not (Test-Path -LiteralPath $binary)) {
     # Tauri renames the Cargo binary to mainBinaryName after bundling.
-    $binary = Join-Path $packageRoot "target\$Profile\PeerCast-RT.exe"
+    $binary = Join-Path $packageRoot "target\$Profile\PeerCast-RS.exe"
 }
-Copy-Item -LiteralPath $binary -Destination (Join-Path $outputRoot 'Peercast-RT.exe') -Force
+Copy-Item -LiteralPath $binary -Destination (Join-Path $outputRoot 'PeerCast-RS.exe') -Force
 foreach ($name in @('PCRPlayer64.exe', 'LICENSE.txt')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot $name) -Destination (Join-Path $playerRoot $name) -Force
 }
@@ -87,21 +87,21 @@ Copy-Item -LiteralPath (Join-Path $packageRoot 'crates\peercast-desktop\frontend
 Copy-Item -LiteralPath (Join-Path $packageRoot 'crates\peercast-desktop\icons\LICENSE.txt') -Destination (Join-Path $outputRoot 'LICENSE-GPL-3.0.txt') -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot 'docs\LICENSE_AUDIT.md') -Destination (Join-Path $outputRoot 'LICENSE_AUDIT.md') -Force
 @(
-    'PeerCast RT for Windows x64'
+    'PeerCast RS for Windows x64'
     ''
-    'Peercast-RT.exe を起動してください。視聴用の PCRPlayer は同梱されています。'
+    'PeerCast-RS.exe を起動してください。視聴用の PCRPlayer は同梱されています。'
     'この配布物は GNU General Public License version 3 or later の条件で公開しています。'
     ''
     'ソースコード: https://github.com/4getkun/PeerCastStation_Rust'
 ) | Set-Content -LiteralPath (Join-Path $outputRoot 'README-JA.txt') -Encoding utf8
 @(
-    'PeerCast RT source code:'
+    'PeerCast RS source code:'
     'https://github.com/4getkun/PeerCastStation_Rust'
     ''
     'This binary is distributed under GNU General Public License version 3 or later.'
     ''
     'Bundled modified PCRPlayer corresponding source and build inputs:'
-    "https://peercast-rt-downloads.fourgetkun.com/releases/$releaseVersion/PCRPlayer-PeerCastRT-$releaseVersion-sources.7z"
+    "https://peercast-rs-downloads.fourgetkun.com/releases/$releaseVersion/PCRPlayer-PeerCastRS-$releaseVersion-sources.7z"
 ) | Set-Content -LiteralPath (Join-Path $outputRoot 'SOURCE.txt') -Encoding utf8
 $packagedFiles = @('PCRPlayer64.exe', 'LICENSE.txt') + @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'skin') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($sourceRoot, $_.FullName) }) + $playerLicenseFiles + $playerLiveFiles
 $manifest = foreach ($relative in $packagedFiles) {

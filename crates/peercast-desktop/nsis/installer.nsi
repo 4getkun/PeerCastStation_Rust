@@ -1,4 +1,4 @@
-; PeerCast RT custom NSIS template.
+; PeerCast RS custom NSIS template.
 ; Based on Tauri's official NSIS template for the 2.12 series and adapted to
 ; use a full-window nsDialogs welcome/finish experience.
 Unicode true
@@ -75,9 +75,12 @@ ${StrLoc}
 !define WEBVIEW2BOOTSTRAPPERPATH "{{webview2_bootstrapper_path}}"
 !define WEBVIEW2INSTALLERPATH "{{webview2_installer_path}}"
 !define MINIMUMWEBVIEW2VERSION "{{minimum_webview2_version}}"
-!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\PeerCast RT"
+!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\PeerCast RS"
 !define MANUKEY "Software\4getkun"
-!define MANUPRODUCTKEY "${MANUKEY}\PeerCast RT"
+!define MANUPRODUCTKEY "${MANUKEY}\PeerCast RS"
+!define LEGACY_PRODUCTNAME "PeerCast RT"
+!define LEGACY_UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\PeerCast RT"
+!define LEGACY_MANUPRODUCTKEY "${MANUKEY}\PeerCast RT"
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 !define STARTMENUFOLDER "{{start_menu_folder}}"
@@ -254,10 +257,16 @@ Function PageReinstall
     Goto compare_version
   wix_loop_done:
 
-  ; Check if there is an existing installation, if not, abort the reinstall page
+  ; Check if there is an existing installation (current or legacy PeerCast RT), if not, abort the reinstall page
   ReadRegStr $R0 SHCTX "${UNINSTKEY}" ""
   ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
-  ${IfThen} "$R0$R1" == "" ${|} Abort ${|}
+  StrCpy $R5 "${UNINSTKEY}"
+  ${If} "$R0$R1" == ""
+    ReadRegStr $R0 SHCTX "${LEGACY_UNINSTKEY}" ""
+    ReadRegStr $R1 SHCTX "${LEGACY_UNINSTKEY}" "UninstallString"
+    ${IfThen} "$R0$R1" == "" ${|} Abort ${|}
+    StrCpy $R5 "${LEGACY_UNINSTKEY}"
+  ${EndIf}
 
   ; Compare this installar version with the existing installation
   ; and modify the messages presented to the user accordingly
@@ -266,7 +275,7 @@ Function PageReinstall
   ${If} $WixMode = 1
     ReadRegStr $R0 HKLM "$R6" "DisplayVersion"
   ${Else}
-    ReadRegStr $R0 SHCTX "${UNINSTKEY}" "DisplayVersion"
+    ReadRegStr $R0 SHCTX "$R5" "DisplayVersion"
   ${EndIf}
   ${IfThen} $R0 == "" ${|} StrCpy $R4 "$(unknown)" ${|}
 
@@ -595,58 +604,58 @@ FunctionEnd
 SetFont /LANG=${LANG_ENGLISH} "Segoe UI" 9
 SetFont /LANG=${LANG_JAPANESE} "Yu Gothic UI" 9
 
-LangString installerTitle ${LANG_ENGLISH} "Welcome to PeerCast RT Setup"
-LangString installerTitle ${LANG_JAPANESE} "PeerCast RT セットアップへようこそ"
+LangString installerTitle ${LANG_ENGLISH} "Welcome to PeerCast RS Setup"
+LangString installerTitle ${LANG_JAPANESE} "PeerCast RS セットアップへようこそ"
 LangString installerSubtitle ${LANG_ENGLISH} "Stream and watch with one Windows app."
 LangString installerSubtitle ${LANG_JAPANESE} "配信と視聴を、ひとつのアプリで。"
 LangString installerLocation ${LANG_ENGLISH} "Install location"
 LangString installerLocation ${LANG_JAPANESE} "インストール先"
 LangString installerBrowse ${LANG_ENGLISH} "Browse..."
 LangString installerBrowse ${LANG_JAPANESE} "参照..."
-LangString installerLaunch ${LANG_ENGLISH} "Launch PeerCast RT after installation"
-LangString installerLaunch ${LANG_JAPANESE} "インストール後に PeerCast RT を起動する"
+LangString installerLaunch ${LANG_ENGLISH} "Launch PeerCast RS after installation"
+LangString installerLaunch ${LANG_JAPANESE} "インストール後に PeerCast RS を起動する"
 LangString installerDesktop ${LANG_ENGLISH} "Create a desktop shortcut"
 LangString installerDesktop ${LANG_JAPANESE} "デスクトップにショートカットを作成する"
 LangString installerProtection ${LANG_ENGLISH} "Close other apps before continuing so required files can be updated safely."
 LangString installerProtection ${LANG_JAPANESE} "開始する前に、ほかのアプリを終了してください。"
-LangString installerProtectionNote ${LANG_ENGLISH} "Setup can safely update required files and launch PeerCast RT when it is done."
+LangString installerProtectionNote ${LANG_ENGLISH} "Setup can safely update required files and launch PeerCast RS when it is done."
 LangString installerProtectionNote ${LANG_JAPANESE} "必要なファイルを安全に更新し、完了後すぐに起動できます。"
 LangString installerFirstRun ${LANG_ENGLISH} "When you are ready, select Next."
 LangString installerFirstRun ${LANG_JAPANESE} "準備ができたら「次へ」をクリックしてください。"
-LangString installerComplete ${LANG_ENGLISH} "PeerCast RT is ready to use."
-LangString installerComplete ${LANG_JAPANESE} "PeerCast RT を使用する準備ができました。"
-LangString installerProgressTitle ${LANG_ENGLISH} "Installing PeerCast RT"
-LangString installerProgressTitle ${LANG_JAPANESE} "PeerCast RT をインストールしています"
-LangString uninstallerProgressTitle ${LANG_ENGLISH} "Uninstalling PeerCast RT"
-LangString uninstallerProgressTitle ${LANG_JAPANESE} "PeerCast RT をアンインストールしています"
+LangString installerComplete ${LANG_ENGLISH} "PeerCast RS is ready to use."
+LangString installerComplete ${LANG_JAPANESE} "PeerCast RS を使用する準備ができました。"
+LangString installerProgressTitle ${LANG_ENGLISH} "Installing PeerCast RS"
+LangString installerProgressTitle ${LANG_JAPANESE} "PeerCast RS をインストールしています"
+LangString uninstallerProgressTitle ${LANG_ENGLISH} "Uninstalling PeerCast RS"
+LangString uninstallerProgressTitle ${LANG_JAPANESE} "PeerCast RS をアンインストールしています"
 LangString installerFinish ${LANG_ENGLISH} "Finish"
 LangString installerFinish ${LANG_JAPANESE} "完了"
 LangString installerBrowseTitle ${LANG_ENGLISH} "Select the installation folder"
 LangString installerBrowseTitle ${LANG_JAPANESE} "インストール先フォルダーを選択"
 LangString installerInstall ${LANG_ENGLISH} "Install"
 LangString installerInstall ${LANG_JAPANESE} "インストール"
-LangString installerUpdateTitle ${LANG_ENGLISH} "Update PeerCast RT"
-LangString installerUpdateTitle ${LANG_JAPANESE} "PeerCast RT を更新"
-LangString installerReinstallTitle ${LANG_ENGLISH} "Reinstall PeerCast RT"
-LangString installerReinstallTitle ${LANG_JAPANESE} "PeerCast RT を再インストール"
+LangString installerUpdateTitle ${LANG_ENGLISH} "Update PeerCast RS"
+LangString installerUpdateTitle ${LANG_JAPANESE} "PeerCast RS を更新"
+LangString installerReinstallTitle ${LANG_ENGLISH} "Reinstall PeerCast RS"
+LangString installerReinstallTitle ${LANG_JAPANESE} "PeerCast RS を再インストール"
 LangString installerDowngradeTitle ${LANG_ENGLISH} "Install an earlier version"
 LangString installerDowngradeTitle ${LANG_JAPANESE} "旧バージョンをインストール"
 LangString installerExistingNote ${LANG_ENGLISH} "Your settings and recordings will be kept."
 LangString installerExistingNote ${LANG_JAPANESE} "設定と録画ファイルはそのまま引き継がれます。"
 LangString installerDowngradeBlocked ${LANG_ENGLISH} "A newer version is already installed. This installer cannot downgrade it."
 LangString installerDowngradeBlocked ${LANG_JAPANESE} "新しいバージョンがインストール済みのため、このインストーラーでは旧バージョンに戻せません。"
-LangString installerInstallError ${LANG_ENGLISH} "PeerCast RT could not be installed. Check the details above and try again."
-LangString installerInstallError ${LANG_JAPANESE} "PeerCast RT をインストールできませんでした。上の詳細を確認して、もう一度お試しください。"
-LangString uninstallerTitle ${LANG_ENGLISH} "Uninstall PeerCast RT"
-LangString uninstallerTitle ${LANG_JAPANESE} "PeerCast RT をアンインストール"
+LangString installerInstallError ${LANG_ENGLISH} "PeerCast RS could not be installed. Check the details above and try again."
+LangString installerInstallError ${LANG_JAPANESE} "PeerCast RS をインストールできませんでした。上の詳細を確認して、もう一度お試しください。"
+LangString uninstallerTitle ${LANG_ENGLISH} "Uninstall PeerCast RS"
+LangString uninstallerTitle ${LANG_JAPANESE} "PeerCast RS をアンインストール"
 LangString uninstallerSubtitle ${LANG_ENGLISH} "Review what will be removed before continuing."
 LangString uninstallerSubtitle ${LANG_JAPANESE} "削除される内容を確認してから続行してください。"
 LangString uninstallerLocation ${LANG_ENGLISH} "Installation folder"
 LangString uninstallerLocation ${LANG_JAPANESE} "インストール先"
 LangString uninstallerProtection ${LANG_ENGLISH} "Recordings remain in their original folders.$\r$\nSettings are kept unless you remove the app data below."
 LangString uninstallerProtection ${LANG_JAPANESE} "録画ファイルは元のフォルダーに残ります。$\r$\n下の項目を選ばない限り、設定も保持されます。"
-LangString uninstallerDeleteCache ${LANG_ENGLISH} "Also remove PeerCast RT settings and web cache"
-LangString uninstallerDeleteCache ${LANG_JAPANESE} "PeerCast RT の設定と Web キャッシュも削除する"
+LangString uninstallerDeleteCache ${LANG_ENGLISH} "Also remove PeerCast RS settings and web cache"
+LangString uninstallerDeleteCache ${LANG_JAPANESE} "PeerCast RS の設定と Web キャッシュも削除する"
 LangString uninstallerConfirmButton ${LANG_ENGLISH} "Uninstall"
 LangString uninstallerConfirmButton ${LANG_JAPANESE} "アンインストール"
 LangString installerMachineInstallRequiresAdmin ${LANG_ENGLISH} "The existing installation is for all users. Run this installer as an administrator to update it."
@@ -734,7 +743,7 @@ Function PageReady
   SetCtlColors $3 "17131F" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerTitleFont 1
 
-  ${NSD_CreateLabel} 120u 78u $InstallerContentWidth 15u "PeerCast RTをこのPCにインストールします。"
+  ${NSD_CreateLabel} 120u 78u $InstallerContentWidth 15u "PeerCast RSをこのPCにインストールします。"
   Pop $3
   SetCtlColors $3 "514A5E" "F8F6FD"
   SendMessage $3 ${WM_SETFONT} $InstallerBodyFont 1
@@ -1404,6 +1413,9 @@ Section Install
 
   ClearErrors
   ReadRegStr $OldMainBinaryName SHCTX "${UNINSTKEY}" "MainBinaryName"
+  IfErrors 0 install_old_binary_checked
+  ClearErrors
+  ReadRegStr $OldMainBinaryName SHCTX "${LEGACY_UNINSTKEY}" "MainBinaryName"
   IfErrors install_old_binary_missing
   Goto install_old_binary_checked
   install_old_binary_missing:
@@ -1566,6 +1578,17 @@ Section Install
     Call CreateOrUpdateStartMenuShortcut
   !insertmacro MUI_STARTMENU_WRITE_END
   Call MigrateExistingDesktopShortcut
+
+  ; Clean up legacy PeerCast RT registry entries and shortcuts after successful upgrade.
+  DeleteRegKey SHCTX "${LEGACY_UNINSTKEY}"
+  DeleteRegKey SHCTX "${LEGACY_MANUPRODUCTKEY}"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Peercast RT"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${LEGACY_PRODUCTNAME}"
+  !insertmacro UnpinShortcut "$SMPROGRAMS\${LEGACY_PRODUCTNAME}\${LEGACY_PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\${LEGACY_PRODUCTNAME}\${LEGACY_PRODUCTNAME}.lnk"
+  RMDir "$SMPROGRAMS\${LEGACY_PRODUCTNAME}"
+  !insertmacro UnpinShortcut "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk"
 
   !ifmacrodef NSIS_HOOK_POSTINSTALL
     !insertmacro NSIS_HOOK_POSTINSTALL
@@ -1757,6 +1780,9 @@ SectionEnd
 
 Function RestorePreviousInstallLocation
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
+  ${If} $4 == ""
+    ReadRegStr $4 SHCTX "${LEGACY_MANUPRODUCTKEY}" ""
+  ${EndIf}
   StrCmp $4 "" +2 0
     StrCpy $INSTDIR $4
 FunctionEnd
@@ -1811,6 +1837,20 @@ Function CreateOrUpdateStartMenuShortcut
     Return
   ${EndIf}
 
+  ; Replace legacy PeerCast RT start menu shortcut with PeerCast RS during upgrade
+  ${If} ${FileExists} "$SMPROGRAMS\${LEGACY_PRODUCTNAME}\${LEGACY_PRODUCTNAME}.lnk"
+  ${OrIf} ${FileExists} "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk"
+    !if "${STARTMENUFOLDER}" != ""
+      CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
+      CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+      !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+    !else
+      CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+      !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+    !endif
+    Return
+  ${EndIf}
+
   ; Skip creating shortcut if in update mode or no shortcut mode
   ; but always create if migrating from wix
   ${If} $WixMode = 0
@@ -1854,6 +1894,13 @@ Function CreateOrUpdateDesktopShortcut
 FunctionEnd
 
 Function MigrateExistingDesktopShortcut
+  ${If} ${FileExists} "$DESKTOP\${LEGACY_PRODUCTNAME}.lnk"
+    !insertmacro UnpinShortcut "$DESKTOP\${LEGACY_PRODUCTNAME}.lnk"
+    Delete "$DESKTOP\${LEGACY_PRODUCTNAME}.lnk"
+    CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
+  ${EndIf}
+
   ${If} $OldMainBinaryName == ""
   ${OrIf} $OldMainBinaryName == "${MAINBINARYNAME}.exe"
     Return
